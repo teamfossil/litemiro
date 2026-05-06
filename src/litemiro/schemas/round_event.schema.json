@@ -1,0 +1,81 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://litemiro.dev/schemas/round_event.schema.json",
+  "title": "RoundEvent",
+  "description": "Phase 2 → Phase 3 JSONL contract. One event per line.",
+  "type": "object",
+  "required": ["round_num", "timestamp", "agent_id", "action"],
+  "properties": {
+    "round_num": { "type": "integer", "minimum": 0 },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "agent_id": { "type": "string", "minLength": 1 },
+    "action": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "CREATE_POST",
+            "LIKE_POST",
+            "REPOST",
+            "QUOTE_POST",
+            "FOLLOW",
+            "DO_NOTHING"
+          ]
+        },
+        "target_post_id": { "type": ["string", "null"] },
+        "target_agent_id": { "type": ["string", "null"] },
+        "content": { "type": ["string", "null"] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "CREATE_POST" } } },
+          "then": { "required": ["content"], "properties": { "content": { "type": "string", "minLength": 1 } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "LIKE_POST" } } },
+          "then": { "required": ["target_post_id"], "properties": { "target_post_id": { "type": "string", "minLength": 1 } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "REPOST" } } },
+          "then": { "required": ["target_post_id"], "properties": { "target_post_id": { "type": "string", "minLength": 1 } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "QUOTE_POST" } } },
+          "then": {
+            "required": ["target_post_id", "content"],
+            "properties": {
+              "target_post_id": { "type": "string", "minLength": 1 },
+              "content": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "FOLLOW" } } },
+          "then": { "required": ["target_agent_id"], "properties": { "target_agent_id": { "type": "string", "minLength": 1 } } }
+        }
+      ]
+    },
+    "context_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "feed_size": { "type": "integer", "minimum": 0 },
+        "follower_count": { "type": "integer", "minimum": 0 },
+        "following_count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "llm_meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "model": { "type": "string", "minLength": 1 },
+        "tokens_used": { "type": "integer", "minimum": 0 },
+        "latency_ms": { "type": "number", "minimum": 0 },
+        "fallback_used": { "type": "boolean" }
+      }
+    }
+  }
+}
