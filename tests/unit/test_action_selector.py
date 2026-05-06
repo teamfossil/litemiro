@@ -367,6 +367,44 @@ class TestFallbackInvariants:
         assert isinstance(action, Action)
 
 
+class TestComposedFallbackChain:
+    """All three fallback legs activate inside one ``select_action`` call.
+
+    The unit-level fallback tests above exercise each leg in isolation;
+    these tests prove the legs *compose* (transport retry hands off to
+    json_repair, json_repair hands off to validation, validation hands
+    off to ``DO_NOTHING``) without any short-circuit cross-talk.
+    """
+
+    async def test_retry_then_repair_then_validation_failure_collapses(self) -> None:
+        # Leg 1: transport error -> AsyncRetrying retries.
+        # Leg 2: malformed (single-quoted) JSON -> json_repair parses it.
+        # Leg 3: parsed dict fails Action validation (CREATE_POST without
+        #        content) -> DO_NOTHING fallback.
+        llm = _FakeLLM(
+            RuntimeError("transient transport error"),
+            "{'type': 'CREATE_POST'}",
+        )
+        action = await _selector(llm, max_attempts=3).select_action("me", _ctx())
+        assert action == Action(type=ActionType.DO_NOTHING)
+        # Exactly two LLM round-trips: one failed transport + one returned.
+        assert len(llm.calls) == 2
+
+    async def test_retry_then_repair_then_target_validation_collapses(self) -> None:
+        # Leg 1: transport error -> retry.
+        # Leg 2: single-quoted JSON -> json_repair fixes it -> Action
+        #        validates structurally...
+        # Leg 3: ...but target_post_id is not in the feed -> DO_NOTHING.
+        feed = (_post("p-real"),)
+        llm = _FakeLLM(
+            RuntimeError("transient"),
+            "{'type': 'LIKE_POST', 'target_post_id': 'p-ghost'}",
+        )
+        action = await _selector(llm, max_attempts=3).select_action("me", _ctx(feed=feed))
+        assert action == Action(type=ActionType.DO_NOTHING)
+        assert len(llm.calls) == 2
+
+
 def test_protocol_is_satisfied() -> None:
     selector = ActionSelector(llm=_FakeLLM(), model="test-model")
     assert isinstance(selector, ActionSelectorLike)

@@ -166,6 +166,27 @@ class TestSerialization:
         # And re-serialising sorts again.
         assert g.to_dict()["a"] == ["b", "m", "z"]
 
+    def test_to_dict_byte_snapshot(self) -> None:
+        """Pin the exact serialization shape so accidental drift is caught.
+
+        ``to_dict`` is the wire format C consumes for Phase 3. A drift in
+        key ordering, value ordering, or empty-bucket handling would
+        silently break replays — the snapshot below freezes the contract.
+        """
+        g = SocialGraph()
+        for follower, followee in [
+            ("alice", "carol"),
+            ("alice", "bob"),
+            ("bob", "alice"),
+            ("dave", "bob"),  # dave will be unfollowed -> must not leak
+        ]:
+            g.follow(follower, followee)
+        g.unfollow("dave", "bob")
+        assert g.to_dict() == {
+            "alice": ["bob", "carol"],
+            "bob": ["alice"],
+        }
+
 
 def test_protocol_is_satisfied() -> None:
     assert isinstance(SocialGraph(), SocialGraphLike)
