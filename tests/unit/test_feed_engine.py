@@ -19,9 +19,23 @@ from __future__ import annotations
 import pytest
 
 from litemiro.feed.engine import FeedEngine
-from litemiro.interfaces import FeedEngineLike
+from litemiro.interfaces import EmbedderLike, FeedEngineLike
 from litemiro.models import Agent, Post
 from litemiro.social.graph import SocialGraph
+
+
+class _FakeEmbedder:
+    """Deterministic dimensional embedder for unit tests."""
+
+    def __init__(self, mapping: dict[str, tuple[float, ...]]) -> None:
+        self._mapping = mapping
+        self.calls: list[str] = []
+
+    def embed(self, text: str) -> tuple[float, ...]:
+        self.calls.append(text)
+        if text not in self._mapping:
+            raise KeyError(f"no fixture vector for {text!r}")
+        return self._mapping[text]
 
 
 @pytest.fixture
@@ -181,5 +195,99 @@ class TestDeterminism:
         assert first == second
 
 
+class TestSemanticMatching:
+    """Notion §3.2 candidacy includes semantic interest-topic similarity.
+
+    Without an embedder ``FeedEngine`` keeps the W2 default behaviour
+    (exact topic match only). When an ``EmbedderLike`` is injected,
+    posts whose topics are *cosine-similar* to any of the agent's
+    interests above the threshold also enter the candidate pool.
+    """
+
+    def test_no_embedder_keeps_exact_match_default(self, social: SocialGraph) -> None:
+        feed = FeedEngine(social=social)
+        feed.index_post(_post("p1", "stranger", topics=("ml",)))
+        result = feed.build_feed(agent=_agent("me", interests=("ai",)), current_round=1)
+        assert result == ()
+
+    def test_high_similarity_topic_is_included(self, social: SocialGraph) -> None:
+        # "ai" and "ml" are nearly co-linear -> cosine ~ 0.99
+        embedder = _FakeEmbedder({"ai": (1.0, 0.0), "ml": (0.99, 0.14)})
+        feed = FeedEngine(social=social, embedder=embedder, similarity_threshold=0.5)
+        feed.index_post(_post("p1", "stranger", topics=("ml",)))
+        result = feed.build_feed(agent=_agent("me", interests=("ai",)), current_round=1)
+        assert [p.post_id for p in result] == ["p1"]
+
+    def test_low_similarity_topic_is_excluded(self, social: SocialGraph) -> None:
+        # orthogonal vectors -> cosine = 0
+        embedder = _FakeEmbedder({"ai": (1.0, 0.0), "politics": (0.0, 1.0)})
+        feed = FeedEngine(social=social, embedder=embedder, similarity_threshold=0.5)
+        feed.index_post(_post("p1", "stranger", topics=("politics",)))
+        result = feed.build_feed(agent=_agent("me", interests=("ai",)), current_round=1)
+        assert result == ()
+
+    def test_threshold_is_inclusive(self, social: SocialGraph) -> None:
+        # cosine == threshold should match (>= comparison)
+        embedder = _FakeEmbedder({"ai": (1.0, 0.0), "x": (0.5, 0.866)})
+        feed = FeedEngine(social=social, embedder=embedder, similarity_threshold=0.5)
+        feed.index_post(_post("p1", "stranger", topics=("x",)))
+        result = feed.build_feed(agent=_agent("me", interests=("ai",)), current_round=1)
+        assert [p.post_id for p in result] == ["p1"]
+
+    def test_exact_match_does_not_require_embedder(self, social: SocialGraph) -> None:
+        # Exact topic equality must always match — even when the
+        # embedder claims zero similarity.
+        embedder = _FakeEmbedder({"ai": (1.0, 0.0)})
+        feed = FeedEngine(social=social, embedder=embedder, similarity_threshold=0.99)
+        feed.index_post(_post("p1", "stranger", topics=("ai",)))
+        result = feed.build_feed(agent=_agent("me", interests=("ai",)), current_round=1)
+        assert [p.post_id for p in result] == ["p1"]
+
+    def test_dedup_when_post_matches_via_both_paths(self, social: SocialGraph) -> None:
+        # If a post is reached via following AND via semantic match the
+        # candidate pool deduplicates by post_id.
+        social.follow("me", "alice")
+        embedder = _FakeEmbedder({"ai": (1.0, 0.0), "ml": (0.99, 0.14)})
+        feed = FeedEngine(social=social, embedder=embedder, similarity_threshold=0.5)
+        feed.index_post(_post("p1", "alice", topics=("ml",)))
+        result = feed.build_feed(agent=_agent("me", interests=("ai",)), current_round=1)
+        assert [p.post_id for p in result] == ["p1"]
+
+    def test_self_authored_still_excluded_under_semantic(self, social: SocialGraph) -> None:
+        embedder = _FakeEmbedder({"ai": (1.0, 0.0), "ml": (0.99, 0.14)})
+        feed = FeedEngine(social=social, embedder=embedder, similarity_threshold=0.5)
+        feed.index_post(_post("p1", "me", topics=("ml",)))
+        result = feed.build_feed(agent=_agent("me", interests=("ai",)), current_round=1)
+        assert result == ()
+
+    def test_topic_embedding_cached(self, social: SocialGraph) -> None:
+        # A topic seen during index_post must not be re-embedded on
+        # build_feed — embeddings are the expensive bit.
+        embedder = _FakeEmbedder({"ai": (1.0, 0.0), "ml": (0.99, 0.14)})
+        feed = FeedEngine(social=social, embedder=embedder, similarity_threshold=0.5)
+        feed.index_post(_post("p1", "stranger", topics=("ml",)))
+        feed.index_post(_post("p2", "stranger", topics=("ml",)))  # same topic
+        embedder.calls.clear()
+        feed.build_feed(agent=_agent("me", interests=("ai",)), current_round=1)
+        # Each topic should be embedded at most once per build_feed call:
+        # one for "ai" (the interest), nothing for "ml" (cached).
+        assert embedder.calls.count("ml") == 0
+        assert embedder.calls.count("ai") == 1
+
+    def test_negative_threshold_rejected(self, social: SocialGraph) -> None:
+        embedder = _FakeEmbedder({})
+        with pytest.raises(ValueError, match="similarity_threshold"):
+            FeedEngine(social=social, embedder=embedder, similarity_threshold=-0.1)
+
+    def test_threshold_above_one_rejected(self, social: SocialGraph) -> None:
+        embedder = _FakeEmbedder({})
+        with pytest.raises(ValueError, match="similarity_threshold"):
+            FeedEngine(social=social, embedder=embedder, similarity_threshold=1.5)
+
+
 def test_protocol_is_satisfied(feed: FeedEngine) -> None:
     assert isinstance(feed, FeedEngineLike)
+
+
+def test_fake_embedder_satisfies_protocol() -> None:
+    assert isinstance(_FakeEmbedder({}), EmbedderLike)

@@ -52,6 +52,20 @@ class FeedEngineLike(Protocol):
 
 
 @runtime_checkable
+class EmbedderLike(Protocol):
+    """Topic embedding contract used by ``FeedEngine``.
+
+    Notion §3.2 says interest-based candidacy uses
+    "sentence-transformers 임베딩 유사도". The Protocol stays
+    framework-agnostic so the unit suite can drive ``FeedEngine`` with
+    a deterministic fake; the real ``sentence-transformers`` adapter is
+    wired in at integration time (W3).
+    """
+
+    def embed(self, text: str) -> tuple[float, ...]: ...
+
+
+@runtime_checkable
 class ActionSelectorLike(Protocol):
     """Owned by **B**."""
 
@@ -81,6 +95,7 @@ class EventLoggerLike(Protocol):
 
 __all__ = [
     "ActionSelectorLike",
+    "EmbedderLike",
     "EventLoggerLike",
     "FeedEngineLike",
     "LLMClient",
