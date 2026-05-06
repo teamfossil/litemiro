@@ -120,8 +120,6 @@ class FeedEngine:
 
 
 def _cosine(a: tuple[float, ...], b: tuple[float, ...]) -> float:
-    if len(a) != len(b):
-        return 0.0
     norm_a = math.sqrt(sum(x * x for x in a))
     norm_b = math.sqrt(sum(y * y for y in b))
     if norm_a == 0.0 or norm_b == 0.0:

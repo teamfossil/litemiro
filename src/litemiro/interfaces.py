@@ -66,6 +66,20 @@ class EmbedderLike(Protocol):
 
 
 @runtime_checkable
+class TopicExtractorLike(Protocol):
+    """Maps free-form post content to a tuple of topic labels.
+
+    Used at CREATE_POST time so a freshly authored ``Post`` carries the
+    same topic vocabulary that ``FeedEngine`` and ``Agent.interests``
+    speak. Implementations are framework-agnostic; the unit suite drives
+    a deterministic fake while the W3 integration uses the same
+    ``EmbedderLike`` adapter as ``FeedEngine``.
+    """
+
+    def extract(self, content: str) -> tuple[str, ...]: ...
+
+
+@runtime_checkable
 class ActionSelectorLike(Protocol):
     """Owned by **B**."""
 
@@ -101,4 +115,5 @@ __all__ = [
     "LLMClient",
     "SocialGraphLike",
     "StateStoreLike",
+    "TopicExtractorLike",
 ]
