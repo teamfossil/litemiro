@@ -31,7 +31,6 @@ class FeedEngine:
     def __init__(self, *, social: SocialGraphLike) -> None:
         self._social = social
         self._posts: dict[str, Post] = {}
-        # topic -> post_ids (set so add/remove stay O(1))
         self._topic_index: dict[str, set[str]] = {}
 
     def index_post(self, post: Post) -> None:

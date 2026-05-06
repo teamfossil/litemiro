@@ -56,9 +56,6 @@ class ActionSelector:
         try:
             raw = await self._call_with_retry(system, user)
         except Exception:
-            # Step-3 fallback: transport never recovered. tenacity is
-            # configured with ``reraise=True`` so the last attempt's
-            # exception (not ``RetryError``) propagates to here.
             return _DO_NOTHING
 
         parsed = _parse_json(raw)
@@ -132,7 +129,6 @@ def _target_is_valid(action: Action, *, agent_id: str, context: ActionContext) -
         if target_agent is None or target_agent == agent_id:
             return False
         return target_agent in {p.author_id for p in context.feed}
-    # CREATE_POST / DO_NOTHING have no target to validate.
     return True
 
 
