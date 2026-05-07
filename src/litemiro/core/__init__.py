@@ -12,7 +12,9 @@ Test-only fakes for owner-A surface live in ``tests/fakes.py``.
 from __future__ import annotations
 
 from litemiro.core._types import RoundOutcome
+from litemiro.core.agent_scheduler import AgentScheduler
 
 __all__ = [
+    "AgentScheduler",
     "RoundOutcome",
 ]
