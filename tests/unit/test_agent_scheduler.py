@@ -1,12 +1,3 @@
-"""Behaviour pinning for ``AgentScheduler``.
-
-Covers the four concerns the design doc enumerated:
-* construction validation
-* determinism (same inputs → same output, different round → different output)
-* boundary values (rate=0/1 collapse to never/always active)
-* input-order preservation
-"""
-
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -43,7 +34,6 @@ class TestDeterminism:
         scheduler = AgentScheduler(global_seed=42)
         round_0 = scheduler.select_active(agents, round_num=0)
         round_1 = scheduler.select_active(agents, round_num=1)
-        # Statistically the two subsets should differ for ~25 agents.
         assert round_0 != round_1
 
     def test_different_seeds_yield_different_subsets(
@@ -76,7 +66,7 @@ class TestEmptyAndOrder:
         assert scheduler.select_active((), round_num=0) == ()
 
     def test_output_preserves_input_order(self, make_agent: Callable[..., Agent]) -> None:
-        # IDs deliberately *not* alphabetical so we can detect any sort.
+        # Non-alphabetical IDs detect any accidental sort.
         ids = ["zeta", "alpha", "mu", "beta", "kappa"]
         agents = tuple(make_agent(agent_id=aid, activation_rate=1.0) for aid in ids)
         scheduler = AgentScheduler(global_seed=99)
@@ -85,7 +75,6 @@ class TestEmptyAndOrder:
 
 class TestPerAgentRate:
     def test_mixed_rates_respect_per_agent(self, make_agent: Callable[..., Agent]) -> None:
-        # Only the rate=1.0 agents should ever appear; rate=0.0 never.
         always = make_agent(agent_id="always-A", activation_rate=1.0)
         never = make_agent(agent_id="never-A", activation_rate=0.0)
         sometimes = make_agent(agent_id="sometimes-A", activation_rate=0.5)
@@ -104,8 +93,7 @@ class TestPerAgentRate:
         assert rounds_with_always == 50
 
     def test_rate_0_5_distribution_within_tolerance(self, make_agent: Callable[..., Agent]) -> None:
-        # 1000 trials with rate=0.5 should land near 500 actives — wide
-        # tolerance to keep the test stable across stdlib RNG changes.
+        # Wide tolerance keeps the test stable across stdlib RNG changes.
         agents = tuple(make_agent(agent_id=f"a-{i:04d}", activation_rate=0.5) for i in range(1000))
         scheduler = AgentScheduler(global_seed=42)
         active = scheduler.select_active(agents, round_num=0)

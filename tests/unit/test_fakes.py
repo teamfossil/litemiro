@@ -1,10 +1,3 @@
-"""Smoke checks for ``tests/fakes.py`` — every fake satisfies its Protocol.
-
-These tests don't exercise behaviour beyond Protocol conformance and the
-most basic queueing semantics. Real behaviour assertions belong in the
-component tests (``test_state_store``, ``test_round_manager``, ...).
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -117,7 +110,6 @@ async def test_fake_action_selector_replays_queue(make_agent) -> None:
     queued = Action(type=ActionType.CREATE_POST, content="hi")
     selector.queue_for(agent.agent_id, queued)
     assert await selector.select_action(agent.agent_id, ctx) == queued
-    # Empty queue → DO_NOTHING fallback (never raise).
     fallback = await selector.select_action(agent.agent_id, ctx)
     assert fallback.type is ActionType.DO_NOTHING
 
@@ -135,7 +127,7 @@ def test_fake_token_budget_consume_decrements_remaining() -> None:
     b.consume(tokens_used=400)
     assert b.remaining() == 600
     b.consume(tokens_used=1000)
-    assert b.remaining() == 0  # clamped, not negative
+    assert b.remaining() == 0
 
 
 def test_state_store_fixture_is_fresh(state_store: InMemoryStateStore) -> None:

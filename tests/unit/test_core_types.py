@@ -1,9 +1,3 @@
-"""Sanity checks for ``litemiro.core._types``.
-
-The dataclass is frozen / slots — these tests pin both behaviours so a
-later "make it mutable for convenience" change doesn't slip past review.
-"""
-
 from __future__ import annotations
 
 import dataclasses
@@ -21,7 +15,7 @@ def test_round_outcome_is_frozen() -> None:
 
 def test_round_outcome_uses_slots() -> None:
     outcome = RoundOutcome(processed=0, early_exit=True)
-    # 3.11~3.13 raises AttributeError, 3.14+ raises TypeError on slots+frozen.
+    # 3.11~3.13 raises AttributeError, 3.14+ raises TypeError.
     with pytest.raises((AttributeError, TypeError)):
         outcome.extra = "nope"  # type: ignore[attr-defined]
 

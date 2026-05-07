@@ -1,19 +1,3 @@
-"""``build_context`` — owned by **A**.
-
-Helper that assembles a per-agent ``ActionContext`` from the live
-simulation surfaces (feed engine + social graph) and the round-runner's
-own state (recent actions deque). Kept as a free function rather than a
-class because it has no state of its own — pulling it out of
-``RoundManager`` keeps that orchestrator small and lets the assembly
-logic be unit-tested in isolation.
-
-The ``recent_actions`` location decision (U5 in
-``docs/PHASE-2-A-DECISIONS.md``) is deferred: this function takes the
-deque content as an argument, so the caller decides whether to keep it
-in ``RoundManager``-internal memory or extend the ``Agent`` model later
-without touching this surface.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Iterable

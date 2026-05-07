@@ -1,23 +1,3 @@
-"""``AgentScheduler`` — owned by **A**.
-
-Selects the active agents for a given round using each agent's own
-``activation_rate`` field (``Agent.activation_rate``). The contract
-pinned by the unit suite:
-
-* Same ``(global_seed, round_num, agents)`` → same activation set.
-  Across rounds the seed *varies* (different round_num → different
-  RNG state) but is fully deterministic given the same inputs.
-* Output preserves the input order — selection is a stable subset
-  of the input tuple, never a reorder.
-* ``activation_rate=0.0`` → that agent is *never* active.
-  ``activation_rate=1.0`` → that agent is *always* active.
-
-The per-round seed is derived from ``sha256(f"{global_seed}:{round_num}")``
-truncated to 8 bytes — Python's ``random.Random`` accepts ``int`` reliably,
-so we collapse the (seed, round) pair into a single integer rather than
-relying on the deprecated tuple-seed path.
-"""
-
 from __future__ import annotations
 
 import hashlib

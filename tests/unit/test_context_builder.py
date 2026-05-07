@@ -1,10 +1,3 @@
-"""Behaviour pinning for ``build_context``.
-
-Covers field-by-field assembly, feed_limit forwarding, follower /
-following count fidelity, recent_actions iterable acceptance, and
-input validation.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -75,7 +68,7 @@ def test_recent_actions_accepts_iterable(
         agent=make_agent(),
         feed=FakeFeedEngine(),
         social=FakeSocialGraph(),
-        recent_actions=iter(actions),  # generator-style input
+        recent_actions=iter(actions),
         round_num=0,
     )
     assert ctx.recent_actions == tuple(actions)

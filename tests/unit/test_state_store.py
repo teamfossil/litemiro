@@ -1,13 +1,3 @@
-"""Behaviour pinning for ``StateStore``.
-
-Mirrors the test groups from PHASE-2-A.md 부록 B:
-* TestConstruction       — empty agents, checkpoint_dir auto-create
-* TestPostStorage        — round-trip, ValueError on dup, KeyError on miss
-* TestSerialization      — to_dict deterministic; key/list sorted
-* TestCheckpoint         — save/restore equality, idempotence, keep=3 prune
-* TestSocialGraphSerialization — to_dict/from_dict round-trip via fake
-"""
-
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
@@ -133,7 +123,6 @@ class TestSerialization:
         first = store._serialize_to_dict()
         second = store._serialize_to_dict()
         assert first == second
-        # Sorted keys verified at the top level + each nested dict.
         assert list(first["agents"]) == sorted(first["agents"])
         assert list(first["posts"]) == sorted(first["posts"])
         assert list(first["social"]) == sorted(first["social"])
@@ -182,7 +171,6 @@ class TestCheckpoint:
         store.add_post(make_post(post_id="p-2", topics=("music",)))
         await store.save_checkpoint(3)
 
-        # Drop everything, then restore from disk.
         fresh = _make_store(tmp_path)
         await fresh.restore_checkpoint(3)
 
@@ -200,7 +188,6 @@ class TestCheckpoint:
         a = _make_store(tmp_path, global_seed=1)
         await a.save_checkpoint(0)
         b = _make_store(tmp_path / "other", global_seed=2)
-        # Copy the checkpoint into b's dir under same name to force mismatch.
         copied = b.checkpoint_dir / "checkpoint_round_0000.json"
         copied.write_text(
             (a.checkpoint_dir / "checkpoint_round_0000.json").read_text(encoding="utf-8"),
@@ -248,7 +235,6 @@ class TestSocialGraphSerialization:
         store = _make_store(tmp_path, social=social)
         await store.save_checkpoint(0)
 
-        # Reset social to empty to verify restore actually rebuilds it.
         fresh = _make_store(tmp_path)
         assert fresh.social.to_dict() == {}
         await fresh.restore_checkpoint(0)

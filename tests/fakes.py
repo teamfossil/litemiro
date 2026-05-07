@@ -1,22 +1,4 @@
-"""In-memory test doubles for owner-A/B/C surfaces.
-
-These are *only* for the unit/integration tests — they do **not** ship in
-the wheel and they make no attempt to model production semantics like
-disk persistence, atomicity, or concurrent writers. They satisfy the
-Protocols declared in ``litemiro.interfaces`` so any owner can wire
-modules together without depending on another owner's real code.
-
-The first half of this module (``InMemoryStateStore``, ``InMemoryEventLogger``)
-is mirrored byte-for-byte from phase-2-B's ``tests/fakes.py``. Mirroring
-(rather than importing) lets ``phase-2-A`` ship and merge independently of
-``phase-2-B``; once both branches land, the duplicate block is collapsed
-in a separate cleanup PR.
-
-The second half adds A-surface fakes that phase-2-B does not own
-(``FakeSocialGraph``, ``FakeFeedEngine``, ``FakeActionSelector``,
-``FakeTopicExtractor``, ``FakeTokenBudgetManager``). These are used by
-``core/`` unit tests until phase-2-B's real implementations land in main.
-"""
+"""In-memory test doubles for owner-boundary Protocols."""
 
 from __future__ import annotations
 
@@ -26,18 +8,8 @@ from collections.abc import Iterable, Mapping
 
 from litemiro.models import Action, ActionContext, ActionType, Agent, Post, RoundEvent
 
-# ---------------------------------------------------------------------------
-# Mirrored from phase-2-B `tests/fakes.py` — keep byte-identical.
-# ---------------------------------------------------------------------------
-
 
 class InMemoryStateStore:
-    """Trivial dict-backed ``StateStoreLike``.
-
-    Random seeds are derived deterministically from ``agent_id`` so two
-    test runs with the same seed produce the same agent decisions.
-    """
-
     def __init__(
         self,
         *,
@@ -82,19 +54,12 @@ class InMemoryStateStore:
         return int.from_bytes(digest[:8], "big", signed=False)
 
     def add_agent(self, agent: Agent) -> None:
-        """Test-only convenience — *not* on the Protocol."""
         if agent.agent_id in self._agents:
             raise KeyError(f"agent already exists: {agent.agent_id}")
         self._agents[agent.agent_id] = agent
 
 
 class InMemoryEventLogger:
-    """List-backed ``EventLoggerLike`` that records every event.
-
-    Tests can inspect ``events`` (a tuple snapshot) to assert what
-    components emitted. Calls after :meth:`aclose` raise ``RuntimeError``.
-    """
-
     def __init__(self) -> None:
         self._events: list[RoundEvent] = []
         self._closed = False
@@ -116,19 +81,7 @@ class InMemoryEventLogger:
         return self._closed
 
 
-# ---------------------------------------------------------------------------
-# A-surface additions — not in phase-2-B's `tests/fakes.py`.
-# ---------------------------------------------------------------------------
-
-
 class FakeSocialGraph:
-    """``SocialGraphLike`` fake with the same semantics as phase-2-B's
-    real ``SocialGraph``: idempotent follow/unfollow, self-follow rejected,
-    deterministic ``to_dict`` (sorted, empty entries omitted).
-
-    Discarded once phase-2-B's ``SocialGraph`` lands in main.
-    """
-
     def __init__(self) -> None:
         self._following: dict[str, set[str]] = {}
         self._followers: dict[str, set[str]] = {}
@@ -180,14 +133,6 @@ class FakeSocialGraph:
 
 
 class FakeFeedEngine:
-    """``FeedEngineLike`` fake — records calls, returns canned feeds.
-
-    ``build_feed`` returns whatever was queued via ``set_feed_for(agent_id)``;
-    falls back to ``()`` if nothing is queued. ``index_post`` and
-    ``update_engagement`` simply record their arguments so assertions can
-    check call order.
-    """
-
     def __init__(self) -> None:
         self._feeds: dict[str, tuple[Post, ...]] = {}
         self.indexed: list[Post] = []
@@ -209,7 +154,6 @@ class FakeFeedEngine:
     def update_engagement(self, post: Post) -> None:
         if not any(p.post_id == post.post_id for p in self.indexed):
             raise KeyError(f"unknown post_id: {post.post_id}")
-        # Latest engagement wins — replace any older snapshot.
         self.indexed = [p for p in self.indexed if p.post_id != post.post_id] + [post]
         self.engaged.append(post)
 
@@ -220,13 +164,6 @@ class FakeFeedEngine:
 
 
 class FakeActionSelector:
-    """``ActionSelectorLike`` fake — replays queued ``Action`` per agent.
-
-    ``queue_for(agent_id, *actions)`` schedules responses; if no response
-    is queued, returns ``Action(type=DO_NOTHING)`` so the round still
-    progresses without raising.
-    """
-
     def __init__(self) -> None:
         self._queues: dict[str, list[Action]] = defaultdict(list)
         self.calls: list[tuple[str, ActionContext]] = []
@@ -243,8 +180,6 @@ class FakeActionSelector:
 
 
 class FakeTopicExtractor:
-    """``TopicExtractorLike`` fake — content → pre-defined topics."""
-
     def __init__(self, mapping: Mapping[str, tuple[str, ...]] | None = None) -> None:
         self._mapping: dict[str, tuple[str, ...]] = dict(mapping or {})
         self.calls: list[str] = []
@@ -258,12 +193,6 @@ class FakeTopicExtractor:
 
 
 class FakeTokenBudgetManager:
-    """``TokenBudgetManagerLike`` fake — flat budget with consume tracking.
-
-    Defaults to unlimited (``has_budget=True`` always). Use ``set_remaining``
-    to simulate exhaustion in tests.
-    """
-
     def __init__(self, *, initial_remaining: int = 1_000_000) -> None:
         self._remaining = initial_remaining
         self.has_budget_calls: list[int] = []

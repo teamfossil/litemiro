@@ -81,26 +81,14 @@ class EventLoggerLike(Protocol):
 
 @runtime_checkable
 class TopicExtractorLike(Protocol):
-    """Maps free-form post content to a tuple of topic labels.
-
-    Used at CREATE_POST time so a freshly authored Post carries the
-    same topic vocabulary that FeedEngine and Agent.interests speak.
-    Implementations are framework-agnostic; the unit suite drives
-    a deterministic fake while the W3 integration uses the same
-    EmbedderLike adapter as FeedEngine.
-    """
+    """Owned by **B**."""
 
     def extract(self, content: str) -> tuple[str, ...]: ...
 
 
 @runtime_checkable
 class TokenBudgetManagerLike(Protocol):
-    """Owned by **C** — A reads / consumes via this Protocol.
-
-    has_budget: round 진입 전 추정 토큰으로 진행 가능 여부.
-    consume:    LLM 호출 후 실제 사용량 누적.
-    remaining:  잔여 토큰 (모니터링/조기 종료 알림용).
-    """
+    """Owned by **C** — A reads / consumes via this Protocol."""
 
     def has_budget(self, *, estimated_tokens: int) -> bool: ...
     def consume(self, *, tokens_used: int) -> None: ...

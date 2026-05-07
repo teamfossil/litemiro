@@ -1,24 +1,3 @@
-"""``ConcurrencyController`` — owned by **A**.
-
-Runs an iterable of items through a per-item async ``task_factory``
-under two simultaneous constraints:
-
-* ``asyncio.Semaphore(semaphore_limit)`` caps the number of in-flight
-  coroutines — keeps the upstream LLM API from being overwhelmed.
-* ``batch_size`` chunks the work into discrete batches with a
-  ``cooldown_seconds`` pause *between* batches (no trailing sleep
-  after the last batch). The cooldown gives the API a small breather
-  and lets human operators throttle without redeploying.
-
-Result order matches input order. Failure policy is "let it propagate"
-— the contract is that ``task_factory`` (in practice ``ActionSelector``)
-catches its own exceptions and returns a sentinel (``DO_NOTHING``),
-so any uncaught exception here means a real bug worth crashing on.
-
-Python 3.11 target rules out PEP 695 generic syntax (``async def f[T]``);
-the legacy ``TypeVar`` form is used instead.
-"""
-
 from __future__ import annotations
 
 import asyncio

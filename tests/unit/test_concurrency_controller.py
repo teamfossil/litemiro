@@ -1,14 +1,3 @@
-"""Behaviour pinning for ``ConcurrencyController``.
-
-The four contract surfaces:
-
-* construction validation (semaphore_limit / batch_size / cooldown bounds)
-* batching — items split into fixed-size chunks; trailing chunk smaller
-* semaphore — concurrent in-flight coroutines never exceed the limit
-* cooldown — `asyncio.sleep` called exactly `batches - 1` times
-* result order — output matches input order regardless of completion order
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -64,7 +53,6 @@ class TestEmptyAndSingle:
 
 class TestBatchSplit:
     async def test_50_items_form_three_batches(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # batch_size=20, items=50 → batches [20, 20, 10] → 2 cooldowns.
         sleep_calls: list[float] = []
 
         async def fake_sleep(delay: float) -> None:
@@ -80,7 +68,7 @@ class TestBatchSplit:
 
         results = await c.run_batched(items, factory)
         assert results == items
-        assert sleep_calls == [0.5, 0.5]  # exactly batches - 1
+        assert sleep_calls == [0.5, 0.5]
 
     async def test_exact_multiple_of_batch_size(self, monkeypatch: pytest.MonkeyPatch) -> None:
         sleep_calls: list[float] = []
@@ -91,13 +79,13 @@ class TestBatchSplit:
         monkeypatch.setattr(asyncio, "sleep", fake_sleep)
 
         c = ConcurrencyController(semaphore_limit=5, batch_size=10, cooldown_seconds=1.0)
-        items = tuple(f"x-{n}" for n in range(20))  # exactly 2 batches
+        items = tuple(f"x-{n}" for n in range(20))
 
         async def factory(item: str) -> str:
             return item
 
         await c.run_batched(items, factory)
-        assert sleep_calls == [1.0]  # 1 cooldown between 2 batches
+        assert sleep_calls == [1.0]
 
     async def test_single_batch_has_no_cooldown(self, monkeypatch: pytest.MonkeyPatch) -> None:
         sleep_calls: list[float] = []
@@ -121,7 +109,6 @@ class TestSemaphoreLimit:
         c = ConcurrencyController(semaphore_limit=3, batch_size=20, cooldown_seconds=0.0)
         in_flight = 0
         max_in_flight = 0
-        # Stage all factories at the same await so concurrent entry can be observed.
         gate = asyncio.Event()
         observed_lock = asyncio.Lock()
 
@@ -130,7 +117,6 @@ class TestSemaphoreLimit:
             async with observed_lock:
                 in_flight += 1
                 max_in_flight = max(max_in_flight, in_flight)
-            # Yield control so other coroutines can enter the semaphore.
             await asyncio.sleep(0)
             await gate.wait()
             async with observed_lock:
@@ -138,7 +124,6 @@ class TestSemaphoreLimit:
             return item
 
         async def release_gate() -> None:
-            # Let a few event-loop ticks pass so all 10 items try to enter.
             for _ in range(50):
                 await asyncio.sleep(0)
             gate.set()
@@ -151,7 +136,7 @@ class TestSemaphoreLimit:
 class TestResultOrder:
     async def test_output_matches_input_order_despite_completion_order(self) -> None:
         c = ConcurrencyController(semaphore_limit=5, batch_size=10, cooldown_seconds=0.0)
-        # First items take longest — without ordering, results would be reversed.
+        # First items take longest so completion order is reversed.
         delays = {f"i-{n}": (10 - n) * 0.001 for n in range(10)}
 
         async def factory(item: str) -> str:
@@ -177,6 +162,4 @@ class TestFailurePropagation:
             await c.run_batched(items, factory)
 
 
-# pytest's auto async mode handles unmarked coroutines; these aliases keep
-# annotations honest for mypy / readers.
 _AsyncFactory = Callable[[str], Awaitable[str]]

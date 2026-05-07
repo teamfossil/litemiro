@@ -1,36 +1,3 @@
-"""``StateStore`` — owned by **A**.
-
-Holds the live simulation state (agents, posts, the social graph) and
-manages JSON checkpoints. The contract pinned by the unit suite:
-
-* ``StateStoreLike`` Protocol satisfied — ``get_*`` raise ``KeyError``
-  for unknown ids; ``add_post`` raises ``ValueError`` for duplicates
-  (matches B's ``FeedEngine.index_post`` style — D10).
-* ``get_random_seed`` mirrors phase-2-B's ``InMemoryStateStore``:
-  ``int.from_bytes(sha256(f"{global_seed}:{agent_id}").digest()[:8], "big")``
-  — deterministic, no mutating RNG state on the Protocol.
-* ``save_checkpoint(N)`` is idempotent — calling it twice with the same
-  round number produces a byte-identical file. Serialisation sorts dict
-  keys / list members and uses compact separators so a fresh restore
-  produces the same in-memory ordering.
-* ``restore_checkpoint(N)`` round-trips every getter back to the snapshot
-  state, including the social graph.
-* ``_prune_old_checkpoints(keep=3)`` retains the three most recent
-  ``checkpoint_round_*.json`` files; older ones are deleted.
-
-The social graph is held as a ``SocialGraphLike``. Serialisation goes
-through ``social.to_dict()`` (Protocol-level). Restoration cannot live
-on the Protocol (``from_dict`` would have to be a classmethod), so the
-caller — typically the composition root or a unit test — supplies a
-``social_factory`` that produces a fresh ``SocialGraphLike`` from a
-``Mapping[str, Iterable[str]]``. This keeps ``StateStore`` Protocol-only
-on the read path while letting tests inject ``FakeSocialGraph.from_dict``
-and production inject ``litemiro.social.SocialGraph.from_dict``.
-
-Disk IO is wrapped in ``asyncio.to_thread`` so the event loop is never
-blocked on JSON serialisation, without pulling in ``aiofiles``.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -48,8 +15,6 @@ if TYPE_CHECKING:
 
 
 class _SocialGraphFactory(Protocol):
-    """Callable that rebuilds a ``SocialGraphLike`` from a serialised dict."""
-
     def __call__(self, data: Mapping[str, Iterable[str]]) -> SocialGraphLike: ...
 
 
@@ -73,10 +38,6 @@ class StateStore:
         self._checkpoint_dir = Path(checkpoint_dir)
         self._checkpoint_dir.mkdir(parents=True, exist_ok=True)
         self._global_seed = global_seed
-
-    # ------------------------------------------------------------------
-    # StateStoreLike Protocol surface
-    # ------------------------------------------------------------------
 
     def get_agent(self, agent_id: str) -> Agent:
         try:
@@ -110,10 +71,6 @@ class StateStore:
         digest = hashlib.sha256(f"{self._global_seed}:{agent_id}".encode()).digest()
         return int.from_bytes(digest[:8], "big", signed=False)
 
-    # ------------------------------------------------------------------
-    # Read accessors that aren't on the Protocol but composition needs
-    # ------------------------------------------------------------------
-
     @property
     def social(self) -> SocialGraphLike:
         return self._social
@@ -122,20 +79,11 @@ class StateStore:
     def checkpoint_dir(self) -> Path:
         return self._checkpoint_dir
 
-    # ------------------------------------------------------------------
-    # Checkpoint IO
-    # ------------------------------------------------------------------
-
     async def save_checkpoint(self, round_num: int) -> Path:
         if round_num < 0:
             raise ValueError(f"round_num must be >= 0, got {round_num}")
         payload = self._serialize_to_dict()
-        text = json.dumps(
-            payload,
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        )
+        text = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         path = self._checkpoint_path(round_num)
         await asyncio.to_thread(path.write_text, text, encoding="utf-8")
         self._prune_old_checkpoints(keep=3)
@@ -158,10 +106,6 @@ class StateStore:
         for stale in rounds[keep:]:
             self._checkpoint_path(stale).unlink(missing_ok=True)
 
-    # ------------------------------------------------------------------
-    # Internals
-    # ------------------------------------------------------------------
-
     def _checkpoint_path(self, round_num: int) -> Path:
         return self._checkpoint_dir / f"checkpoint_round_{round_num:04d}.json"
 
@@ -176,9 +120,6 @@ class StateStore:
         return rounds
 
     def _serialize_to_dict(self) -> dict[str, Any]:
-        # `agents` and `posts` are sorted by id so the dict is canonical;
-        # `social` uses the Protocol's `to_dict` (already sorted by B's
-        # `SocialGraph` and our `FakeSocialGraph`).
         return {
             "agents": {
                 aid: self._agents[aid].model_dump(mode="json") for aid in sorted(self._agents)
@@ -189,10 +130,8 @@ class StateStore:
         }
 
     def _deserialize_from_dict(self, payload: Mapping[str, Any]) -> None:
-        # `Agent` / `Post` are strict-mode by default so engine-internal
-        # builds catch type drift. Checkpoint restore is the one legitimate
-        # rehydration path where strict needs to relax — JSON has no tuple,
-        # so `interests` / `topics` arrive as `list[str]` and must coerce.
+        # JSON has no tuple, so `interests` / `topics` arrive as lists
+        # — strict mode would reject the coercion.
         self._agents = {
             aid: Agent.model_validate(data, strict=False)
             for aid, data in payload.get("agents", {}).items()
@@ -202,10 +141,6 @@ class StateStore:
             for pid, data in payload.get("posts", {}).items()
         }
         self._social = self._social_factory(payload.get("social", {}))
-        # `global_seed` is treated as immutable from construction — restore
-        # is informational only. Mismatched seeds would silently change
-        # `get_random_seed` outputs, so we surface it as an error rather
-        # than letting a copy-pasted checkpoint pollute determinism.
         recorded = payload.get("global_seed")
         if recorded is not None and recorded != self._global_seed:
             raise ValueError(
