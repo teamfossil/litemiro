@@ -107,9 +107,7 @@ class StateStore:
         self._posts[post.post_id] = post
 
     def get_random_seed(self, agent_id: str) -> int:
-        digest = hashlib.sha256(
-            f"{self._global_seed}:{agent_id}".encode()
-        ).digest()
+        digest = hashlib.sha256(f"{self._global_seed}:{agent_id}".encode()).digest()
         return int.from_bytes(digest[:8], "big", signed=False)
 
     # ------------------------------------------------------------------
@@ -183,13 +181,9 @@ class StateStore:
         # `SocialGraph` and our `FakeSocialGraph`).
         return {
             "agents": {
-                aid: self._agents[aid].model_dump(mode="json")
-                for aid in sorted(self._agents)
+                aid: self._agents[aid].model_dump(mode="json") for aid in sorted(self._agents)
             },
-            "posts": {
-                pid: self._posts[pid].model_dump(mode="json")
-                for pid in sorted(self._posts)
-            },
+            "posts": {pid: self._posts[pid].model_dump(mode="json") for pid in sorted(self._posts)},
             "social": dict(self._social.to_dict()),
             "global_seed": self._global_seed,
         }

@@ -63,9 +63,7 @@ class TestEmptyAndSingle:
 
 
 class TestBatchSplit:
-    async def test_50_items_form_three_batches(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_50_items_form_three_batches(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # batch_size=20, items=50 → batches [20, 20, 10] → 2 cooldowns.
         sleep_calls: list[float] = []
 
@@ -82,11 +80,9 @@ class TestBatchSplit:
 
         results = await c.run_batched(items, factory)
         assert results == items
-        assert sleep_calls == [0.5, 0.5]   # exactly batches - 1
+        assert sleep_calls == [0.5, 0.5]  # exactly batches - 1
 
-    async def test_exact_multiple_of_batch_size(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_exact_multiple_of_batch_size(self, monkeypatch: pytest.MonkeyPatch) -> None:
         sleep_calls: list[float] = []
 
         async def fake_sleep(delay: float) -> None:
@@ -95,17 +91,15 @@ class TestBatchSplit:
         monkeypatch.setattr(asyncio, "sleep", fake_sleep)
 
         c = ConcurrencyController(semaphore_limit=5, batch_size=10, cooldown_seconds=1.0)
-        items = tuple(f"x-{n}" for n in range(20))   # exactly 2 batches
+        items = tuple(f"x-{n}" for n in range(20))  # exactly 2 batches
 
         async def factory(item: str) -> str:
             return item
 
         await c.run_batched(items, factory)
-        assert sleep_calls == [1.0]   # 1 cooldown between 2 batches
+        assert sleep_calls == [1.0]  # 1 cooldown between 2 batches
 
-    async def test_single_batch_has_no_cooldown(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_single_batch_has_no_cooldown(self, monkeypatch: pytest.MonkeyPatch) -> None:
         sleep_calls: list[float] = []
 
         async def fake_sleep(delay: float) -> None:
@@ -124,9 +118,7 @@ class TestBatchSplit:
 
 class TestSemaphoreLimit:
     async def test_max_in_flight_does_not_exceed_limit(self) -> None:
-        c = ConcurrencyController(
-            semaphore_limit=3, batch_size=20, cooldown_seconds=0.0
-        )
+        c = ConcurrencyController(semaphore_limit=3, batch_size=20, cooldown_seconds=0.0)
         in_flight = 0
         max_in_flight = 0
         # Stage all factories at the same await so concurrent entry can be observed.
@@ -158,9 +150,7 @@ class TestSemaphoreLimit:
 
 class TestResultOrder:
     async def test_output_matches_input_order_despite_completion_order(self) -> None:
-        c = ConcurrencyController(
-            semaphore_limit=5, batch_size=10, cooldown_seconds=0.0
-        )
+        c = ConcurrencyController(semaphore_limit=5, batch_size=10, cooldown_seconds=0.0)
         # First items take longest — without ordering, results would be reversed.
         delays = {f"i-{n}": (10 - n) * 0.001 for n in range(10)}
 
@@ -175,9 +165,7 @@ class TestResultOrder:
 
 class TestFailurePropagation:
     async def test_uncaught_exception_propagates(self) -> None:
-        c = ConcurrencyController(
-            semaphore_limit=2, batch_size=4, cooldown_seconds=0.0
-        )
+        c = ConcurrencyController(semaphore_limit=2, batch_size=4, cooldown_seconds=0.0)
 
         async def factory(item: str) -> str:
             if item == "boom":

@@ -213,9 +213,7 @@ class FakeFeedEngine:
         self.indexed = [p for p in self.indexed if p.post_id != post.post_id] + [post]
         self.engaged.append(post)
 
-    def build_feed(
-        self, *, agent: Agent, current_round: int, limit: int = 20
-    ) -> tuple[Post, ...]:
+    def build_feed(self, *, agent: Agent, current_round: int, limit: int = 20) -> tuple[Post, ...]:
         self.build_feed_calls.append((agent.agent_id, current_round, limit))
         feed = self._feeds.get(agent.agent_id, ())
         return feed[:limit]

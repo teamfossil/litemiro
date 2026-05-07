@@ -32,9 +32,7 @@ def test_feed_limit_forwarded(
 ) -> None:
     feed = FakeFeedEngine()
     agent = make_agent()
-    posts = tuple(
-        make_post(post_id=f"p-{n}", author_id="other") for n in range(30)
-    )
+    posts = tuple(make_post(post_id=f"p-{n}", author_id="other") for n in range(30))
     feed.set_feed_for(agent.agent_id, posts)
 
     ctx = build_context(
@@ -51,9 +49,9 @@ def test_feed_limit_forwarded(
 
 def test_follower_following_counts(make_agent: Callable[..., Agent]) -> None:
     social = FakeSocialGraph()
-    social.follow("a-1", "target")   # target gets +1 follower
+    social.follow("a-1", "target")  # target gets +1 follower
     social.follow("a-2", "target")
-    social.follow("target", "a-3")   # target gets +1 following
+    social.follow("target", "a-3")  # target gets +1 following
 
     ctx = build_context(
         agent=make_agent(agent_id="target"),
@@ -77,7 +75,7 @@ def test_recent_actions_accepts_iterable(
         agent=make_agent(),
         feed=FakeFeedEngine(),
         social=FakeSocialGraph(),
-        recent_actions=iter(actions),   # generator-style input
+        recent_actions=iter(actions),  # generator-style input
         round_num=0,
     )
     assert ctx.recent_actions == tuple(actions)

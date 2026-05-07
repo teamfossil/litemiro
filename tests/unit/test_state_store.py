@@ -59,9 +59,7 @@ class TestConstruction:
 
 
 class TestPostStorage:
-    def test_add_post_round_trip(
-        self, tmp_path: Path, make_post: Callable[..., Post]
-    ) -> None:
+    def test_add_post_round_trip(self, tmp_path: Path, make_post: Callable[..., Post]) -> None:
         store = _make_store(tmp_path)
         post = make_post(post_id="p-1")
         store.add_post(post)
@@ -97,9 +95,7 @@ class TestPostStorage:
         store.add_post(make_post(post_id="p-2"))
         assert tuple(p.post_id for p in store.list_posts()) == ("p-1", "p-2", "p-3")
 
-    def test_list_agent_ids_sorted(
-        self, tmp_path: Path, make_agent: Callable[..., Agent]
-    ) -> None:
+    def test_list_agent_ids_sorted(self, tmp_path: Path, make_agent: Callable[..., Agent]) -> None:
         agents = [make_agent(agent_id=aid) for aid in ("zeta", "alpha", "mu")]
         store = _make_store(tmp_path, agents=agents)
         assert store.list_agent_ids() == ("alpha", "mu", "zeta")
@@ -148,9 +144,7 @@ class TestSerialization:
 
 
 class TestCheckpoint:
-    async def test_save_creates_file_with_zero_padded_name(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_save_creates_file_with_zero_padded_name(self, tmp_path: Path) -> None:
         store = _make_store(tmp_path)
         path = await store.save_checkpoint(7)
         assert path.name == "checkpoint_round_0007.json"
@@ -202,18 +196,14 @@ class TestCheckpoint:
         with pytest.raises(FileNotFoundError):
             await store.restore_checkpoint(99)
 
-    async def test_global_seed_mismatch_on_restore_raises(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_global_seed_mismatch_on_restore_raises(self, tmp_path: Path) -> None:
         a = _make_store(tmp_path, global_seed=1)
         await a.save_checkpoint(0)
         b = _make_store(tmp_path / "other", global_seed=2)
         # Copy the checkpoint into b's dir under same name to force mismatch.
         copied = b.checkpoint_dir / "checkpoint_round_0000.json"
         copied.write_text(
-            (a.checkpoint_dir / "checkpoint_round_0000.json").read_text(
-                encoding="utf-8"
-            ),
+            (a.checkpoint_dir / "checkpoint_round_0000.json").read_text(encoding="utf-8"),
             encoding="utf-8",
         )
         with pytest.raises(ValueError, match="global_seed mismatch"):

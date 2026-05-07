@@ -41,9 +41,7 @@ class ConcurrencyController:
         if batch_size < 1:
             raise ValueError(f"batch_size must be >= 1, got {batch_size}")
         if cooldown_seconds < 0:
-            raise ValueError(
-                f"cooldown_seconds must be >= 0, got {cooldown_seconds}"
-            )
+            raise ValueError(f"cooldown_seconds must be >= 0, got {cooldown_seconds}")
         self._semaphore_limit = semaphore_limit
         self._batch_size = batch_size
         self._cooldown_seconds = cooldown_seconds

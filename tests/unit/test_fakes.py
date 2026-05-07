@@ -135,7 +135,7 @@ def test_fake_token_budget_consume_decrements_remaining() -> None:
     b.consume(tokens_used=400)
     assert b.remaining() == 600
     b.consume(tokens_used=1000)
-    assert b.remaining() == 0   # clamped, not negative
+    assert b.remaining() == 0  # clamped, not negative
 
 
 def test_state_store_fixture_is_fresh(state_store: InMemoryStateStore) -> None:
