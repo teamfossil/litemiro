@@ -132,6 +132,9 @@ ignore = [
 "tests/**" = ["PLR2004", "S101", "PT011"]
 "scripts/**" = ["T201"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["litemiro", "tests"]
+
 [tool.mypy]
 python_version = "3.11"
 strict = true

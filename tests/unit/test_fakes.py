@@ -109,9 +109,10 @@ async def test_fake_action_selector_replays_queue(make_agent) -> None:
     ctx = ActionContext(agent=agent, round_num=0)
     queued = Action(type=ActionType.CREATE_POST, content="hi")
     selector.queue_for(agent.agent_id, queued)
-    assert await selector.select_action(agent.agent_id, ctx) == queued
+    first = await selector.select_action(agent.agent_id, ctx)
+    assert first.action == queued
     fallback = await selector.select_action(agent.agent_id, ctx)
-    assert fallback.type is ActionType.DO_NOTHING
+    assert fallback.action.type is ActionType.DO_NOTHING
 
 
 def test_fake_topic_extractor_returns_canned() -> None:

@@ -6,7 +6,16 @@ import hashlib
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
 
-from litemiro.models import Action, ActionContext, ActionType, Agent, Post, RoundEvent
+from litemiro.models import (
+    Action,
+    ActionContext,
+    ActionResult,
+    ActionType,
+    Agent,
+    LLMMeta,
+    Post,
+    RoundEvent,
+)
 
 
 class InMemoryStateStore:
@@ -164,19 +173,22 @@ class FakeFeedEngine:
 
 
 class FakeActionSelector:
-    def __init__(self) -> None:
+    def __init__(self, *, model: str = "fake-model") -> None:
         self._queues: dict[str, list[Action]] = defaultdict(list)
+        self._model = model
         self.calls: list[tuple[str, ActionContext]] = []
 
     def queue_for(self, agent_id: str, *actions: Action) -> None:
         self._queues[agent_id].extend(actions)
 
-    async def select_action(self, agent_id: str, context: ActionContext) -> Action:
+    async def select_action(self, agent_id: str, context: ActionContext) -> ActionResult:
         self.calls.append((agent_id, context))
         queue = self._queues.get(agent_id)
-        if queue:
-            return queue.pop(0)
-        return Action(type=ActionType.DO_NOTHING)
+        action = queue.pop(0) if queue else Action(type=ActionType.DO_NOTHING)
+        return ActionResult(
+            action=action,
+            llm_meta=LLMMeta(model=self._model, tokens_used=0, latency_ms=0.0),
+        )
 
 
 class FakeTopicExtractor:
