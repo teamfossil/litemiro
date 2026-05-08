@@ -15,6 +15,7 @@ import pytest
 
 from litemiro.interfaces import LLMClient
 from litemiro.llm.litellm_client import LiteLLMClient
+from litemiro.models import LLMResponse
 
 
 class _FakeMessage:
@@ -27,21 +28,35 @@ class _FakeChoice:
         self.message = _FakeMessage(content)
 
 
+class _FakeUsage:
+    def __init__(self, *, prompt_tokens: int, completion_tokens: int) -> None:
+        self.prompt_tokens = prompt_tokens
+        self.completion_tokens = completion_tokens
+
+
 class _FakeResponse:
-    def __init__(self, content: str | None) -> None:
+    def __init__(self, content: str | None, usage: _FakeUsage | dict[str, Any] | None) -> None:
         self.choices = [_FakeChoice(content)]
+        self.usage = usage
 
 
 class _Stub:
     """Records calls made to ``litellm.acompletion`` and returns canned text."""
 
-    def __init__(self, content: str | None = "ok") -> None:
+    def __init__(
+        self,
+        content: str | None = "ok",
+        usage: _FakeUsage | dict[str, Any] | None = None,
+    ) -> None:
         self.content = content
+        self.usage: _FakeUsage | dict[str, Any] | None = (
+            usage if usage is not None else _FakeUsage(prompt_tokens=0, completion_tokens=0)
+        )
         self.calls: list[dict[str, Any]] = []
 
     async def __call__(self, **kwargs: Any) -> _FakeResponse:
         self.calls.append(kwargs)
-        return _FakeResponse(self.content)
+        return _FakeResponse(self.content, self.usage)
 
 
 @pytest.fixture
@@ -56,7 +71,8 @@ class TestComplete:
         stub.content = "hello world"
         client = LiteLLMClient(api_key="k", base_url="http://x")
         result = await client.complete(system="s", user="u", model="m")
-        assert result == "hello world"
+        assert isinstance(result, LLMResponse)
+        assert result.content == "hello world"
 
     async def test_messages_have_system_and_user(self, stub: _Stub) -> None:
         client = LiteLLMClient(api_key="k", base_url="http://x")
@@ -86,7 +102,56 @@ class TestComplete:
         stub.content = None
         client = LiteLLMClient(api_key="k", base_url="http://x")
         result = await client.complete(system="s", user="u", model="m")
-        assert result == ""
+        assert result.content == ""
+
+
+class TestUsageExtraction:
+    """Token usage flows from litellm's ``usage`` field into ``LLMResponse``.
+
+    The Phase 2 round runner reads tokens from ``LLMMeta.tokens_used``
+    which is populated by ``ActionSelector`` from ``LLMResponse``; if
+    this adapter loses usage on the floor every JSONL event reports
+    zero spend, breaking the cost-tracking column.
+    """
+
+    async def test_usage_object_is_extracted(self, stub: _Stub) -> None:
+        stub.usage = _FakeUsage(prompt_tokens=123, completion_tokens=45)
+        client = LiteLLMClient(api_key="k", base_url="http://x")
+        result = await client.complete(system="s", user="u", model="m")
+        assert result.prompt_tokens == 123
+        assert result.completion_tokens == 45
+
+    async def test_usage_dict_is_extracted(self, stub: _Stub) -> None:
+        # Some providers / older litellm versions surface usage as a
+        # plain dict — the adapter has to tolerate both shapes.
+        stub.usage = {"prompt_tokens": 90, "completion_tokens": 11}
+        client = LiteLLMClient(api_key="k", base_url="http://x")
+        result = await client.complete(system="s", user="u", model="m")
+        assert result.prompt_tokens == 90
+        assert result.completion_tokens == 11
+
+    async def test_missing_usage_collapses_to_zero(self, stub: _Stub) -> None:
+        stub.usage = None
+        client = LiteLLMClient(api_key="k", base_url="http://x")
+        result = await client.complete(system="s", user="u", model="m")
+        assert result.prompt_tokens == 0
+        assert result.completion_tokens == 0
+
+    async def test_partial_usage_keeps_present_field(self, stub: _Stub) -> None:
+        stub.usage = {"prompt_tokens": 42}
+        client = LiteLLMClient(api_key="k", base_url="http://x")
+        result = await client.complete(system="s", user="u", model="m")
+        assert result.prompt_tokens == 42
+        assert result.completion_tokens == 0
+
+    async def test_garbage_usage_collapses_to_zero(self, stub: _Stub) -> None:
+        # If the provider sends a string or negative number we'd rather
+        # report zero than raise — the round must not die over usage.
+        stub.usage = {"prompt_tokens": "not a number", "completion_tokens": -3}
+        client = LiteLLMClient(api_key="k", base_url="http://x")
+        result = await client.complete(system="s", user="u", model="m")
+        assert result.prompt_tokens == 0
+        assert result.completion_tokens == 0
 
 
 class TestEnvironmentFallback:
