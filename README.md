@@ -1,10 +1,9 @@
 # litemiro
 
-Mirofish — LLM-driven social media simulation engine. Phase 2 (asyncio simulation) + Phase 3 (analysis & report).
+Mirofish — LLM-driven social media simulation engine.
 
 ## Status
 - W1 in progress: scaffolding, JSONL contract, shared models.
-- Owner: 김태우 (B — feed/action: `ActionSelector`, `FeedEngine`, `SocialGraph`, prompt design).
 
 ## Layout
 ```
@@ -53,5 +52,4 @@ Checkpoints (managed by `core.StateStore`) include the per-agent RNG state.
 
 ## Owners
 - A — 권현재: engine/state (`core/`).
-- B — 김태우: feed/action (`action/`, `feed/`, `social/`, `prompts/`).
 - C — 배강민: integration → Phase 3 (`ontology/`, `budget/`, `eventlog/`).
