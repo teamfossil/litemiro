@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Protocol, runtime_checkable
 
-from litemiro.models import Action, ActionContext, Agent, Post, RoundEvent
+from litemiro.models import ActionContext, ActionResult, Agent, LLMResponse, Post, RoundEvent
 
 
 @runtime_checkable
@@ -20,7 +20,7 @@ class LLMClient(Protocol):
     deterministic fake used in tests (``tests/conftest.py``).
     """
 
-    async def complete(self, *, system: str, user: str, model: str) -> str: ...
+    async def complete(self, *, system: str, user: str, model: str) -> LLMResponse: ...
 
 
 @runtime_checkable
@@ -83,7 +83,7 @@ class TopicExtractorLike(Protocol):
 class ActionSelectorLike(Protocol):
     """Owned by **B**."""
 
-    async def select_action(self, agent_id: str, context: ActionContext) -> Action: ...
+    async def select_action(self, agent_id: str, context: ActionContext) -> ActionResult: ...
 
 
 @runtime_checkable

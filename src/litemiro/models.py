@@ -146,6 +146,37 @@ class LLMMeta(BaseModel):
     fallback_used: bool = False
 
 
+class LLMResponse(BaseModel):
+    """Wire shape of one ``LLMClient.complete`` reply.
+
+    Carries the raw content plus the prompt/completion token counts so
+    ``ActionSelector`` can fill in :class:`LLMMeta.tokens_used` without
+    a second roundtrip. Adapters that cannot get usage from their
+    backend (e.g. some local fakes) leave the counts at zero.
+    """
+
+    model_config = _FROZEN
+
+    content: str
+    prompt_tokens: int = Field(default=0, ge=0)
+    completion_tokens: int = Field(default=0, ge=0)
+
+
+class ActionResult(BaseModel):
+    """Composite return type from ``ActionSelector.select_action``.
+
+    Phase 2 originally let ``select_action`` return a bare ``Action``,
+    but the round runner needs the LLM accounting (tokens, latency,
+    fallback flag) to populate :class:`RoundEvent.llm_meta`. Bundling
+    them in one object keeps the call site to one ``await``.
+    """
+
+    model_config = _FROZEN
+
+    action: Action
+    llm_meta: LLMMeta
+
+
 class RoundEvent(BaseModel):
     """One JSONL line — the Phase 2 → Phase 3 contract."""
 
@@ -188,10 +219,12 @@ class RoundEvent(BaseModel):
 __all__ = [
     "Action",
     "ActionContext",
+    "ActionResult",
     "ActionType",
     "Agent",
     "ContextSummary",
     "LLMMeta",
+    "LLMResponse",
     "Post",
     "RoundEvent",
 ]

@@ -4,9 +4,11 @@ The Phase 2 design doc fixes the recipe ("persona + memory + feed +
 recent action → LLM → Action") but leaves robustness up to the owner.
 B pins this contract in ``tests/unit/test_action_selector.py``:
 
-* ``select_action`` *never* raises. A flaky LLM cannot derail the
-  round; on any failure path the call collapses to
-  ``Action(type=DO_NOTHING)``.
+* ``select_action`` *never* raises and always returns an
+  :class:`ActionResult`. A flaky LLM cannot derail the round; on any
+  failure path the call collapses to ``Action(type=DO_NOTHING)`` while
+  ``llm_meta.fallback_used`` flips to ``True`` so the round runner can
+  count fallbacks without reading the action payload.
 * **3-step fallback** in this order:
     1. tenacity retry on transport errors raised by ``LLMClient``
        (``max_attempts`` defaults to 3).
@@ -18,6 +20,12 @@ B pins this contract in ``tests/unit/test_action_selector.py``:
   ``context.feed``; for ``FOLLOW``, ``target_agent_id`` must be a feed
   author. Self-likes / self-follows also collapse to ``DO_NOTHING``.
 
+The :class:`LLMMeta` attached to every result records the model name,
+the prompt+completion token total, the wall-clock latency in
+milliseconds, and whether the safety net was used. Token usage is
+sourced from :class:`LLMResponse`; adapters that cannot get usage from
+their backend leave the counts at zero, which is preserved here.
+
 Prompt composition lives in ``litemiro.prompts.action_selector``; this
 module is responsible only for the LLM call and its safety net.
 """
@@ -25,13 +33,21 @@ module is responsible only for the LLM call and its safety net.
 from __future__ import annotations
 
 import json
+from time import perf_counter
 from typing import TYPE_CHECKING
 
 from json_repair import repair_json
 from pydantic import ValidationError
 from tenacity import AsyncRetrying, stop_after_attempt, wait_none
 
-from litemiro.models import Action, ActionContext, ActionType
+from litemiro.models import (
+    Action,
+    ActionContext,
+    ActionResult,
+    ActionType,
+    LLMMeta,
+    LLMResponse,
+)
 from litemiro.prompts.action_selector import compose_system, compose_user
 
 if TYPE_CHECKING:
@@ -49,30 +65,37 @@ class ActionSelector:
         self._model = model
         self._max_attempts = max_attempts
 
-    async def select_action(self, agent_id: str, context: ActionContext) -> Action:
+    async def select_action(self, agent_id: str, context: ActionContext) -> ActionResult:
         system = compose_system(agent_id, context)
         user = compose_user(context)
 
+        started = perf_counter()
         try:
-            raw = await self._call_with_retry(system, user)
+            response = await self._call_with_retry(system, user)
         except Exception:
-            return _DO_NOTHING
+            return self._build_result(_DO_NOTHING, response=None, started=started, fallback=True)
 
-        parsed = _parse_json(raw)
+        parsed = _parse_json(response.content)
         if parsed is None:
-            return _DO_NOTHING
+            return self._build_result(
+                _DO_NOTHING, response=response, started=started, fallback=True
+            )
 
         try:
             action = Action.model_validate(parsed)
         except ValidationError:
-            return _DO_NOTHING
+            return self._build_result(
+                _DO_NOTHING, response=response, started=started, fallback=True
+            )
 
         if not _target_is_valid(action, agent_id=agent_id, context=context):
-            return _DO_NOTHING
+            return self._build_result(
+                _DO_NOTHING, response=response, started=started, fallback=True
+            )
 
-        return action
+        return self._build_result(action, response=response, started=started, fallback=False)
 
-    async def _call_with_retry(self, system: str, user: str) -> str:
+    async def _call_with_retry(self, system: str, user: str) -> LLMResponse:
         async for attempt in AsyncRetrying(
             stop=stop_after_attempt(self._max_attempts),
             wait=wait_none(),
@@ -84,6 +107,25 @@ class ActionSelector:
         # ``with`` block or propagates the last exception, so this is
         # only reachable if max_attempts < 1 (rejected at construction).
         raise RuntimeError("AsyncRetrying terminated without success or reraise")
+
+    def _build_result(
+        self,
+        action: Action,
+        *,
+        response: LLMResponse | None,
+        started: float,
+        fallback: bool,
+    ) -> ActionResult:
+        tokens = (response.prompt_tokens + response.completion_tokens) if response else 0
+        return ActionResult(
+            action=action,
+            llm_meta=LLMMeta(
+                model=self._model,
+                tokens_used=tokens,
+                latency_ms=(perf_counter() - started) * 1000.0,
+                fallback_used=fallback,
+            ),
+        )
 
 
 def _parse_json(raw: str) -> dict[str, object] | None:

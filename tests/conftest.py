@@ -14,7 +14,7 @@ from typing import Any
 import pytest
 
 from litemiro.interfaces import LLMClient
-from litemiro.models import Agent, Post
+from litemiro.models import Agent, LLMResponse, Post
 from tests.fakes import InMemoryEventLogger, InMemoryStateStore
 
 
@@ -63,18 +63,22 @@ def make_post() -> Callable[..., Post]:
 class _FakeLLMClient:
     """Deterministic in-memory LLM for tests.
 
-    Records every call and replays a queue of pre-set responses.
+    Records every call and replays a queue of pre-set responses. The
+    queue accepts plain strings for convenience (tokens default to 0)
+    or pre-built ``LLMResponse`` instances when a test needs to assert
+    on token usage.
     """
 
-    def __init__(self, *responses: str) -> None:
-        self._responses: list[str] = list(responses)
+    def __init__(self, *responses: str | LLMResponse) -> None:
+        self._responses: list[str | LLMResponse] = list(responses)
         self.calls: list[tuple[str, str, str]] = []
 
-    async def complete(self, *, system: str, user: str, model: str) -> str:
+    async def complete(self, *, system: str, user: str, model: str) -> LLMResponse:
         self.calls.append((system, user, model))
         if not self._responses:
             raise RuntimeError("FakeLLMClient: no more queued responses")
-        return self._responses.pop(0)
+        item = self._responses.pop(0)
+        return item if isinstance(item, LLMResponse) else LLMResponse(content=item)
 
 
 @pytest.fixture

@@ -21,8 +21,11 @@ from litemiro.interfaces import (
 from litemiro.models import (
     Action,
     ActionContext,
+    ActionResult,
     ActionType,
     Agent,
+    LLMMeta,
+    LLMResponse,
     Post,
     RoundEvent,
 )
@@ -57,8 +60,11 @@ class _StubFeed:
 
 
 class _StubSelector:
-    async def select_action(self, agent_id: str, context: ActionContext) -> Action:
-        return Action(type=ActionType.DO_NOTHING)
+    async def select_action(self, agent_id: str, context: ActionContext) -> ActionResult:
+        return ActionResult(
+            action=Action(type=ActionType.DO_NOTHING),
+            llm_meta=LLMMeta(model="", tokens_used=0, latency_ms=0.0),
+        )
 
 
 class _StubStore:
@@ -87,8 +93,8 @@ class _StubLogger:
 
 
 class _StubLLM:
-    async def complete(self, *, system: str, user: str, model: str) -> str:
-        return ""
+    async def complete(self, *, system: str, user: str, model: str) -> LLMResponse:
+        return LLMResponse(content="")
 
 
 def test_social_graph_protocol() -> None:
