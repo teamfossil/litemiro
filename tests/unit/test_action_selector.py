@@ -33,7 +33,7 @@ from typing import Any
 
 from litemiro.action.selector import ActionSelector
 from litemiro.interfaces import ActionSelectorLike, LLMClient
-from litemiro.models import Action, ActionContext, ActionType, Agent, Post
+from litemiro.models import Action, ActionContext, ActionType, Agent, LLMResponse, Post
 
 
 def _agent(
@@ -91,37 +91,58 @@ class _FakeLLM:
 
     Unlike ``conftest._FakeLLMClient`` this lets a single test interleave
     transport failures with successful responses, which is what the
-    retry/fallback tests need.
+    retry/fallback tests need. The queue accepts plain strings (token
+    counts default to 0) or full ``LLMResponse`` instances when a test
+    needs to assert on token usage.
     """
 
-    def __init__(self, *responses: str | BaseException) -> None:
-        self._queue: list[str | BaseException] = list(responses)
+    def __init__(self, *responses: str | LLMResponse | BaseException) -> None:
+        self._queue: list[str | LLMResponse | BaseException] = list(responses)
         self.calls: list[tuple[str, str, str]] = []
 
-    async def complete(self, *, system: str, user: str, model: str) -> str:
+    async def complete(self, *, system: str, user: str, model: str) -> LLMResponse:
         self.calls.append((system, user, model))
         if not self._queue:
             raise AssertionError("FakeLLM exhausted: tests should pre-queue all responses")
         item = self._queue.pop(0)
         if isinstance(item, BaseException):
             raise item
-        return item
+        return item if isinstance(item, LLMResponse) else LLMResponse(content=item)
 
 
 def _selector(llm: LLMClient, *, max_attempts: int = 3) -> ActionSelector:
     return ActionSelector(llm=llm, model="test-model", max_attempts=max_attempts)
 
 
+async def _act(
+    llm: LLMClient,
+    ctx: ActionContext | None = None,
+    *,
+    agent_id: str = "me",
+    max_attempts: int = 3,
+) -> Action:
+    """Run ``select_action`` and return the bare ``Action``.
+
+    Most tests assert on the action only — they do not care about the
+    ``LLMMeta`` block. Tests that *do* need the full ``ActionResult``
+    call ``ActionSelector.select_action`` directly.
+    """
+    result = await _selector(llm, max_attempts=max_attempts).select_action(
+        agent_id, ctx if ctx is not None else _ctx()
+    )
+    return result.action
+
+
 class TestHappyPath:
     async def test_returns_parsed_like_action(self) -> None:
         feed = (_post("p1"),)
         llm = _FakeLLM(_payload(ActionType.LIKE_POST, target_post_id="p1"))
-        action = await _selector(llm).select_action("me", _ctx(feed=feed))
+        action = (await _selector(llm).select_action("me", _ctx(feed=feed))).action
         assert action == Action(type=ActionType.LIKE_POST, target_post_id="p1")
 
     async def test_returns_do_nothing_when_llm_says_so(self) -> None:
         llm = _FakeLLM(_payload(ActionType.DO_NOTHING))
-        action = await _selector(llm).select_action("me", _ctx())
+        action = (await _selector(llm).select_action("me", _ctx())).action
         assert action == Action(type=ActionType.DO_NOTHING)
 
     async def test_passes_model_through_to_llm(self) -> None:
@@ -135,27 +156,27 @@ class TestActionTypes:
 
     async def test_create_post(self) -> None:
         llm = _FakeLLM(_payload(ActionType.CREATE_POST, content="my new post"))
-        action = await _selector(llm).select_action("me", _ctx())
+        action = (await _selector(llm).select_action("me", _ctx())).action
         assert action == Action(type=ActionType.CREATE_POST, content="my new post")
 
     async def test_like_post(self) -> None:
         feed = (_post("p1"),)
         llm = _FakeLLM(_payload(ActionType.LIKE_POST, target_post_id="p1"))
-        action = await _selector(llm).select_action("me", _ctx(feed=feed))
+        action = (await _selector(llm).select_action("me", _ctx(feed=feed))).action
         assert action.type is ActionType.LIKE_POST
         assert action.target_post_id == "p1"
 
     async def test_repost(self) -> None:
         feed = (_post("p1"),)
         llm = _FakeLLM(_payload(ActionType.REPOST, target_post_id="p1"))
-        action = await _selector(llm).select_action("me", _ctx(feed=feed))
+        action = (await _selector(llm).select_action("me", _ctx(feed=feed))).action
         assert action.type is ActionType.REPOST
         assert action.target_post_id == "p1"
 
     async def test_quote_post(self) -> None:
         feed = (_post("p1"),)
         llm = _FakeLLM(_payload(ActionType.QUOTE_POST, target_post_id="p1", content="my quote"))
-        action = await _selector(llm).select_action("me", _ctx(feed=feed))
+        action = (await _selector(llm).select_action("me", _ctx(feed=feed))).action
         assert action.type is ActionType.QUOTE_POST
         assert action.target_post_id == "p1"
         assert action.content == "my quote"
@@ -163,13 +184,13 @@ class TestActionTypes:
     async def test_follow(self) -> None:
         feed = (_post("p1", author="alice"),)
         llm = _FakeLLM(_payload(ActionType.FOLLOW, target_agent_id="alice"))
-        action = await _selector(llm).select_action("me", _ctx(feed=feed))
+        action = (await _selector(llm).select_action("me", _ctx(feed=feed))).action
         assert action.type is ActionType.FOLLOW
         assert action.target_agent_id == "alice"
 
     async def test_do_nothing(self) -> None:
         llm = _FakeLLM(_payload(ActionType.DO_NOTHING))
-        action = await _selector(llm).select_action("me", _ctx())
+        action = (await _selector(llm).select_action("me", _ctx())).action
         assert action.type is ActionType.DO_NOTHING
 
 
@@ -181,7 +202,7 @@ class TestRetry:
             RuntimeError("connection reset"),
             _payload(ActionType.LIKE_POST, target_post_id="p1"),
         )
-        action = await _selector(llm, max_attempts=3).select_action("me", _ctx(feed=feed))
+        action = (await _selector(llm, max_attempts=3).select_action("me", _ctx(feed=feed))).action
         assert action.type is ActionType.LIKE_POST
         assert len(llm.calls) == 3
 
@@ -191,7 +212,7 @@ class TestRetry:
             RuntimeError("boom"),
             RuntimeError("boom"),
         )
-        action = await _selector(llm, max_attempts=3).select_action("me", _ctx())
+        action = (await _selector(llm, max_attempts=3).select_action("me", _ctx())).action
         assert action == Action(type=ActionType.DO_NOTHING)
         assert len(llm.calls) == 3
 
@@ -206,18 +227,18 @@ class TestJsonRepair:
         feed = (_post("p1"),)
         # json.loads chokes on trailing commas; json_repair rescues it.
         llm = _FakeLLM('{"type": "LIKE_POST", "target_post_id": "p1",}')
-        action = await _selector(llm).select_action("me", _ctx(feed=feed))
+        action = (await _selector(llm).select_action("me", _ctx(feed=feed))).action
         assert action == Action(type=ActionType.LIKE_POST, target_post_id="p1")
 
     async def test_repairs_python_style_quotes(self) -> None:
         feed = (_post("p1"),)
         llm = _FakeLLM("{'type': 'LIKE_POST', 'target_post_id': 'p1'}")
-        action = await _selector(llm).select_action("me", _ctx(feed=feed))
+        action = (await _selector(llm).select_action("me", _ctx(feed=feed))).action
         assert action == Action(type=ActionType.LIKE_POST, target_post_id="p1")
 
     async def test_unrepairable_garbage_falls_back(self) -> None:
         llm = _FakeLLM("not json at all <<<>>>")
-        action = await _selector(llm).select_action("me", _ctx())
+        action = (await _selector(llm).select_action("me", _ctx())).action
         assert action == Action(type=ActionType.DO_NOTHING)
 
 
@@ -225,31 +246,31 @@ class TestTargetValidation:
     async def test_unknown_post_id_falls_back(self) -> None:
         feed = (_post("p1"),)
         llm = _FakeLLM(_payload(ActionType.LIKE_POST, target_post_id="ghost"))
-        action = await _selector(llm).select_action("me", _ctx(feed=feed))
+        action = (await _selector(llm).select_action("me", _ctx(feed=feed))).action
         assert action == Action(type=ActionType.DO_NOTHING)
 
     async def test_unknown_repost_target_falls_back(self) -> None:
         feed = (_post("p1"),)
         llm = _FakeLLM(_payload(ActionType.REPOST, target_post_id="ghost"))
-        action = await _selector(llm).select_action("me", _ctx(feed=feed))
+        action = (await _selector(llm).select_action("me", _ctx(feed=feed))).action
         assert action == Action(type=ActionType.DO_NOTHING)
 
     async def test_unknown_quote_target_falls_back(self) -> None:
         feed = (_post("p1"),)
         llm = _FakeLLM(_payload(ActionType.QUOTE_POST, target_post_id="ghost", content="hi"))
-        action = await _selector(llm).select_action("me", _ctx(feed=feed))
+        action = (await _selector(llm).select_action("me", _ctx(feed=feed))).action
         assert action == Action(type=ActionType.DO_NOTHING)
 
     async def test_unknown_follow_target_falls_back(self) -> None:
         feed = (_post("p1", author="alice"),)
         llm = _FakeLLM(_payload(ActionType.FOLLOW, target_agent_id="bob"))
-        action = await _selector(llm).select_action("me", _ctx(feed=feed))
+        action = (await _selector(llm).select_action("me", _ctx(feed=feed))).action
         assert action == Action(type=ActionType.DO_NOTHING)
 
     async def test_create_post_skips_target_validation(self) -> None:
         # CREATE_POST has no target → empty feed must not block it.
         llm = _FakeLLM(_payload(ActionType.CREATE_POST, content="fresh"))
-        action = await _selector(llm).select_action("me", _ctx())
+        action = (await _selector(llm).select_action("me", _ctx())).action
         assert action.type is ActionType.CREATE_POST
         assert action.content == "fresh"
 
@@ -258,30 +279,30 @@ class TestTargetValidation:
         # the feed via a misconfigured FeedEngine.
         feed = (_post("p1", author="me"),)
         llm = _FakeLLM(_payload(ActionType.LIKE_POST, target_post_id="p1"))
-        action = await _selector(llm).select_action("me", _ctx(feed=feed))
+        action = (await _selector(llm).select_action("me", _ctx(feed=feed))).action
         assert action == Action(type=ActionType.DO_NOTHING)
 
     async def test_self_follow_falls_back(self) -> None:
         feed = (_post("p1", author="me"),)
         llm = _FakeLLM(_payload(ActionType.FOLLOW, target_agent_id="me"))
-        action = await _selector(llm).select_action("me", _ctx(feed=feed))
+        action = (await _selector(llm).select_action("me", _ctx(feed=feed))).action
         assert action == Action(type=ActionType.DO_NOTHING)
 
 
 class TestPydanticValidation:
     async def test_invalid_action_type_falls_back(self) -> None:
         llm = _FakeLLM('{"type": "UNFOLLOW"}')
-        action = await _selector(llm).select_action("me", _ctx())
+        action = (await _selector(llm).select_action("me", _ctx())).action
         assert action == Action(type=ActionType.DO_NOTHING)
 
     async def test_create_post_without_content_falls_back(self) -> None:
         llm = _FakeLLM('{"type": "CREATE_POST"}')
-        action = await _selector(llm).select_action("me", _ctx())
+        action = (await _selector(llm).select_action("me", _ctx())).action
         assert action == Action(type=ActionType.DO_NOTHING)
 
     async def test_do_nothing_with_payload_falls_back(self) -> None:
         llm = _FakeLLM('{"type": "DO_NOTHING", "content": "leaked"}')
-        action = await _selector(llm).select_action("me", _ctx())
+        action = (await _selector(llm).select_action("me", _ctx())).action
         assert action == Action(type=ActionType.DO_NOTHING)
 
 
@@ -452,7 +473,7 @@ class TestFallbackInvariants:
             RuntimeError("b"),
             RuntimeError("c"),
         )
-        action = await _selector(llm, max_attempts=3).select_action("me", _ctx())
+        action = (await _selector(llm, max_attempts=3).select_action("me", _ctx())).action
         assert isinstance(action, Action)
 
 
@@ -474,7 +495,7 @@ class TestComposedFallbackChain:
             RuntimeError("transient transport error"),
             "{'type': 'CREATE_POST'}",
         )
-        action = await _selector(llm, max_attempts=3).select_action("me", _ctx())
+        action = (await _selector(llm, max_attempts=3).select_action("me", _ctx())).action
         assert action == Action(type=ActionType.DO_NOTHING)
         # Exactly two LLM round-trips: one failed transport + one returned.
         assert len(llm.calls) == 2
@@ -489,9 +510,96 @@ class TestComposedFallbackChain:
             RuntimeError("transient"),
             "{'type': 'LIKE_POST', 'target_post_id': 'p-ghost'}",
         )
-        action = await _selector(llm, max_attempts=3).select_action("me", _ctx(feed=feed))
+        action = (await _selector(llm, max_attempts=3).select_action("me", _ctx(feed=feed))).action
         assert action == Action(type=ActionType.DO_NOTHING)
         assert len(llm.calls) == 2
+
+
+class TestLLMMetaTracking:
+    """``ActionResult.llm_meta`` is the round runner's only window into
+    LLM accounting (model name, token usage, latency, fallback flag).
+
+    The contract: tokens come from ``LLMResponse``; latency is wall-clock
+    around the LLM call (and fallback work); ``fallback_used`` is ``True``
+    on every leg of the safety net (transport exhaustion, JSON parse
+    failure, validation failure, target validation failure) and ``False``
+    on the happy path.
+    """
+
+    async def test_happy_path_records_model_and_tokens(self) -> None:
+        feed = (_post("p1"),)
+        llm = _FakeLLM(
+            LLMResponse(
+                content=_payload(ActionType.LIKE_POST, target_post_id="p1"),
+                prompt_tokens=120,
+                completion_tokens=37,
+            )
+        )
+        result = await _selector(llm).select_action("me", _ctx(feed=feed))
+        assert result.action.type is ActionType.LIKE_POST
+        assert result.llm_meta.model == "test-model"
+        assert result.llm_meta.tokens_used == 157
+        assert result.llm_meta.fallback_used is False
+        assert result.llm_meta.latency_ms >= 0.0
+
+    async def test_zero_token_usage_propagates(self) -> None:
+        # Fakes / local backends that don't populate usage leave the
+        # counts at zero; ActionSelector must not fabricate numbers.
+        llm = _FakeLLM(_payload(ActionType.DO_NOTHING))
+        result = await _selector(llm).select_action("me", _ctx())
+        assert result.llm_meta.tokens_used == 0
+        assert result.llm_meta.fallback_used is False
+
+    async def test_retry_exhaustion_flags_fallback(self) -> None:
+        llm = _FakeLLM(
+            RuntimeError("a"),
+            RuntimeError("b"),
+            RuntimeError("c"),
+        )
+        result = await _selector(llm, max_attempts=3).select_action("me", _ctx())
+        assert result.action == Action(type=ActionType.DO_NOTHING)
+        assert result.llm_meta.fallback_used is True
+        # No successful response → tokens_used stays at zero.
+        assert result.llm_meta.tokens_used == 0
+
+    async def test_unparseable_json_flags_fallback_but_keeps_tokens(self) -> None:
+        # The LLM call succeeded (token usage is real spend) but the
+        # response was unusable. The fallback flag must flip while the
+        # token counters stay truthful.
+        llm = _FakeLLM(
+            LLMResponse(content="not json <<<>>>", prompt_tokens=80, completion_tokens=12),
+        )
+        result = await _selector(llm).select_action("me", _ctx())
+        assert result.action == Action(type=ActionType.DO_NOTHING)
+        assert result.llm_meta.fallback_used is True
+        assert result.llm_meta.tokens_used == 92
+
+    async def test_validation_failure_flags_fallback(self) -> None:
+        llm = _FakeLLM(
+            LLMResponse(
+                content='{"type": "CREATE_POST"}',
+                prompt_tokens=50,
+                completion_tokens=8,
+            ),
+        )
+        result = await _selector(llm).select_action("me", _ctx())
+        assert result.action == Action(type=ActionType.DO_NOTHING)
+        assert result.llm_meta.fallback_used is True
+        assert result.llm_meta.tokens_used == 58
+
+    async def test_target_validation_failure_flags_fallback(self) -> None:
+        feed = (_post("p1"),)
+        llm = _FakeLLM(
+            LLMResponse(
+                content=_payload(ActionType.LIKE_POST, target_post_id="ghost"),
+                prompt_tokens=60,
+                completion_tokens=14,
+            ),
+        )
+        result = await _selector(llm).select_action("me", _ctx(feed=feed))
+        assert result.action == Action(type=ActionType.DO_NOTHING)
+        assert result.llm_meta.fallback_used is True
+        assert result.llm_meta.tokens_used == 74
 
 
 def test_protocol_is_satisfied() -> None:
