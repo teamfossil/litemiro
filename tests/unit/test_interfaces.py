@@ -17,6 +17,8 @@ from litemiro.interfaces import (
     LLMClient,
     SocialGraphLike,
     StateStoreLike,
+    TokenBudgetManagerLike,
+    TopicExtractorLike,
 )
 from litemiro.models import (
     Action,
@@ -91,6 +93,21 @@ class _StubLLM:
         return ""
 
 
+class _StubTopicExtractor:
+    def extract(self, content: str) -> tuple[str, ...]:
+        return ()
+
+
+class _StubTokenBudget:
+    def has_budget(self, *, estimated_tokens: int) -> bool:
+        return True
+
+    def consume(self, *, tokens_used: int) -> None: ...
+
+    def remaining(self) -> int:
+        return 0
+
+
 def test_social_graph_protocol() -> None:
     assert isinstance(_StubGraph(), SocialGraphLike)
 
@@ -113,3 +130,11 @@ def test_event_logger_protocol() -> None:
 
 def test_llm_client_protocol() -> None:
     assert isinstance(_StubLLM(), LLMClient)
+
+
+def test_topic_extractor_protocol() -> None:
+    assert isinstance(_StubTopicExtractor(), TopicExtractorLike)
+
+
+def test_token_budget_protocol() -> None:
+    assert isinstance(_StubTokenBudget(), TokenBudgetManagerLike)

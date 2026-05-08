@@ -79,6 +79,22 @@ class EventLoggerLike(Protocol):
     async def aclose(self) -> None: ...
 
 
+@runtime_checkable
+class TopicExtractorLike(Protocol):
+    """Owned by **B**."""
+
+    def extract(self, content: str) -> tuple[str, ...]: ...
+
+
+@runtime_checkable
+class TokenBudgetManagerLike(Protocol):
+    """Owned by **C** — A reads / consumes via this Protocol."""
+
+    def has_budget(self, *, estimated_tokens: int) -> bool: ...
+    def consume(self, *, tokens_used: int) -> None: ...
+    def remaining(self) -> int: ...
+
+
 __all__ = [
     "ActionSelectorLike",
     "EventLoggerLike",
@@ -86,4 +102,6 @@ __all__ = [
     "LLMClient",
     "SocialGraphLike",
     "StateStoreLike",
+    "TokenBudgetManagerLike",
+    "TopicExtractorLike",
 ]

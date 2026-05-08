@@ -15,6 +15,7 @@ import pytest
 
 from litemiro.interfaces import LLMClient
 from litemiro.models import Agent, Post
+from tests.fakes import InMemoryEventLogger, InMemoryStateStore
 
 
 @pytest.fixture
@@ -84,3 +85,15 @@ def fake_llm() -> Callable[..., LLMClient]:
         return _FakeLLMClient(*responses)
 
     return _make
+
+
+@pytest.fixture
+def state_store() -> InMemoryStateStore:
+    """Fresh empty in-memory ``StateStoreLike``."""
+    return InMemoryStateStore()
+
+
+@pytest.fixture
+def event_logger() -> InMemoryEventLogger:
+    """Fresh in-memory ``EventLoggerLike`` that records every emit."""
+    return InMemoryEventLogger()
