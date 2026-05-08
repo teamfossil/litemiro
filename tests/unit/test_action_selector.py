@@ -347,6 +347,95 @@ class TestPromptComposition:
             assert at.value in system
 
 
+class TestPhase1PersonaSchema:
+    """Phase 1 (dual-ontology) freezes ten persona keys; the prompt layer
+    hoists the well-known keys to predictable positions and renders the
+    behavior weights and the sensitive-topic list as explicit hints."""
+
+    async def test_phase1_keys_surface_in_persona_card(self) -> None:
+        agent = _agent(
+            "me",
+            persona_traits={
+                "name": "이태우",
+                "entity_type": "individual",
+                "personality": "curious_skeptic",
+                "speech_style": "casual",
+                "background": "30대 직장인",
+                "ideology": "moderate_left",
+            },
+        )
+        llm = _FakeLLM(_payload(ActionType.DO_NOTHING))
+        await _selector(llm).select_action("me", _ctx(agent=agent))
+        system = llm.calls[0][0]
+        for value in (
+            "이태우",
+            "individual",
+            "curious_skeptic",
+            "casual",
+            "30대 직장인",
+            "moderate_left",
+        ):
+            assert value in system
+
+    async def test_behavior_tendency_renders_as_natural_language(self) -> None:
+        agent = _agent(
+            "me",
+            persona_traits={
+                "behavior_tendency": {
+                    "post_rate": 0.7,
+                    "reply_rate": 0.5,
+                    "repost_rate": 0.1,
+                    "controversy_affinity": 0.2,
+                },
+            },
+        )
+        llm = _FakeLLM(_payload(ActionType.DO_NOTHING))
+        await _selector(llm).select_action("me", _ctx(agent=agent))
+        system = llm.calls[0][0]
+        assert "Behavior tendencies" in system
+        assert "originate posts: 0.7" in system
+        assert "reply or quote: 0.5" in system
+        assert "repost: 0.1" in system
+        assert "engage with controversy: 0.2" in system
+
+    async def test_sensitive_topics_become_avoidance_hint(self) -> None:
+        agent = _agent(
+            "me",
+            persona_traits={"sensitive_topics": ("종교", "낙태")},
+        )
+        llm = _FakeLLM(_payload(ActionType.DO_NOTHING))
+        await _selector(llm).select_action("me", _ctx(agent=agent))
+        system = llm.calls[0][0]
+        assert "Avoid initiating posts on these sensitive topics" in system
+        assert "종교" in system
+        assert "낙태" in system
+
+    async def test_unknown_traits_sink_to_extra_traits_bucket(self) -> None:
+        agent = _agent(
+            "me",
+            persona_traits={"personality": "INTJ", "tone": "skeptical"},
+        )
+        llm = _FakeLLM(_payload(ActionType.DO_NOTHING))
+        await _selector(llm).select_action("me", _ctx(agent=agent))
+        system = llm.calls[0][0]
+        # Phase 1 key is hoisted at top level, unknown key drops into
+        # the extra_traits bucket without losing its value.
+        assert '"personality": "INTJ"' in system
+        assert "extra_traits" in system
+        assert "skeptical" in system
+
+    async def test_topics_field_uses_phase1_naming(self) -> None:
+        # Phase 1 uses ``topics`` while ``Agent`` keeps ``interests`` —
+        # the prompt renames it so the LLM sees the dual-ontology label.
+        agent = _agent("me", interests=("ai", "music"))
+        llm = _FakeLLM(_payload(ActionType.DO_NOTHING))
+        await _selector(llm).select_action("me", _ctx(agent=agent))
+        system = llm.calls[0][0]
+        assert '"topics"' in system
+        assert "ai" in system
+        assert "music" in system
+
+
 class TestFallbackInvariants:
     async def test_fallback_makes_no_extra_llm_calls(self) -> None:
         # Once a parsed response fails validation, there is no second

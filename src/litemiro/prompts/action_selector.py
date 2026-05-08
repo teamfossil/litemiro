@@ -9,11 +9,22 @@ The system prompt declares the *vocabulary* (every ``ActionType`` and
 its required fields) and the strict JSON-only output format. The user
 prompt is the per-round payload (feed + recent + counts + round). Both
 are pure functions of the inputs so they are deterministic across runs.
+
+Phase 1 (dual-ontology) freezes the persona key set: ``agent_id, name,
+entity_type, personality, speech_style, background, ideology, topics,
+sensitive_topics, behavior_tendency{post_rate, reply_rate, repost_rate,
+controversy_affinity}``. ``Agent.persona_traits`` is still a loose
+``Mapping[str, Any]`` (Phase 1 hands these in via ``OntologyLoader``),
+so the prompt layer does the work of hoisting the well-known keys to
+predictable positions and giving the LLM explicit hints for the
+behavior weights and the sensitive-topic avoidance list.
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
+from typing import Any
 
 from litemiro.models import ActionContext, ActionType
 
@@ -39,32 +50,92 @@ _SYSTEM_SCHEMA = (
 )
 
 
-def compose_system(agent_id: str, context: ActionContext) -> str:
-    """Build the system prompt — the persona card + output schema.
+# Persona-card layout, in render order. ``agent_id`` and ``topics`` are
+# always emitted (they come from the ``Agent`` fields, not the trait
+# bag); the rest are hoisted from ``persona_traits`` when present.
+_PHASE1_PERSONA_KEYS: tuple[str, ...] = (
+    "name",
+    "entity_type",
+    "personality",
+    "speech_style",
+    "background",
+    "ideology",
+    "sensitive_topics",
+)
 
-    The persona card is verbatim JSON of the agent's identity-shaped
-    fields (``interests``, ``persona_traits``, ``memory_summary``) so a
-    well-instructed LLM can read it without parsing prose.
-    """
-    persona_card = json.dumps(
-        {
-            "agent_id": context.agent.agent_id,
-            "interests": list(context.agent.interests),
-            "persona_traits": dict(context.agent.persona_traits),
-            "memory_summary": context.agent.memory_summary,
-        },
-        ensure_ascii=False,
-        indent=2,
-    )
+_BEHAVIOR_TENDENCY_LABELS: tuple[tuple[str, str], ...] = (
+    ("post_rate", "originate posts"),
+    ("reply_rate", "reply or quote"),
+    ("repost_rate", "repost"),
+    ("controversy_affinity", "engage with controversy"),
+)
+
+
+def compose_system(agent_id: str, context: ActionContext) -> str:
+    """Build the system prompt — persona card + behavior hints + schema."""
+    sections: list[str] = [
+        _SYSTEM_HEADER.format(agent_id=agent_id),
+        "Persona card:\n" + _persona_card(context),
+    ]
+    behavior = _behavior_hint(context)
+    if behavior:
+        sections.append(behavior)
+    avoidance = _avoidance_hint(context)
+    if avoidance:
+        sections.append(avoidance)
     action_types = ", ".join(at.value for at in ActionType)
-    return "\n\n".join(
-        [
-            _SYSTEM_HEADER.format(agent_id=agent_id),
-            "Persona card:\n" + persona_card,
-            _SYSTEM_SCHEMA.format(action_types=action_types),
-            "Respond with the JSON object only.",
-        ]
-    )
+    sections.append(_SYSTEM_SCHEMA.format(action_types=action_types))
+    sections.append("Respond with the JSON object only.")
+    return "\n\n".join(sections)
+
+
+def _persona_card(context: ActionContext) -> str:
+    """Phase 1 keys hoisted to the top; unknown traits sink to ``extra_traits``."""
+    agent = context.agent
+    traits = dict(agent.persona_traits)
+    card: dict[str, Any] = {
+        "agent_id": agent.agent_id,
+        "topics": list(agent.interests),
+    }
+    for key in _PHASE1_PERSONA_KEYS:
+        if key in traits:
+            card[key] = traits.pop(key)
+    if "behavior_tendency" in traits:
+        card["behavior_tendency"] = traits.pop("behavior_tendency")
+    if traits:
+        card["extra_traits"] = traits
+    if agent.memory_summary:
+        card["memory_summary"] = agent.memory_summary
+    return json.dumps(card, ensure_ascii=False, indent=2)
+
+
+def _behavior_hint(context: ActionContext) -> str:
+    """Restate ``behavior_tendency`` weights in prose for a clearer LLM cue."""
+    bt = context.agent.persona_traits.get("behavior_tendency")
+    if not isinstance(bt, Mapping):
+        return ""
+    bits = [f"{label}: {bt[key]}" for key, label in _BEHAVIOR_TENDENCY_LABELS if key in bt]
+    if not bits:
+        return ""
+    return "Behavior tendencies (0..1, higher = more likely): " + "; ".join(bits) + "."
+
+
+def _avoidance_hint(context: ActionContext) -> str:
+    sensitive = context.agent.persona_traits.get("sensitive_topics")
+    if not sensitive:
+        return ""
+    if isinstance(sensitive, str):
+        listed = sensitive
+    elif isinstance(sensitive, Mapping):
+        return ""
+    else:
+        try:
+            listed = ", ".join(str(t) for t in sensitive)
+        except TypeError:
+            return ""
+    if not listed:
+        return ""
+    return f"Avoid initiating posts on these sensitive topics: {listed}."
 
 
 def _feed_block(context: ActionContext) -> str:
