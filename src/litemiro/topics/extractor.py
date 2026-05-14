@@ -20,8 +20,9 @@ unit suite:
 
 from __future__ import annotations
 
-import math
 from typing import TYPE_CHECKING
+
+from litemiro._vector import cosine
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -59,20 +60,11 @@ class TopicExtractor:
         content_vec = self._embedder.embed(content)
         scored: list[tuple[float, str]] = []
         for word, vec in self._vocab_embeddings.items():
-            score = _cosine(content_vec, vec)
+            score = cosine(content_vec, vec)
             if score >= self._threshold:
                 scored.append((score, word))
         scored.sort(key=lambda item: (-item[0], item[1]))
         return tuple(word for _, word in scored[: self._top_k])
-
-
-def _cosine(a: tuple[float, ...], b: tuple[float, ...]) -> float:
-    norm_a = math.sqrt(sum(x * x for x in a))
-    norm_b = math.sqrt(sum(y * y for y in b))
-    if norm_a == 0.0 or norm_b == 0.0:
-        return 0.0
-    dot = sum(x * y for x, y in zip(a, b, strict=True))
-    return dot / (norm_a * norm_b)
 
 
 __all__ = ["TopicExtractor"]
