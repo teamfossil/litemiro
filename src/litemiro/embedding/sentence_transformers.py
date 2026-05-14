@@ -43,8 +43,13 @@ class STEmbedder:
     def _load_model(self) -> Any:
         # Imported lazily so the optional `embedding` extras only need
         # to be installed when the adapter actually runs.
-        from sentence_transformers import SentenceTransformer  # noqa: PLC0415
-
+        try:
+            from sentence_transformers import SentenceTransformer  # noqa: PLC0415
+        except ImportError as exc:
+            raise ImportError(
+                "STEmbedder requires the 'sentence-transformers' package. "
+                "Install it with: pip install 'litemiro[embedding]'"
+            ) from exc
         return SentenceTransformer(self._model_name)
 
 
