@@ -193,3 +193,26 @@ class TestEnvironmentFallback:
 
 def test_protocol_is_satisfied() -> None:
     assert isinstance(LiteLLMClient(api_key="k"), LLMClient)
+
+
+class TestLiteLLMSmoke:
+    """Goes through ``litellm.acompletion``'s real code path via its
+    built-in ``mock_response`` short-circuit. The monkeypatched suite
+    above only checks our own logic — this test catches SDK kwarg or
+    response-shape drift in litellm itself, which would otherwise only
+    surface at runtime against a real provider.
+    """
+
+    async def test_response_shape_matches_adapter_assumptions(self) -> None:
+        from litemiro.llm.litellm_client import _extract_usage  # noqa: PLC0415
+
+        response = await litellm.acompletion(
+            model="openrouter/anthropic/claude-3.5-sonnet",
+            messages=[{"role": "user", "content": "hi"}],
+            mock_response="hello",
+        )
+        # The two response paths LiteLLMClient.complete() reads:
+        assert response.choices[0].message.content == "hello"
+        prompt, completion = _extract_usage(response)
+        assert prompt >= 0
+        assert completion >= 0
