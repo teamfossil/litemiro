@@ -6,16 +6,21 @@ B pins this contract in ``tests/unit/test_action_selector.py``:
 
 * ``select_action`` *never* raises and always returns an
   :class:`ActionResult`. A flaky LLM cannot derail the round; on any
-  failure path the call collapses to ``Action(type=DO_NOTHING)`` while
+  failure path — including prompt composition raising — the call
+  collapses to ``Action(type=DO_NOTHING)`` while
   ``llm_meta.fallback_used`` flips to ``True`` so the round runner can
   count fallbacks without reading the action payload.
 * **3-step fallback** in this order:
-    1. tenacity retry on transport errors raised by ``LLMClient``
-       (``max_attempts`` defaults to 3).
+    1. tenacity retry on **any** exception raised by ``LLMClient``
+       (``max_attempts`` defaults to 3). The retry scope is broad on
+       purpose — adapters wrap their transport errors in opaque types
+       (``litellm.APIConnectionError`` etc.) and we don't want a typo
+       in the exception filter to silently break the safety net.
     2. ``json_repair`` rescues malformed JSON before validation.
-    3. ``DO_NOTHING`` if (a) retries exhaust, (b) JSON cannot be
-       repaired, (c) the response fails ``Action`` validation, or
-       (d) target validation rejects an LLM-hallucinated id.
+    3. ``DO_NOTHING`` if (a) prompt composition raised, (b) retries
+       exhaust, (c) JSON cannot be repaired, (d) the response fails
+       ``Action`` validation, or (e) target validation rejects an
+       LLM-hallucinated id.
 * **Target visibility**: ``target_post_id`` must reference a post in
   ``context.feed``; for ``FOLLOW``, ``target_agent_id`` must be a feed
   author. Self-likes / self-follows also collapse to ``DO_NOTHING``.
@@ -66,11 +71,10 @@ class ActionSelector:
         self._max_attempts = max_attempts
 
     async def select_action(self, agent_id: str, context: ActionContext) -> ActionResult:
-        system = compose_system(agent_id, context)
-        user = compose_user(context)
-
         started = perf_counter()
         try:
+            system = compose_system(agent_id, context)
+            user = compose_user(context)
             response = await self._call_with_retry(system, user)
         except Exception:
             return self._build_result(_DO_NOTHING, response=None, started=started, fallback=True)
