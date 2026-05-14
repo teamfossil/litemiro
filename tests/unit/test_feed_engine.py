@@ -160,6 +160,21 @@ class TestEngagementUpdate:
         with pytest.raises(KeyError, match="p1"):
             feed.update_engagement(_post("p1", "a"))
 
+    def test_update_rejects_changed_topics(self, feed: FeedEngine) -> None:
+        # Regression: a caller that re-publishes a post with mutated
+        # ``topics`` must not silently desync ``_topic_index`` /
+        # ``_topic_embeddings`` from the stored snapshot.
+        feed.index_post(_post("p1", "a", topics=("ai",)))
+        with pytest.raises(ValueError, match="immutable"):
+            feed.update_engagement(_post("p1", "a", topics=("politics",), likes=5))
+
+    def test_update_rejects_changed_author(self, feed: FeedEngine) -> None:
+        # Regression: changing ``author_id`` would break follow-graph
+        # candidacy because ``build_feed`` reads it from the stored post.
+        feed.index_post(_post("p1", "a", topics=("ai",)))
+        with pytest.raises(ValueError, match="immutable"):
+            feed.update_engagement(_post("p1", "b", topics=("ai",), likes=5))
+
     def test_index_duplicate_rejected(self, feed: FeedEngine) -> None:
         feed.index_post(_post("p1", "a"))
         with pytest.raises(ValueError, match="p1"):

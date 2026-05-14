@@ -76,10 +76,18 @@ class FeedEngine:
                 self._topic_embeddings.pop(topic, None)
 
     def update_engagement(self, post: Post) -> None:
-        if post.post_id not in self._posts:
+        existing = self._posts.get(post.post_id)
+        if existing is None:
             raise KeyError(f"unknown post_id: {post.post_id}")
-        # Topics are part of the immutable identity of a post — only
-        # engagement counters move. We keep the topic index intact.
+        # Topics and author_id are part of the immutable identity of a
+        # post — only engagement counters may change. Enforce that here
+        # so the topic index and follow-graph candidacy can't desync
+        # from the stored snapshot.
+        if post.author_id != existing.author_id or post.topics != existing.topics:
+            raise ValueError(
+                "update_engagement may only change engagement counters; "
+                "author_id and topics are immutable"
+            )
         self._posts[post.post_id] = post
 
     def build_feed(self, *, agent: Agent, current_round: int, limit: int = 20) -> tuple[Post, ...]:
