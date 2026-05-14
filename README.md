@@ -52,4 +52,5 @@ Checkpoints (managed by `core.StateStore`) include the per-agent RNG state.
 
 ## Owners
 - A — 권현재: engine/state (`core/`).
+- B — feed/action/social/prompts modules (`feed/`, `action/`, `social/`, `prompts/`).
 - C — 배강민: integration → Phase 3 (`ontology/`, `budget/`, `eventlog/`).
