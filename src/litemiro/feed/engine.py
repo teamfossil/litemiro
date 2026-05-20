@@ -91,8 +91,12 @@ class FeedEngine:
         # Topics and author_id are part of the immutable identity of a
         # post — only engagement counters may change. Enforce that here
         # so the topic index and follow-graph candidacy can't desync
-        # from the stored snapshot.
-        if post.author_id != existing.author_id or post.topics != existing.topics:
+        # from the stored snapshot. ``topics`` is compared as a set: the
+        # inverted index keys on membership only, so re-publishing the
+        # same topics in a different order (or with duplicates) is not a
+        # mutation and must not trip this guard.
+        topics_changed = frozenset(post.topics) != frozenset(existing.topics)
+        if post.author_id != existing.author_id or topics_changed:
             raise ValueError(
                 "update_engagement may only change engagement counters; "
                 "author_id and topics are immutable"

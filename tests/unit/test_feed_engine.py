@@ -168,6 +168,17 @@ class TestEngagementUpdate:
         with pytest.raises(ValueError, match="immutable"):
             feed.update_engagement(_post("p1", "a", topics=("politics",), likes=5))
 
+    def test_update_accepts_reordered_topics(self, feed: FeedEngine) -> None:
+        # ``topics`` is identity, but compared as a set — the inverted
+        # index keys on membership only. Re-publishing the same topic
+        # set in a different order is an engagement-only update, not a
+        # mutation, so the immutability guard must not fire.
+        feed.index_post(_post("p1", "a", topics=("ai", "politics")))
+        feed.update_engagement(_post("p1", "a", topics=("politics", "ai"), likes=5))
+        result = feed.build_feed(agent=_agent(interests=("ai",)), current_round=1)
+        assert [p.post_id for p in result] == ["p1"]
+        assert result[0].likes == 5
+
     def test_update_rejects_changed_author(self, feed: FeedEngine) -> None:
         # Regression: changing ``author_id`` would break follow-graph
         # candidacy because ``build_feed`` reads it from the stored post.
