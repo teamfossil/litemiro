@@ -1,0 +1,85 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://litemiro.dev/schemas/ontology_a.schema.json",
+  "title": "OntologyA",
+  "description": "Phase 1 → Phase 2 persona contract. Agent profiles + ontology metadata.",
+  "type": "object",
+  "required": ["version", "seed", "agent_count", "preset", "source_document", "simulation_requirement", "generated_at", "ontology", "agents"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "type": "integer", "minimum": 1 },
+    "seed": { "type": "integer" },
+    "agent_count": { "type": "integer", "minimum": 1 },
+    "preset": { "type": "string", "enum": ["quick", "standard", "full"] },
+    "source_document": { "type": "string", "minLength": 1 },
+    "simulation_requirement": { "type": "string", "minLength": 1 },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "ontology": {
+      "type": "object",
+      "required": ["entity_types", "edge_types"],
+      "additionalProperties": false,
+      "properties": {
+        "entity_types": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "description"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "description": { "type": "string" },
+              "attributes": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "edge_types": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "source", "target", "description"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "source": { "type": "string", "minLength": 1 },
+              "target": { "type": "string", "minLength": 1 },
+              "description": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "agents": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["agent_id", "name", "entity_type", "origin"],
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 },
+          "entity_type": { "type": "string", "minLength": 1 },
+          "origin": { "type": "string", "enum": ["extracted", "derived"] },
+          "derived_from": { "type": ["string", "null"] },
+          "skeleton": { "type": "object" },
+          "ideology": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+          "topics": { "type": "array", "items": { "type": "string" } },
+          "sensitive_topics": { "type": "array", "items": { "type": "string" } },
+          "personality": { "type": "string" },
+          "speech_style": { "type": "string" },
+          "background": { "type": "string" },
+          "behavior_tendency": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "post_rate": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+              "reply_rate": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+              "repost_rate": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+              "controversy_affinity": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
+            }
+          },
+          "initial_following": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}
