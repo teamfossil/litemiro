@@ -31,6 +31,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+import pytest
+
 from litemiro.action.selector import ActionSelector
 from litemiro.interfaces import ActionSelectorLike, LLMClient
 from litemiro.models import Action, ActionContext, ActionType, Agent, LLMResponse, Post
@@ -475,6 +477,27 @@ class TestFallbackInvariants:
         )
         action = (await _selector(llm, max_attempts=3).select_action("me", _ctx())).action
         assert isinstance(action, Action)
+
+    @pytest.mark.parametrize("hook", ["compose_system", "compose_user"])
+    async def test_prompt_composition_failure_collapses_to_do_nothing(
+        self, monkeypatch: pytest.MonkeyPatch, hook: str
+    ) -> None:
+        # ``select_action`` guards prompt assembly inside the same
+        # try-block as the LLM call: if ``compose_system`` /
+        # ``compose_user`` raises, the call collapses to
+        # ``DO_NOTHING(fallback_used=True)`` *before* any LLM round-trip.
+        # ``test_select_action_never_raises`` only exercises the
+        # LLM-raises leg — this is the composition leg.
+        def _boom(*args: Any, **kwargs: Any) -> str:
+            raise RuntimeError(f"{hook} failed")
+
+        monkeypatch.setattr(f"litemiro.action.selector.{hook}", _boom)
+        llm = _FakeLLM(_payload(ActionType.DO_NOTHING))
+        result = await _selector(llm).select_action("me", _ctx())
+        assert result.action == Action(type=ActionType.DO_NOTHING)
+        assert result.llm_meta.fallback_used is True
+        assert result.llm_meta.tokens_used == 0
+        assert llm.calls == []  # composition failed before the LLM call
 
 
 class TestComposedFallbackChain:

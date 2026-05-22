@@ -1,8 +1,7 @@
 """``FeedEngine`` — owned by **B**.
 
-Maintains a topic inverted index and the live snapshot of posts so
-``build_feed`` is O(K log K) on the candidate pool rather than O(N) on
-the full corpus. The contract pinned by the unit suite:
+Maintains a topic inverted index and the live snapshot of posts. The
+contract pinned by the unit suite:
 
 * **Candidate pool** = union of three paths — (1) ``following`` author's
   posts, (2) posts whose ``topics`` intersect ``agent.interests``
@@ -13,10 +12,20 @@ the full corpus. The contract pinned by the unit suite:
 * **Ranking** = ``Post.hot_score(current_round)`` descending,
   ``post_id`` ascending tie-break → fully deterministic.
 * ``index_post`` rejects duplicate ids; ``update_engagement`` rejects
-  unknown ids; ``remove_post`` is idempotent.
+  unknown ids and any mutation of ``author_id``/``topics`` (only
+  engagement counters are mutable); ``remove_post`` is idempotent.
 * Topic embeddings are computed at ``index_post`` time and cached so a
   single ``build_feed`` call costs at most one ``embed`` per interest,
   not one per (interest, topic) pair.
+
+**Complexity**: the topic-intersection and embedding-similarity paths
+are served by the inverted index — cost scales with the number of
+*matching* topics, not the corpus. The follow path currently scans
+``self._posts`` (O(N) in the live corpus); if N grows large enough to
+matter we can mirror an author→post_ids index, but at expected Phase 2
+scale the constant on a dict iteration is well under the LLM latency
+budget, so we leave the cleaner code. Final ranking is O(K log K)
+where K is the candidate-pool size.
 
 The ``SocialGraphLike`` dependency is supplied at construction time.
 The Protocol in ``litemiro.interfaces`` deliberately omits this — it's
@@ -25,9 +34,9 @@ an implementation detail of B's wiring, not part of the public surface.
 
 from __future__ import annotations
 
-import math
 from typing import TYPE_CHECKING
 
+from litemiro._vector import cosine
 from litemiro.models import Agent, Post
 
 if TYPE_CHECKING:
@@ -76,10 +85,22 @@ class FeedEngine:
                 self._topic_embeddings.pop(topic, None)
 
     def update_engagement(self, post: Post) -> None:
-        if post.post_id not in self._posts:
+        existing = self._posts.get(post.post_id)
+        if existing is None:
             raise KeyError(f"unknown post_id: {post.post_id}")
-        # Topics are part of the immutable identity of a post — only
-        # engagement counters move. We keep the topic index intact.
+        # Topics and author_id are part of the immutable identity of a
+        # post — only engagement counters may change. Enforce that here
+        # so the topic index and follow-graph candidacy can't desync
+        # from the stored snapshot. ``topics`` is compared as a set: the
+        # inverted index keys on membership only, so re-publishing the
+        # same topics in a different order (or with duplicates) is not a
+        # mutation and must not trip this guard.
+        topics_changed = frozenset(post.topics) != frozenset(existing.topics)
+        if post.author_id != existing.author_id or topics_changed:
+            raise ValueError(
+                "update_engagement may only change engagement counters; "
+                "author_id and topics are immutable"
+            )
         self._posts[post.post_id] = post
 
     def build_feed(self, *, agent: Agent, current_round: int, limit: int = 20) -> tuple[Post, ...]:
@@ -103,7 +124,7 @@ class FeedEngine:
                 if topic_vec is None:
                     continue
                 if any(
-                    _cosine(iv, topic_vec) >= self._similarity_threshold for iv in interest_vectors
+                    cosine(iv, topic_vec) >= self._similarity_threshold for iv in interest_vectors
                 ):
                     candidate_ids |= ids
         for post_id, post in self._posts.items():
@@ -117,12 +138,3 @@ class FeedEngine:
         ]
         candidates.sort(key=lambda p: (-p.hot_score(current_round), p.post_id))
         return tuple(candidates[:limit])
-
-
-def _cosine(a: tuple[float, ...], b: tuple[float, ...]) -> float:
-    norm_a = math.sqrt(sum(x * x for x in a))
-    norm_b = math.sqrt(sum(y * y for y in b))
-    if norm_a == 0.0 or norm_b == 0.0:
-        return 0.0
-    dot = sum(x * y for x, y in zip(a, b, strict=True))
-    return dot / (norm_a * norm_b)
