@@ -165,6 +165,7 @@ class OntologyPipeline:
         if result.errors:
             for e in result.errors:
                 log.error("validation_error", message=e)
+            raise ValueError("ontology validation failed: " + "; ".join(result.errors))
 
         serializer = OntologySerializer()
         serializer.write(ontology_a, ontology_b, cfg.output_dir)

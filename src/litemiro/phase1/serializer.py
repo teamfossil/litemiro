@@ -35,8 +35,23 @@ class OntologySerializer:
         path_a = output_dir / _FILENAME_A
         path_b = output_dir / _FILENAME_B
 
-        text_a = self.serialize_a(ontology_a)
-        text_b = self.serialize_b(ontology_b)
+        data_a = ontology_a.model_dump(mode="json")
+        data_b = ontology_b.model_dump(mode="json")
+        schema_errors = [
+            *(
+                f"ontology_a: {message}"
+                for message in self.validate_against_schema(data_a, "ontology_a")
+            ),
+            *(
+                f"ontology_b: {message}"
+                for message in self.validate_against_schema(data_b, "ontology_b")
+            ),
+        ]
+        if schema_errors:
+            raise ValueError("ontology schema validation failed: " + "; ".join(schema_errors))
+
+        text_a = json.dumps(data_a, ensure_ascii=False, indent=2)
+        text_b = json.dumps(data_b, ensure_ascii=False, indent=2)
 
         path_a.write_text(text_a, encoding="utf-8")
         log.info("wrote_ontology_a", path=str(path_a))

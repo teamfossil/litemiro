@@ -6,6 +6,8 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from litemiro.phase1.models import (
     AgentOrigin,
     AgentProfile,
@@ -90,3 +92,20 @@ class TestOntologySerializer:
         data = json.loads(s.serialize_b(b))
         errors = s.validate_against_schema(data, "ontology_b")
         assert errors == []
+
+    def test_write_rejects_schema_errors(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        s = OntologySerializer()
+
+        def _fail_schema(data: dict[str, object], schema_name: str) -> list[str]:
+            if schema_name == "ontology_a":
+                return ["bad field"]
+            return []
+
+        monkeypatch.setattr(s, "validate_against_schema", _fail_schema)
+        with pytest.raises(ValueError, match="schema validation failed"):
+            s.write(_make_ontology_a(), _make_ontology_b(), tmp_path)
+
+        assert not (tmp_path / "ontology_a_persona.json").exists()
+        assert not (tmp_path / "ontology_b_memory.json").exists()

@@ -59,6 +59,8 @@ async def test_generate_profiles(
     assert profiles[0].agent_id == "agent_0001"
     assert profiles[0].ideology == 0.3
     assert profiles[0].personality == "날카로운 분석력과 비판적 시각"
+    assert profiles[0].skeleton["source_entity_id"] == "journalist_kim"
+    assert profiles[0].topics == ["정치", "경제"]
 
 
 @pytest.mark.asyncio
@@ -84,3 +86,31 @@ async def test_fallback_on_bad_response(fake_llm: Callable[..., LLMClient]) -> N
     assert len(profiles) == 1
     assert profiles[0].agent_id == "agent_0001"
     assert profiles[0].ideology == 0.5  # fallback default
+    assert profiles[0].skeleton["source_entity_id"] == "e1"
+    assert profiles[0].topics == ["Journalist", "김기자"]
+
+
+@pytest.mark.asyncio
+async def test_empty_profile_topics_fall_back(
+    fake_llm: Callable[..., LLMClient],
+    sample_agent_seeds: list[AgentSeed],
+) -> None:
+    llm = fake_llm(
+        json.dumps(
+            [
+                {
+                    "agent_id": "agent_0001",
+                    "personality": "신중함",
+                    "speech_style": "분석체",
+                    "background": "정치부 기자",
+                    "ideology": 0.4,
+                    "topics": [],
+                    "sensitive_topics": [],
+                    "behavior_tendency": {},
+                }
+            ]
+        )
+    )
+    gen = ProfileGenerator(llm=llm, model="test")
+    profiles = await gen.generate(sample_agent_seeds[:1], "AI 규제 시뮬레이션")
+    assert profiles[0].topics == ["Journalist", "김영수"]

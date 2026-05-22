@@ -9,6 +9,7 @@ import pytest
 
 from litemiro.phase1.models import Preset
 from litemiro.phase1.pipeline import OntologyPipeline, PipelineConfig
+from litemiro.phase1.validator import OntologyValidator, ValidationResult
 
 ONTOLOGY_RESP = json.dumps(
     {
@@ -126,6 +127,7 @@ async def test_pipeline_end_to_end(tmp_path: Path) -> None:
     assert a.preset is Preset.QUICK
     assert len(a.agents) >= 1
     assert len(b.stores) == len(a.agents)
+    assert OntologyValidator().validate(a, b).valid
     assert (tmp_path / "ontology_a_persona.json").exists()
     assert (tmp_path / "ontology_b_memory.json").exists()
 
@@ -153,3 +155,36 @@ async def test_pipeline_config_defaults() -> None:
     config = PipelineConfig(input_path=Path("x.pdf"), requirement="r")
     assert config.preset is Preset.QUICK
     assert config.seed == 42
+
+
+@pytest.mark.asyncio
+async def test_pipeline_stops_before_write_on_validation_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    doc = tmp_path / "doc.txt"
+    doc.write_text("AI 규제 정책에 대한 보고서. 김기자는 일간지 소속이다.", encoding="utf-8")
+    config = PipelineConfig(
+        input_path=doc,
+        requirement="AI 규제 시뮬레이션",
+        preset=Preset.QUICK,
+        seed=42,
+        output_dir=tmp_path,
+        model="test-model",
+    )
+    llm = _QueueLLM([ONTOLOGY_RESP, EXTRACT_RESP, PROFILE_RESP])
+
+    def _fail_validation(
+        self: OntologyValidator,
+        a: object,
+        b: object,
+    ) -> ValidationResult:
+        return ValidationResult(valid=False, errors=["forced validation failure"])
+
+    monkeypatch.setattr(OntologyValidator, "validate", _fail_validation)
+
+    with pytest.raises(ValueError, match="ontology validation failed"):
+        await OntologyPipeline(config, llm).run()
+
+    assert not (tmp_path / "ontology_a_persona.json").exists()
+    assert not (tmp_path / "ontology_b_memory.json").exists()

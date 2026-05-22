@@ -132,9 +132,9 @@ class ProfileGenerator:
             entity_type=entity_type,
             origin=seed.origin,
             derived_from=seed.derived_from,
-            skeleton={},
+            skeleton=_build_skeleton(seed),
             ideology=0.5,
-            topics=[],
+            topics=_fallback_topics(seed),
             sensitive_topics=[],
             personality=str(defaults.get("personality", "일반적인 소셜 미디어 사용자")),
             speech_style=str(defaults.get("speech_style", "구어체")),
@@ -159,6 +159,8 @@ def _parse_profile(item: dict[str, object], seed: AgentSeed) -> AgentProfile:
     topics = item.get("topics", [])
     if not isinstance(topics, list):
         topics = []
+    if not topics:
+        topics = _fallback_topics(seed)
     sensitive_topics = item.get("sensitive_topics", [])
     if not isinstance(sensitive_topics, list):
         sensitive_topics = []
@@ -169,7 +171,7 @@ def _parse_profile(item: dict[str, object], seed: AgentSeed) -> AgentProfile:
         entity_type=entity_type,
         origin=seed.origin,
         derived_from=seed.derived_from,
-        skeleton={},
+        skeleton=_build_skeleton(seed),
         ideology=float(item.get("ideology", 0.5)),  # type: ignore[arg-type]
         topics=[str(t) for t in topics],
         sensitive_topics=[str(t) for t in sensitive_topics],
@@ -178,3 +180,31 @@ def _parse_profile(item: dict[str, object], seed: AgentSeed) -> AgentProfile:
         background=str(item.get("background", "")),
         behavior_tendency=behavior_tendency,
     )
+
+
+def _build_skeleton(seed: AgentSeed) -> dict[str, object]:
+    entity = seed.entity
+    skeleton: dict[str, object] = {
+        "origin": seed.origin.value,
+        "layer": entity.type if entity else "derived",
+        "entity_type": entity.type if entity else "citizen",
+        "name": entity.name if entity else f"시민_{seed.agent_id}",
+    }
+    if entity:
+        skeleton["source_entity_id"] = entity.id
+        if entity.attributes:
+            skeleton["attributes"] = dict(entity.attributes)
+    if seed.derived_from:
+        skeleton["derived_from"] = seed.derived_from
+    return skeleton
+
+
+def _fallback_topics(seed: AgentSeed) -> list[str]:
+    if seed.entity:
+        topics = [seed.entity.type]
+        if seed.entity.name:
+            topics.append(seed.entity.name)
+        return topics[:2]
+    if seed.derived_from:
+        return [seed.derived_from]
+    return ["general"]
