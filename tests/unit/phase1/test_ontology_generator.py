@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from typing import Protocol, cast
 
 import pytest
 
@@ -69,6 +70,10 @@ VALID_ONTOLOGY_RESPONSE = json.dumps(
 )
 
 
+class _LLMWithCalls(Phase1LLMClient, Protocol):
+    calls: list[tuple[str, str, str]]
+
+
 @pytest.mark.asyncio
 async def test_generate_returns_ontology(fake_llm: Callable[..., Phase1LLMClient]) -> None:
     llm = fake_llm(VALID_ONTOLOGY_RESPONSE)
@@ -81,10 +86,10 @@ async def test_generate_returns_ontology(fake_llm: Callable[..., Phase1LLMClient
 
 @pytest.mark.asyncio
 async def test_generate_uses_correct_model(fake_llm: Callable[..., Phase1LLMClient]) -> None:
-    client = fake_llm(VALID_ONTOLOGY_RESPONSE)
+    client = cast(_LLMWithCalls, fake_llm(VALID_ONTOLOGY_RESPONSE))
     gen = OntologyGenerator(llm=client, model="custom-model")
     await gen.generate("doc", "req")
-    assert client.calls[0][2] == "custom-model"  # type: ignore[union-attr]
+    assert client.calls[0][2] == "custom-model"
 
 
 @pytest.mark.asyncio

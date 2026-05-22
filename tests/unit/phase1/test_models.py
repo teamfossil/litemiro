@@ -37,7 +37,7 @@ class TestBehaviorTendency:
     def test_frozen(self) -> None:
         bt = BehaviorTendency()
         with pytest.raises(ValidationError):
-            bt.post_rate = 0.9  # type: ignore[misc]
+            bt.post_rate = 0.9
 
 
 class TestAgentProfile:
@@ -140,7 +140,7 @@ class TestMemoryConfig:
     def test_frozen(self) -> None:
         mc = MemoryConfig()
         with pytest.raises(ValidationError):
-            mc.episodic_max = 20  # type: ignore[misc]
+            mc.episodic_max = 20
 
     def test_rejects_invalid_rates(self) -> None:
         with pytest.raises(ValidationError):
@@ -149,6 +149,6 @@ class TestMemoryConfig:
 
 class TestPreset:
     def test_enum_values(self) -> None:
-        assert Preset.QUICK == "quick"
-        assert Preset.STANDARD == "standard"
-        assert Preset.FULL == "full"
+        assert Preset.QUICK.value == "quick"
+        assert Preset.STANDARD.value == "standard"
+        assert Preset.FULL.value == "full"

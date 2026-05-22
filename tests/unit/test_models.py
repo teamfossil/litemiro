@@ -67,7 +67,7 @@ class TestActionPayloadConsistency:
     def test_action_is_frozen(self) -> None:
         a = Action(type=ActionType.DO_NOTHING)
         with pytest.raises(ValidationError):
-            a.type = ActionType.LIKE_POST  # type: ignore[misc]
+            a.type = ActionType.LIKE_POST
 
     def test_unknown_action_type_rejected(self) -> None:
         with pytest.raises(ValidationError):
@@ -172,7 +172,7 @@ def test_action_context_construction() -> None:
 def test_context_summary_frozen() -> None:
     cs = ContextSummary(feed_size=0, follower_count=0, following_count=0)
     with pytest.raises(ValidationError):
-        cs.feed_size = 1  # type: ignore[misc]
+        cs.feed_size = 1
 
 
 def test_llm_meta_defaults_fallback_false() -> None:
