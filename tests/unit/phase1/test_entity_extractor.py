@@ -7,8 +7,8 @@ from collections.abc import Callable
 
 import pytest
 
-from litemiro.interfaces import LLMClient
 from litemiro.phase1.entity_extractor import EntityExtractor
+from litemiro.phase1.llm import Phase1LLMClient
 from litemiro.phase1.models import Ontology, TextChunk
 
 VALID_EXTRACTION_RESPONSE = json.dumps(
@@ -37,7 +37,7 @@ VALID_EXTRACTION_RESPONSE = json.dumps(
 
 @pytest.mark.asyncio
 async def test_extract_single_batch(
-    fake_llm: Callable[..., LLMClient],
+    fake_llm: Callable[..., Phase1LLMClient],
     sample_ontology: Ontology,
     sample_chunks: list[TextChunk],
 ) -> None:
@@ -50,7 +50,7 @@ async def test_extract_single_batch(
 
 @pytest.mark.asyncio
 async def test_extract_merges_batches(
-    fake_llm: Callable[..., LLMClient],
+    fake_llm: Callable[..., Phase1LLMClient],
     sample_ontology: Ontology,
     sample_chunks: list[TextChunk],
 ) -> None:
@@ -77,7 +77,7 @@ async def test_extract_merges_batches(
 
 @pytest.mark.asyncio
 async def test_extract_empty_batches(
-    fake_llm: Callable[..., LLMClient],
+    fake_llm: Callable[..., Phase1LLMClient],
     sample_ontology: Ontology,
 ) -> None:
     llm = fake_llm()

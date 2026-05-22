@@ -16,7 +16,7 @@ from litemiro.phase1.pipeline import OntologyPipeline, PipelineConfig
 log = structlog.get_logger(__name__)
 
 
-class LiteLLMClient:
+class Phase1LiteLLMClient:
     async def complete(self, *, system: str, user: str, model: str) -> str:
         import litellm  # noqa: PLC0415
 
@@ -27,7 +27,7 @@ class LiteLLMClient:
                 {"role": "user", "content": user},
             ],
         )
-        return response.choices[0].message.content or ""  # type: ignore[no-any-return]
+        return str(response.choices[0].message.content or "")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -67,7 +67,7 @@ def main(argv: list[str] | None = None) -> int:
         model=args.model,
     )
 
-    llm = LiteLLMClient()
+    llm = Phase1LiteLLMClient()
     t_start = time.monotonic()
 
     try:

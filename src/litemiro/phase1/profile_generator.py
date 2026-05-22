@@ -3,11 +3,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from typing import cast
 
 from json_repair import repair_json
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from litemiro.interfaces import LLMClient
+from litemiro.phase1.llm import Phase1LLMClient, response_text
 from litemiro.phase1.models import AgentProfile, AgentSeed, BehaviorTendency
 
 logger = logging.getLogger(__name__)
@@ -30,7 +31,7 @@ _ENTITY_TYPE_DEFAULTS: dict[str, dict[str, object]] = {
 class ProfileGenerator:
     def __init__(
         self,
-        llm: LLMClient,
+        llm: Phase1LLMClient,
         model: str = "openrouter/qwen/qwen-plus",
         max_concurrency: int = 5,
     ) -> None:
@@ -85,15 +86,16 @@ class ProfileGenerator:
             seed_map = {s.agent_id: s for s in batch}
             result: list[AgentProfile] = []
             for item in profiles:
-                agent_id = item.get("agent_id")
-                seed = seed_map.get(agent_id) if agent_id else None
-                if seed is None:
+                agent_id_raw = item.get("agent_id")
+                agent_id = agent_id_raw if isinstance(agent_id_raw, str) else None
+                profile_seed = seed_map.get(agent_id) if agent_id else None
+                if profile_seed is None:
                     continue
                 try:
-                    result.append(_parse_profile(item, seed))
+                    result.append(_parse_profile(item, profile_seed))
                 except Exception:
                     logger.warning("Profile parse failed for %s, using fallback", agent_id)
-                    result.append(self._build_fallback_profile(seed))
+                    result.append(self._build_fallback_profile(profile_seed))
 
             # fill any seeds that didn't get a profile
             returned_ids = {p.agent_id for p in result}
@@ -109,17 +111,18 @@ class ProfileGenerator:
         reraise=True,
     )
     async def _call_with_retry(self, user_prompt: str) -> list[dict[str, object]]:
-        raw = await self._llm.complete(
+        response = await self._llm.complete(
             system=_SYSTEM_PROMPT,
             user=user_prompt,
             model=self._model,
         )
+        raw = response_text(response)
         repaired = repair_json(raw)
         data = json.loads(repaired)
         if isinstance(data, list):
-            return data  # type: ignore[return-value]
+            return cast(list[dict[str, object]], data)
         if isinstance(data, dict):
-            return [data]  # type: ignore[return-value]
+            return [cast(dict[str, object], data)]
         return []
 
     def _build_fallback_profile(self, seed: AgentSeed) -> AgentProfile:
@@ -148,10 +151,10 @@ def _parse_profile(item: dict[str, object], seed: AgentSeed) -> AgentProfile:
     if not isinstance(bt_raw, dict):
         bt_raw = {}
     behavior_tendency = BehaviorTendency(
-        post_rate=float(bt_raw.get("post_rate", 0.5)),  # type: ignore[arg-type]
-        reply_rate=float(bt_raw.get("reply_rate", 0.3)),  # type: ignore[arg-type]
-        repost_rate=float(bt_raw.get("repost_rate", 0.2)),  # type: ignore[arg-type]
-        controversy_affinity=float(bt_raw.get("controversy_affinity", 0.5)),  # type: ignore[arg-type]
+        post_rate=_float_value(bt_raw.get("post_rate"), 0.5),
+        reply_rate=_float_value(bt_raw.get("reply_rate"), 0.3),
+        repost_rate=_float_value(bt_raw.get("repost_rate"), 0.2),
+        controversy_affinity=_float_value(bt_raw.get("controversy_affinity"), 0.5),
     )
     entity_name = seed.entity.name if seed.entity else f"시민_{seed.agent_id}"
     entity_type = seed.entity.type if seed.entity else "citizen"
@@ -172,7 +175,7 @@ def _parse_profile(item: dict[str, object], seed: AgentSeed) -> AgentProfile:
         origin=seed.origin,
         derived_from=seed.derived_from,
         skeleton=_build_skeleton(seed),
-        ideology=float(item.get("ideology", 0.5)),  # type: ignore[arg-type]
+        ideology=_float_value(item.get("ideology"), 0.5),
         topics=[str(t) for t in topics],
         sensitive_topics=[str(t) for t in sensitive_topics],
         personality=str(item.get("personality", "")),
@@ -208,3 +211,12 @@ def _fallback_topics(seed: AgentSeed) -> list[str]:
     if seed.derived_from:
         return [seed.derived_from]
     return ["general"]
+
+
+def _float_value(value: object, default: float) -> float:
+    if not isinstance(value, int | float | str):
+        return default
+    try:
+        return float(value)
+    except ValueError:
+        return default

@@ -6,7 +6,7 @@ import logging
 from json_repair import repair_json
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from litemiro.interfaces import LLMClient
+from litemiro.phase1.llm import Phase1LLMClient, response_text
 from litemiro.phase1.models import EdgeTypeDef, EntityTypeDef, Ontology
 
 logger = logging.getLogger(__name__)
@@ -46,7 +46,7 @@ Rules:
 class OntologyGenerator:
     def __init__(
         self,
-        llm: LLMClient,
+        llm: Phase1LLMClient,
         model: str = "openrouter/qwen/qwen-plus",
     ) -> None:
         self._llm = llm
@@ -61,11 +61,12 @@ class OntologyGenerator:
         user_prompt = (
             f"Simulation requirement:\n{simulation_requirement}\n\nDocument:\n{document_text}"
         )
-        raw = await self._llm.complete(
+        response = await self._llm.complete(
             system=_SYSTEM_PROMPT,
             user=user_prompt,
             model=self._model,
         )
+        raw = response_text(response)
         repaired = repair_json(raw)
         data = json.loads(repaired)
         entity_types = [EntityTypeDef(**et) for et in data.get("entity_types", [])]

@@ -7,7 +7,7 @@ from collections.abc import Callable
 
 import pytest
 
-from litemiro.interfaces import LLMClient
+from litemiro.phase1.llm import Phase1LLMClient
 from litemiro.phase1.models import AgentOrigin, AgentSeed, Entity
 from litemiro.phase1.profile_generator import ProfileGenerator
 
@@ -49,7 +49,7 @@ VALID_PROFILE_RESPONSE = json.dumps(
 
 @pytest.mark.asyncio
 async def test_generate_profiles(
-    fake_llm: Callable[..., LLMClient],
+    fake_llm: Callable[..., Phase1LLMClient],
     sample_agent_seeds: list[AgentSeed],
 ) -> None:
     llm = fake_llm(VALID_PROFILE_RESPONSE)
@@ -64,7 +64,7 @@ async def test_generate_profiles(
 
 
 @pytest.mark.asyncio
-async def test_generate_empty_seeds(fake_llm: Callable[..., LLMClient]) -> None:
+async def test_generate_empty_seeds(fake_llm: Callable[..., Phase1LLMClient]) -> None:
     llm = fake_llm()
     gen = ProfileGenerator(llm=llm, model="test")
     profiles = await gen.generate([], "req")
@@ -72,7 +72,7 @@ async def test_generate_empty_seeds(fake_llm: Callable[..., LLMClient]) -> None:
 
 
 @pytest.mark.asyncio
-async def test_fallback_on_bad_response(fake_llm: Callable[..., LLMClient]) -> None:
+async def test_fallback_on_bad_response(fake_llm: Callable[..., Phase1LLMClient]) -> None:
     seeds = [
         AgentSeed(
             agent_id="agent_0001",
@@ -92,7 +92,7 @@ async def test_fallback_on_bad_response(fake_llm: Callable[..., LLMClient]) -> N
 
 @pytest.mark.asyncio
 async def test_empty_profile_topics_fall_back(
-    fake_llm: Callable[..., LLMClient],
+    fake_llm: Callable[..., Phase1LLMClient],
     sample_agent_seeds: list[AgentSeed],
 ) -> None:
     llm = fake_llm(

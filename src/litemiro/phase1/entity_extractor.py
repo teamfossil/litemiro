@@ -7,7 +7,7 @@ import logging
 from json_repair import repair_json
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from litemiro.interfaces import LLMClient
+from litemiro.phase1.llm import Phase1LLMClient, response_text
 from litemiro.phase1.models import Edge, Entity, ExtractionResult, Ontology, TextChunk
 
 logger = logging.getLogger(__name__)
@@ -50,7 +50,7 @@ Rules:
 class EntityExtractor:
     def __init__(
         self,
-        llm: LLMClient,
+        llm: Phase1LLMClient,
         model: str = "openrouter/qwen/qwen-plus",
         max_concurrency: int = 5,
     ) -> None:
@@ -93,12 +93,13 @@ class EntityExtractor:
         user_prompt = f"Ontology:\n{ontology_json}\n\nText chunks {chunk_indices}:\n{chunk_text}"
 
         async with self._semaphore:
-            raw = await self._llm.complete(
+            response = await self._llm.complete(
                 system=_SYSTEM_PROMPT,
                 user=user_prompt,
                 model=self._model,
             )
 
+        raw = response_text(response)
         repaired = repair_json(raw)
         data = json.loads(repaired)
         entities = [Entity(**e) for e in data.get("entities", [])]

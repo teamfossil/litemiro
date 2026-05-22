@@ -6,7 +6,7 @@ from collections.abc import Callable
 
 import pytest
 
-from litemiro.interfaces import LLMClient
+from litemiro.phase1.llm import Phase1LLMClient
 from litemiro.phase1.models import (
     AgentOrigin,
     AgentProfile,
@@ -35,8 +35,8 @@ class FakeLLMClient:
 
 
 @pytest.fixture
-def fake_llm() -> Callable[..., LLMClient]:
-    def _make(*responses: str) -> LLMClient:
+def fake_llm() -> Callable[..., Phase1LLMClient]:
+    def _make(*responses: str) -> Phase1LLMClient:
         return FakeLLMClient(*responses)
 
     return _make

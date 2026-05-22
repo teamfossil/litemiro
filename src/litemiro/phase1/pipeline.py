@@ -9,8 +9,8 @@ from pathlib import Path
 import structlog
 from pydantic import BaseModel, Field
 
-from litemiro.interfaces import LLMClient
 from litemiro.phase1.entity_extractor import EntityExtractor
+from litemiro.phase1.llm import Phase1LLMClient
 from litemiro.phase1.models import (
     PRESET_AGENT_COUNTS,
     AgentProfile,
@@ -39,7 +39,7 @@ class PipelineConfig(BaseModel):
 
 
 class OntologyPipeline:
-    def __init__(self, config: PipelineConfig, llm: LLMClient) -> None:
+    def __init__(self, config: PipelineConfig, llm: Phase1LLMClient) -> None:
         self._config = config
         self._llm = llm
 

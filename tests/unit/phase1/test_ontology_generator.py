@@ -7,7 +7,7 @@ from collections.abc import Callable
 
 import pytest
 
-from litemiro.interfaces import LLMClient
+from litemiro.phase1.llm import Phase1LLMClient
 from litemiro.phase1.ontology_generator import OntologyGenerator
 
 VALID_ONTOLOGY_RESPONSE = json.dumps(
@@ -70,7 +70,7 @@ VALID_ONTOLOGY_RESPONSE = json.dumps(
 
 
 @pytest.mark.asyncio
-async def test_generate_returns_ontology(fake_llm: Callable[..., LLMClient]) -> None:
+async def test_generate_returns_ontology(fake_llm: Callable[..., Phase1LLMClient]) -> None:
     llm = fake_llm(VALID_ONTOLOGY_RESPONSE)
     gen = OntologyGenerator(llm=llm, model="test-model")
     ontology = await gen.generate("테스트 문서 텍스트", "AI 규제 시뮬레이션")
@@ -80,7 +80,7 @@ async def test_generate_returns_ontology(fake_llm: Callable[..., LLMClient]) -> 
 
 
 @pytest.mark.asyncio
-async def test_generate_uses_correct_model(fake_llm: Callable[..., LLMClient]) -> None:
+async def test_generate_uses_correct_model(fake_llm: Callable[..., Phase1LLMClient]) -> None:
     client = fake_llm(VALID_ONTOLOGY_RESPONSE)
     gen = OntologyGenerator(llm=client, model="custom-model")
     await gen.generate("doc", "req")
@@ -89,7 +89,7 @@ async def test_generate_uses_correct_model(fake_llm: Callable[..., LLMClient]) -
 
 @pytest.mark.asyncio
 async def test_generate_handles_json_with_markdown_fence(
-    fake_llm: Callable[..., LLMClient],
+    fake_llm: Callable[..., Phase1LLMClient],
 ) -> None:
     wrapped = f"```json\n{VALID_ONTOLOGY_RESPONSE}\n```"
     llm = fake_llm(wrapped)
