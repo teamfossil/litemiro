@@ -8,6 +8,7 @@ from litemiro.phase1.models import (
     AgentOrigin,
     AgentProfile,
     BehaviorTendency,
+    KeyRelationship,
     MemoryStore,
     Ontology,
     OntologyA,
@@ -78,6 +79,27 @@ class TestOntologyValidator:
         agents = {"a1": _make_profile("a1", following=["nonexistent"])}
         result = OntologyValidator().validate(_make_a(agents), _make_b(["a1"]))
         assert any("nonexistent" in e or "following" in e.lower() for e in result.errors)
+
+    def test_invalid_key_relationship_reference(self) -> None:
+        agents = {"a1": _make_profile("a1")}
+        b = OntologyB(
+            stores={
+                "a1": MemoryStore(
+                    agent_id="a1",
+                    semantic=[
+                        SemanticMemory(
+                            id="seed_a1_1",
+                            summary="test",
+                            key_relationships=[
+                                KeyRelationship(agent_id="nonexistent", nature="neutral")
+                            ],
+                        )
+                    ],
+                )
+            }
+        )
+        result = OntologyValidator().validate(_make_a(agents), b)
+        assert any("key_relationships" in e and "nonexistent" in e for e in result.errors)
 
     def test_ideology_distribution_warning(self) -> None:
         agents = {

@@ -2,11 +2,9 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
-from difflib import SequenceMatcher
 
 from litemiro.phase1.models import Edge, Entity, ExtractionResult
 
-_SIMILARITY_THRESHOLD = 0.8
 _CONTEXT_MAX_EDGES = 10
 
 
@@ -110,20 +108,6 @@ class LocalGraph:
                 del self.entities[duplicate_id]
                 id_remap[duplicate_id] = canonical_id
                 merge_count += 1
-
-        # Rule 2: similar name + same type (similarity > 0.8) -> flag as candidate
-        # (no auto-merge; just log)
-        entity_list = list(self.entities.values())
-        for i, a in enumerate(entity_list):
-            for b in entity_list[i + 1 :]:
-                if a.type != b.type:
-                    continue
-                ratio = SequenceMatcher(None, a.name, b.name).ratio()
-                if ratio > _SIMILARITY_THRESHOLD:
-                    # Rule 2: flag only, do not merge
-                    pass  # caller may inspect via a separate query
-
-        # Rule 3: same name + different type -> keep separate (no action needed)
 
         if id_remap:
             self._rebuild_after_merge(id_remap)

@@ -60,11 +60,14 @@ class EntityExtractor:
 
     async def extract(self, chunks: list[list[TextChunk]], ontology: Ontology) -> ExtractionResult:
         tasks = [self._extract_batch(batch, ontology) for batch in chunks]
-        results = await asyncio.gather(*tasks)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
 
         merged_entities: dict[str, Entity] = {}
         merged_relationships: list[Edge] = []
         for result in results:
+            if isinstance(result, BaseException):
+                logger.warning("entity extraction batch failed; continuing", exc_info=result)
+                continue
             for entity in result.entities:
                 merged_entities[entity.id] = entity
             merged_relationships.extend(result.relationships)

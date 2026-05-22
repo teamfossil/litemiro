@@ -28,6 +28,7 @@ class OntologyValidator:
         errors.extend(self._check_required_fields(a))
         errors.extend(self._check_value_ranges(a))
         errors.extend(self._check_referential_integrity(a))
+        errors.extend(self._check_memory_references(a, b))
         warnings.extend(self._check_ideology_distribution(a))
 
         result = ValidationResult(valid=len(errors) == 0, errors=errors, warnings=warnings)
@@ -100,6 +101,23 @@ class OntologyValidator:
                     f"agent '{agent_id}' initial_following references unknown agent_ids"
                     f" (will be removed): {invalid}"
                 )
+        return errors
+
+    def _check_memory_references(self, a: OntologyA, b: OntologyB) -> list[str]:
+        errors: list[str] = []
+        valid_ids = set(a.agents)
+        for store_id, store in b.stores.items():
+            for memory in store.semantic:
+                invalid = [
+                    rel.agent_id
+                    for rel in memory.key_relationships
+                    if rel.agent_id not in valid_ids
+                ]
+                if invalid:
+                    errors.append(
+                        f"memory '{memory.id}' in store '{store_id}' key_relationships "
+                        f"reference unknown agent_ids: {invalid}"
+                    )
         return errors
 
     def _check_ideology_distribution(self, a: OntologyA) -> list[str]:

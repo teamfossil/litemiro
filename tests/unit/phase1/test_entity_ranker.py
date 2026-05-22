@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from litemiro.phase1.entity_ranker import EntityRanker
 from litemiro.phase1.local_graph import LocalGraph
-from litemiro.phase1.models import ExtractionResult
+from litemiro.phase1.models import Entity, ExtractionResult
 
 
 class TestEntityRanker:
@@ -35,3 +35,20 @@ class TestEntityRanker:
         ranker = EntityRanker(graph=graph, simulation_requirement="test")
         ranked = ranker.rank()
         assert ranked == []
+
+    def test_korean_relevance_without_spaces(self) -> None:
+        graph = LocalGraph.build(
+            ExtractionResult(
+                entities=[
+                    Entity(
+                        id="policy",
+                        type="Policy",
+                        name="AI 규제",
+                        summary="AI규제정책 핵심 쟁점",
+                        source_chunks=[0],
+                    )
+                ]
+            )
+        )
+        ranker = EntityRanker(graph=graph, simulation_requirement="규제 정책")
+        assert ranker.calculate_importance(graph.entities["policy"]) > 0.0

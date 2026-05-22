@@ -1,13 +1,21 @@
 from __future__ import annotations
 
+import re
+from collections.abc import Sequence
+
 from litemiro.phase1.local_graph import LocalGraph
 from litemiro.phase1.models import Edge, Entity
+
+_TOKEN_RE = re.compile(r"[0-9a-z_]+|[가-힣]+")
 
 
 class EntityRanker:
     def __init__(self, graph: LocalGraph, simulation_requirement: str) -> None:
         self._graph = graph
         self._requirement = simulation_requirement
+        entities = list(self._graph.entities.values())
+        self._degrees = [len(self._graph.adjacency.get(e.id, [])) for e in entities]
+        self._mentions = [len(e.source_chunks) for e in entities]
 
     def rank(self) -> list[tuple[Entity, float]]:
         entities = list(self._graph.entities.values())
@@ -18,16 +26,12 @@ class EntityRanker:
         return scores
 
     def calculate_importance(self, entity: Entity) -> float:
-        entities = list(self._graph.entities.values())
-        degrees = [len(self._graph.adjacency.get(e.id, [])) for e in entities]
-        mentions = [len(e.source_chunks) for e in entities]
-
         degree = len(self._graph.adjacency.get(entity.id, []))
         mention_count = len(entity.source_chunks)
         relevance = _keyword_overlap(entity.summary, self._requirement)
 
-        norm_degree = _normalize(degree, degrees)
-        norm_mention = _normalize(mention_count, mentions)
+        norm_degree = _normalize(degree, self._degrees)
+        norm_mention = _normalize(mention_count, self._mentions)
 
         return 0.4 * norm_degree + 0.3 * norm_mention + 0.3 * relevance
 
@@ -65,7 +69,7 @@ class EntityRanker:
         return "\n".join(lines)
 
 
-def _normalize(value: float, all_values: list[float]) -> float:
+def _normalize(value: float, all_values: Sequence[float]) -> float:
     min_v = min(all_values, default=0.0)
     max_v = max(all_values, default=0.0)
     if max_v == min_v:
@@ -76,8 +80,21 @@ def _normalize(value: float, all_values: list[float]) -> float:
 def _keyword_overlap(text: str, requirement: str) -> float:
     if not text or not requirement:
         return 0.0
-    text_words = set(text.lower().split())
-    req_words = set(requirement.lower().split())
+    text_words = _tokenize(text)
+    req_words = _tokenize(requirement)
     if not req_words:
         return 0.0
     return len(text_words & req_words) / len(req_words)
+
+
+def _tokenize(text: str) -> set[str]:
+    raw_tokens = _TOKEN_RE.findall(text.lower())
+    tokens = set(raw_tokens)
+    for token in raw_tokens:
+        if _is_korean_token(token):
+            tokens.update(token[i : i + 2] for i in range(len(token) - 1))
+    return tokens
+
+
+def _is_korean_token(token: str) -> bool:
+    return all("가" <= ch <= "힣" for ch in token)

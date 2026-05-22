@@ -85,3 +85,20 @@ async def test_extract_empty_batches(
     result = await extractor.extract([], sample_ontology)
     assert len(result.entities) == 0
     assert len(result.relationships) == 0
+
+
+@pytest.mark.asyncio
+async def test_extract_continues_when_one_batch_fails(
+    sample_ontology: Ontology,
+    sample_chunks: list[TextChunk],
+) -> None:
+    class _PartialFailLLM:
+        async def complete(self, *, system: str, user: str, model: str) -> str:
+            if "[chunk 0]" in user:
+                raise RuntimeError("batch failed")
+            return VALID_EXTRACTION_RESPONSE
+
+    extractor = EntityExtractor(llm=_PartialFailLLM(), model="test")
+    result = await extractor.extract([sample_chunks[:1], sample_chunks[1:]], sample_ontology)
+    assert len(result.entities) == 1
+    assert result.entities[0].id == "journalist_kim"
