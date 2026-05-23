@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Protocol, runtime_checkable
 
-from litemiro.models import Action, ActionContext, Agent, Post, RoundEvent
+from litemiro.models import ActionContext, ActionResult, Agent, LLMResponse, Post, RoundEvent
 
 
 @runtime_checkable
@@ -20,7 +20,7 @@ class LLMClient(Protocol):
     deterministic fake used in tests (``tests/conftest.py``).
     """
 
-    async def complete(self, *, system: str, user: str, model: str) -> str: ...
+    async def complete(self, *, system: str, user: str, model: str) -> LLMResponse: ...
 
 
 @runtime_checkable
@@ -52,10 +52,38 @@ class FeedEngineLike(Protocol):
 
 
 @runtime_checkable
+class EmbedderLike(Protocol):
+    """Topic embedding contract used by ``FeedEngine``.
+
+    Notion §3.2 says interest-based candidacy uses
+    "sentence-transformers 임베딩 유사도". The Protocol stays
+    framework-agnostic so the unit suite can drive ``FeedEngine`` with
+    a deterministic fake; the real ``sentence-transformers`` adapter is
+    wired in at integration time (W3).
+    """
+
+    def embed(self, text: str) -> tuple[float, ...]: ...
+
+
+@runtime_checkable
+class TopicExtractorLike(Protocol):
+    """Maps free-form post content to a tuple of topic labels.
+
+    Used at CREATE_POST time so a freshly authored ``Post`` carries the
+    same topic vocabulary that ``FeedEngine`` and ``Agent.interests``
+    speak. Implementations are framework-agnostic; the unit suite drives
+    a deterministic fake while the W3 integration uses the same
+    ``EmbedderLike`` adapter as ``FeedEngine``.
+    """
+
+    def extract(self, content: str) -> tuple[str, ...]: ...
+
+
+@runtime_checkable
 class ActionSelectorLike(Protocol):
     """Owned by **B**."""
 
-    async def select_action(self, agent_id: str, context: ActionContext) -> Action: ...
+    async def select_action(self, agent_id: str, context: ActionContext) -> ActionResult: ...
 
 
 @runtime_checkable
@@ -79,11 +107,23 @@ class EventLoggerLike(Protocol):
     async def aclose(self) -> None: ...
 
 
+@runtime_checkable
+class TokenBudgetManagerLike(Protocol):
+    """Owned by **C** — A reads / consumes via this Protocol."""
+
+    def has_budget(self, *, estimated_tokens: int) -> bool: ...
+    def consume(self, *, tokens_used: int) -> None: ...
+    def remaining(self) -> int: ...
+
+
 __all__ = [
     "ActionSelectorLike",
+    "EmbedderLike",
     "EventLoggerLike",
     "FeedEngineLike",
     "LLMClient",
     "SocialGraphLike",
     "StateStoreLike",
+    "TokenBudgetManagerLike",
+    "TopicExtractorLike",
 ]

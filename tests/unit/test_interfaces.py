@@ -17,12 +17,17 @@ from litemiro.interfaces import (
     LLMClient,
     SocialGraphLike,
     StateStoreLike,
+    TokenBudgetManagerLike,
+    TopicExtractorLike,
 )
 from litemiro.models import (
     Action,
     ActionContext,
+    ActionResult,
     ActionType,
     Agent,
+    LLMMeta,
+    LLMResponse,
     Post,
     RoundEvent,
 )
@@ -57,8 +62,11 @@ class _StubFeed:
 
 
 class _StubSelector:
-    async def select_action(self, agent_id: str, context: ActionContext) -> Action:
-        return Action(type=ActionType.DO_NOTHING)
+    async def select_action(self, agent_id: str, context: ActionContext) -> ActionResult:
+        return ActionResult(
+            action=Action(type=ActionType.DO_NOTHING),
+            llm_meta=LLMMeta(model="", tokens_used=0, latency_ms=0.0),
+        )
 
 
 class _StubStore:
@@ -87,8 +95,23 @@ class _StubLogger:
 
 
 class _StubLLM:
-    async def complete(self, *, system: str, user: str, model: str) -> str:
-        return ""
+    async def complete(self, *, system: str, user: str, model: str) -> LLMResponse:
+        return LLMResponse(content="")
+
+
+class _StubTopicExtractor:
+    def extract(self, content: str) -> tuple[str, ...]:
+        return ()
+
+
+class _StubTokenBudget:
+    def has_budget(self, *, estimated_tokens: int) -> bool:
+        return True
+
+    def consume(self, *, tokens_used: int) -> None: ...
+
+    def remaining(self) -> int:
+        return 0
 
 
 def test_social_graph_protocol() -> None:
@@ -113,3 +136,11 @@ def test_event_logger_protocol() -> None:
 
 def test_llm_client_protocol() -> None:
     assert isinstance(_StubLLM(), LLMClient)
+
+
+def test_topic_extractor_protocol() -> None:
+    assert isinstance(_StubTopicExtractor(), TopicExtractorLike)
+
+
+def test_token_budget_protocol() -> None:
+    assert isinstance(_StubTokenBudget(), TokenBudgetManagerLike)
