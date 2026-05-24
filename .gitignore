@@ -89,3 +89,8 @@ node_modules/
 .vite/
 .vercel/
 *.tsbuildinfo
+
+# Frontend source overrides — Python `lib/` rule above globally excludes
+# any `lib/` dir. Re-include the frontend lib directory.
+!frontend/src/lib/
+!frontend/src/lib/**
