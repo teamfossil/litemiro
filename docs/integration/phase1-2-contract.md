@@ -129,7 +129,7 @@ if len(semantic) == 0:
 else:
     sorted_mem = sorted(
         semantic,
-        key=lambda m: (-m.simulation_count, -m.last_relevant_sim),
+        key=lambda m: (-m.simulation_count, -m.last_relevant_sim, m.id),
     )
     top_n = sorted_mem[:N]
     memory_summary = "; ".join(m.summary for m in top_n)
@@ -137,7 +137,8 @@ else:
 
 - **N=3 근거**: `MemoryConfig.retrieval_max` 기본값과 일치. post-MVP에서 동적화.
 - **정렬 기준**: `simulation_count desc` (자주 회상된 기억 우선) →
-  동률 시 `last_relevant_sim desc` (최근에 회상된 기억 우선).
+  동률 시 `last_relevant_sim desc` (최근에 회상된 기억 우선) →
+  그래도 동률이면 `id asc` (결정성 보장, §6.4).
 - **결합자 "; "**: 토큰 효율과 가독성 트레이드오프. Phase 3 분석에서 의미
   단위 분리 필요시 조정.
 - **빈 리스트는 `None`**: `Agent.memory_summary: str | None` 계약과 일치.

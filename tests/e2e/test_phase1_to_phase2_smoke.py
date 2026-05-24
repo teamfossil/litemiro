@@ -34,10 +34,10 @@ from litemiro.social.graph import SocialGraph
 
 
 def _memory_summary_top_n(semantic: list[SemanticMemory], *, n: int = 3) -> str | None:
-    """Contract §4.2: top-N concat by (simulation_count desc, last_relevant_sim desc)."""
+    """Contract §4.2: top-N concat by (simulation_count desc, last_relevant_sim desc, id asc)."""
     if not semantic:
         return None
-    ordered = sorted(semantic, key=lambda m: (-m.simulation_count, -m.last_relevant_sim))
+    ordered = sorted(semantic, key=lambda m: (-m.simulation_count, -m.last_relevant_sim, m.id))
     return "; ".join(m.summary for m in ordered[:n])
 
 
@@ -186,6 +186,17 @@ def test_build_agents_maps_topics_to_interests(
     assert agents["agent_003"].interests == ("문화",)
 
 
+def test_persona_traits_preserve_unused_fields(
+    ontology_a: OntologyA, ontology_b: OntologyB
+) -> None:
+    """§4.1: model_dump 전체 보존 — 후속 단계가 참조할 미사용 필드 유지."""
+    agents = {a.agent_id: a for a in _build_agents(ontology_a, ontology_b)}
+    traits = agents["agent_001"].persona_traits
+
+    assert traits["behavior_tendency"]["reply_rate"] == pytest.approx(0.3)
+    assert traits["entity_type"] == "Journalist"
+
+
 def test_memory_summary_orders_by_sim_count_then_recency(
     ontology_a: OntologyA, ontology_b: OntologyB
 ) -> None:
@@ -208,6 +219,15 @@ def test_memory_summary_handles_under_n_entries(
 ) -> None:
     agents = {a.agent_id: a for a in _build_agents(ontology_a, ontology_b)}
     assert agents["agent_002"].memory_summary == "유일한 기억"
+
+
+def test_memory_summary_breaks_full_ties_by_id() -> None:
+    """두 정렬 키가 모두 동률이면 id 사전순으로 결정 (재현성, §6.4)."""
+    tied = [
+        _sem("m_b", "b", sim_count=5, last_sim=3),
+        _sem("m_a", "a", sim_count=5, last_sim=3),
+    ]
+    assert _memory_summary_top_n(tied) == "a; b"
 
 
 def test_social_graph_drops_self_follow_and_unknown(ontology_a: OntologyA) -> None:
