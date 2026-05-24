@@ -34,6 +34,7 @@ dependencies = [
   "litellm>=1.40,<2",
   "openai>=1.30,<2",
   "tomli>=2.0; python_version<'3.11'",
+  "PyPDF2>=3.0,<5",
 ]
 
 [project.optional-dependencies]
@@ -58,6 +59,7 @@ dev = [
 
 [project.scripts]
 litemiro-validate = "litemiro.cli.validate:main"
+litemiro-ontology = "litemiro.cli.ontology:main"
 
 [project.urls]
 Repository = "https://github.com/teamfossil/litemiro"
@@ -129,7 +131,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["PLR2004", "S101", "PT011"]
+"tests/**" = ["PLR2004", "S101", "PT011", "E501"]
 "scripts/**" = ["T201"]
 
 [tool.ruff.lint.isort]
