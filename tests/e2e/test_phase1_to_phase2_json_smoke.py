@@ -3,7 +3,7 @@
 `test_phase1_to_phase2_smoke.py` 는 in-memory 픽스처로 매핑 규칙 자체를 lock-in
 하고, 본 모듈은 실제 Phase 1 산출물 모양 (`tests/data/sample_ontology_*.json`)
 이 JSON → `OntologyA/B` → `Agent`/`SocialGraph`/`StateStore` 까지 통과하는지
-검증한다. PR #12 contract §6 의 sample 경로 그대로.
+검증한다. PR #12 contract Section 6 의 sample 경로 그대로.
 
 Loader (Issue #13) 머지 후에는 helper 호출부를 ``OntologyLoader`` 로 치환한다.
 """

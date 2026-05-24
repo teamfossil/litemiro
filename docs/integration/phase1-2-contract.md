@@ -234,7 +234,7 @@ store = StateStore(
 - `tests/data/sample_ontology_a.json` / `sample_ontology_b.json` — 3-agent
   (Journalist/Academic/Citizen) quick 프리셋, self-follow 와 unknown follow,
   cold-start (빈 semantic), 메모리 top-N tie-breaker 케이스를 모두 포함.
-- Loader 단위 테스트는 본 fixture 를 입력으로 §6 검증 5 항목을 모두 통과해야 한다.
+- Loader 단위 테스트는 본 fixture 를 입력으로 Section 6 검증 5 항목을 모두 통과해야 한다.
 
 ## 7. E2E 스모크 테스트
 
@@ -242,7 +242,7 @@ store = StateStore(
 
 | 파일 | 역할 |
 |---|---|
-| `tests/e2e/test_phase1_to_phase2_smoke.py` | in-memory 픽스처로 §4 매핑 규칙 (top-N tie-breaker, self-follow drop, unused-field 보존 등) 단위 검증 |
+| `tests/e2e/test_phase1_to_phase2_smoke.py` | in-memory 픽스처로 Section 4 매핑 규칙 (top-N tie-breaker, self-follow drop, unused-field 보존 등) 단위 검증 |
 | `tests/e2e/test_phase1_to_phase2_json_smoke.py` | 실제 디스크 JSON (`tests/data/sample_ontology_*.json`) → Pydantic round-trip → 매핑 → `StateStore` 결정성 |
 
 공통 매핑 helper 는 `tests/e2e/_phase1_to_phase2_helpers.py` 에 분리해 둔다.
@@ -262,22 +262,22 @@ store = StateStore(
 ### 8.1 Loader 통합 E2E 시나리오 (Issue #13 머지 직후)
 
 본 PR 의 helper 기반 스모크가 lock-in 한 모든 케이스를 `OntologyLoader` 호출로
-재실행해 회귀 없음을 증명한다. **owner: A** (helper → Loader 치환 + 본 §7
+재실행해 회귀 없음을 증명한다. **owner: A** (helper → Loader 치환 + 본 Section 7
 테스트 두 파일 갱신).
 
 ```
 1. Loader.load(Path("tests/data/sample_ontology_a.json"),
                 Path("tests/data/sample_ontology_b.json"))
    → 검증 통과 + `OntologyA`, `OntologyB` 반환
-2. Loader.build_agents(...)             → §4.1 매핑과 동일 결과
-3. Loader.build_social_graph(...)       → §4.3 매핑과 동일 결과
+2. Loader.build_agents(...)             → Section 4.1 매핑과 동일 결과
+3. Loader.build_social_graph(...)       → Section 4.3 매핑과 동일 결과
 4. StateStore(...) + AgentScheduler 결정성 (round 0/1 2 회 비교)
 5. validate_consistency() warning 카운트 == 0 (sample fixture 기준)
 ```
 
 ### 8.2 `quick` 프리셋 활성률 측정 스니펫
 
-`mean(post_rate)` 가 §3.1 의 `activation_rate` 권장 범위 (0.05~0.7) 안에 들고
+`mean(post_rate)` 가 Section 3.1 의 `activation_rate` 권장 범위 (0.05~0.7) 안에 들고
 quick 프리셋 전체 평균이 합리적인지 (~0.3 전후) 점검한다. **owner: B**, Phase 1
 quick 실행이 처음으로 통과하는 시점에 1 회 실행해 결과를 issue 코멘트로 남긴다.
 
@@ -293,7 +293,7 @@ print(f"n={len(rates)}  mean={mean(rates):.3f}  min={min(rates):.3f}  max={max(r
 
 ### 8.3 페르소나–메모리 모순 hard-error 승격 기준
 
-§6.5 의 warning 을 hard error 로 올리는 조건:
+Section 6.5 의 warning 을 hard error 로 올리는 조건:
 
 1. Phase 1 quick 프리셋 3 회 이상 실행하여 누적 warning 비율이 **5% 미만** 이고,
 2. 발생 사례가 모두 derived agent (`origin=derived`) 또는 빈 `topics` 등 의도적

@@ -1,6 +1,6 @@
 """임시 helper: Phase 1 산출 → Phase 2 입력 변환 (Loader 미구현 동안).
 
-`docs/integration/phase1-2-contract.md` §4 매핑 규칙 그대로. Issue #13
+`docs/integration/phase1-2-contract.md` Section 4 매핑 규칙 그대로. Issue #13
 (`OntologyLoader` 구현) 머지 시 본 모듈은 삭제되고 호출부는 Loader 메서드로 교체된다.
 """
 
@@ -18,7 +18,7 @@ from litemiro.social.graph import SocialGraph
 
 
 def memory_summary_top_n(semantic: list[SemanticMemory], *, n: int = 3) -> str | None:
-    """Contract §4.2: top-N concat by (simulation_count desc, last_relevant_sim desc, id asc)."""
+    """Contract Section 4.2: top-N concat by (simulation_count desc, last_relevant_sim desc, id asc)."""
     if not semantic:
         return None
     ordered = sorted(semantic, key=lambda m: (-m.simulation_count, -m.last_relevant_sim, m.id))
@@ -26,7 +26,7 @@ def memory_summary_top_n(semantic: list[SemanticMemory], *, n: int = 3) -> str |
 
 
 def build_agent(profile: AgentProfile, store: MemoryStore | None) -> Agent:
-    """Contract §4.1."""
+    """Contract Section 4.1."""
     return Agent(
         agent_id=profile.agent_id,
         interests=tuple(profile.topics),
@@ -45,7 +45,7 @@ def build_agents(ontology_a: OntologyA, ontology_b: OntologyB) -> tuple[Agent, .
 
 
 def build_social_graph(ontology_a: OntologyA) -> SocialGraph:
-    """Contract §4.3: self-follow / 미지 agent 사전 필터링."""
+    """Contract Section 4.3: self-follow / 미지 agent 사전 필터링."""
     known = set(ontology_a.agents)
     edges: dict[str, list[str]] = {}
     for aid, profile in ontology_a.agents.items():
