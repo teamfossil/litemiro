@@ -131,16 +131,17 @@ class StateStore:
 
     def _deserialize_from_dict(self, payload: Mapping[str, Any]) -> None:
         # Atomic: validate every part into locals first, then swap. Any
-        # failure (seed mismatch, malformed payload, validation error)
-        # leaves the store unchanged.
-        recorded = payload.get("global_seed")
-        if recorded is not None and recorded != self._global_seed:
+        # failure (missing key, seed mismatch, validation error, social
+        # factory raise) leaves the store unchanged.
+        missing = {"global_seed", "agents", "posts"} - payload.keys()
+        if missing:
+            raise ValueError(f"malformed checkpoint: missing required keys: {sorted(missing)}")
+        recorded = payload["global_seed"]
+        if recorded != self._global_seed:
             raise ValueError(
                 f"global_seed mismatch on restore: "
                 f"checkpoint={recorded!r}, store={self._global_seed!r}"
             )
-        if "agents" not in payload or "posts" not in payload:
-            raise ValueError("malformed checkpoint: 'agents' and 'posts' keys are required")
         # JSON has no tuple, so `interests` / `topics` arrive as lists
         # — strict mode would reject the coercion.
         new_agents = {

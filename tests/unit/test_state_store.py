@@ -4,6 +4,7 @@ from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from litemiro.core import StateStore
 from litemiro.interfaces import SocialGraphLike, StateStoreLike
@@ -285,7 +286,7 @@ class TestRestoreAtomicity:
             "social": {},
             "global_seed": 1,
         }
-        with pytest.raises(Exception):  # noqa: B017 — pydantic ValidationError
+        with pytest.raises(ValidationError):
             store._deserialize_from_dict(payload)
         assert self._snapshot(store) == before
 
@@ -305,7 +306,42 @@ class TestRestoreAtomicity:
             "social": {},
             "global_seed": 1,
         }
-        with pytest.raises(Exception):  # noqa: B017 — pydantic ValidationError
+        with pytest.raises(ValidationError):
+            store._deserialize_from_dict(payload)
+        assert self._snapshot(store) == before
+
+    def test_missing_global_seed_key_raises_and_leaves_unchanged(
+        self,
+        tmp_path: Path,
+        make_agent: Callable[..., Agent],
+        make_post: Callable[..., Post],
+    ) -> None:
+        # _serialize_to_dict always writes global_seed; refuse hand-crafted
+        # checkpoints that omit it so a wrong-seeded store can't silently
+        # accept them.
+        store = self._populated_store(tmp_path, make_agent, make_post, global_seed=1)
+        before = self._snapshot(store)
+        with pytest.raises(ValueError, match="global_seed"):
+            store._deserialize_from_dict({"agents": {}, "posts": {}})
+        assert self._snapshot(store) == before
+
+    def test_social_factory_raise_leaves_state_unchanged(
+        self,
+        tmp_path: Path,
+        make_agent: Callable[..., Agent],
+        make_post: Callable[..., Post],
+    ) -> None:
+        # Self-follow trips FakeSocialGraph.from_dict — agents/posts blocks
+        # parse cleanly, so this pins that the swap waits for social too.
+        store = self._populated_store(tmp_path, make_agent, make_post, global_seed=1)
+        before = self._snapshot(store)
+        payload = {
+            "agents": {"new-a": make_agent(agent_id="new-a").model_dump(mode="json")},
+            "posts": {"new-p": make_post(post_id="new-p").model_dump(mode="json")},
+            "social": {"x": ["x"]},
+            "global_seed": 1,
+        }
+        with pytest.raises(ValueError, match="self-follow"):
             store._deserialize_from_dict(payload)
         assert self._snapshot(store) == before
 
