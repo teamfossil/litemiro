@@ -1,0 +1,11 @@
+/* 전역 스타일 묶음. prototype.html의 <link> 로드 순서를 그대로 유지한다. */
+@import './tokens.css';
+@import './components.css';
+@import './chrome.css';
+@import './screen-plaza.css';
+@import './screen-report.css';
+@import './screen-casting.css';
+@import './screen-seed.css';
+@import './screen-landing.css';
+@import './screen-live.css';
+@import './stubs.css';

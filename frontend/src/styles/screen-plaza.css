@@ -1,0 +1,400 @@
+/* =====================================================================
+   종료 광장 (Terminal Plaza) — 화면 전용 CSS
+   ===================================================================== */
+
+.lm-plaza {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: calc(260px * var(--scale)) 1fr 0fr;
+  transition: grid-template-columns var(--dur-3) var(--ease-out);
+}
+.lm-plaza.is-drilled {
+  grid-template-columns: calc(260px * var(--scale)) 1fr calc(440px * var(--scale));
+}
+
+.lm-plaza__shellpad {
+  padding: 0 var(--s-9) var(--s-9);
+  display: flex; flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* ---------- FILTER BAR ---------- */
+.lm-plaza__filters {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: var(--s-5);
+  padding: var(--s-5) 0;
+  margin-bottom: var(--s-5);
+  border-bottom: 1px solid var(--rule-2);
+  flex-wrap: wrap;
+}
+.lm-plaza__filters-left { display: flex; align-items: center; gap: var(--s-4); }
+.lm-plaza__filters-right { display: flex; align-items: center; gap: var(--s-2); }
+.lm-plaza__filters-label {
+  font-family: var(--mono); font-size: var(--t-mono);
+  letter-spacing: var(--ls-eyebrow); text-transform: uppercase;
+  color: var(--ink-3);
+}
+.lm-plaza__filters-pills { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+
+/* ---------- CANVAS ---------- */
+.lm-plaza__canvas {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 50%, var(--paper) 0%, var(--paper) 60%, var(--card) 100%);
+  border: 1px solid var(--rule-2);
+  border-radius: var(--r-2);
+  overflow: hidden;
+}
+.lm-plaza__svg {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  display: block;
+}
+/* SVG 캔버스: pan = grab 커서, 드래그 중 grabbing */
+.lm-plaza__svg { cursor: grab; }
+.lm-plaza__svg:active { cursor: grabbing; }
+
+/* ---------- VIEW CONTROL (canvas overlay, 우상단) ---------- */
+.lm-plaza__viewctl {
+  position: absolute; top: var(--s-4); right: var(--s-4);
+  display: flex; align-items: center; gap: var(--s-2);
+  background: rgba(250, 247, 238, 0.92);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--rule-2);
+  border-radius: var(--r-pill);
+  padding: calc(4px * var(--scale)) calc(6px * var(--scale)) calc(4px * var(--scale)) var(--s-3);
+  z-index: 5;
+}
+.lm-plaza__viewctl-zoom {
+  font-family: var(--mono);
+  font-size: var(--t-mono);
+  letter-spacing: var(--ls-mono);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  min-width: calc(40px * var(--scale));
+  text-align: right;
+}
+.lm-plaza__viewctl-reset {
+  font-family: var(--mono);
+  font-size: var(--t-mono);
+  letter-spacing: var(--ls-mono);
+  color: var(--ink-2);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-pill);
+  padding: calc(3px * var(--scale)) var(--s-3);
+  cursor: pointer;
+  transition: background var(--dur-1), color var(--dur-1);
+}
+.lm-plaza__viewctl-reset:hover:not(:disabled) { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.lm-plaza__viewctl-reset:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ---------- PERSONA LIST (좌측 사이드바) ---------- */
+.lm-plaza__personas {
+  background: var(--paper);
+  border-right: 1px solid var(--rule-2);
+  display: flex; flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.lm-plaza__personas-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: var(--s-4) var(--s-5);
+  border-bottom: 1px solid var(--rule);
+  flex: 0 0 auto;
+}
+.lm-plaza__personas-tag {
+  font-family: var(--mono);
+  font-size: var(--t-mono);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.lm-plaza__personas-count {
+  font-family: var(--mono);
+  font-size: var(--t-small);
+  color: var(--ink-4);
+  font-variant-numeric: tabular-nums;
+}
+.lm-plaza__personas-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex; flex-direction: column;
+}
+.lm-plaza__personas-item {
+  display: grid;
+  grid-template-columns: calc(10px * var(--scale)) 1fr auto;
+  gap: var(--s-3);
+  align-items: center;
+  padding: var(--s-3) var(--s-5);
+  border-bottom: 1px solid var(--rule-2);
+  text-align: left;
+  cursor: pointer;
+  background: var(--paper);
+  color: var(--ink);
+  transition: background var(--dur-1);
+}
+.lm-plaza__personas-item:hover, .lm-plaza__personas-item.is-hover { background: var(--card); }
+.lm-plaza__personas-item.is-active {
+  background: var(--ink);
+  color: var(--paper);
+}
+.lm-plaza__personas-item.is-active .lm-plaza__personas-role { color: var(--paper); opacity: 0.7; }
+.lm-plaza__personas-dot {
+  width: calc(10px * var(--scale));
+  height: calc(10px * var(--scale));
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.lm-plaza__personas-name {
+  font-size: var(--t-small);
+  font-weight: 500;
+  color: inherit;
+  letter-spacing: var(--ls-normal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-flex;
+  align-items: center;
+  gap: calc(6px * var(--scale));
+}
+.lm-plaza__personas-viral {
+  font-style: normal;
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: var(--highlight-bg);
+  color: var(--ink);
+  padding: calc(1px * var(--scale)) calc(4px * var(--scale));
+  border-radius: calc(2px * var(--scale));
+}
+.lm-plaza__personas-role {
+  font-family: var(--mono);
+  font-size: var(--t-mono);
+  letter-spacing: var(--ls-mono);
+  color: var(--ink-4);
+  white-space: nowrap;
+}
+.lm-namelabel.is-active .lm-namelabel__viral { background: var(--paper); color: var(--ink); }
+
+/* ---------- AXIS LABELS (SVG 내부 텍스트, pan/zoom 따라감) ---------- */
+.lm-plaza__svg-axis {
+  font-family: var(--mono);
+  font-size: 28px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  fill: var(--ink-3);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ---------- 지도 표기 가이드 (필터바와 캔버스 사이, 인라인) ---------- */
+.lm-plaza__guide {
+  display: flex; align-items: center; gap: var(--s-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--s-3);
+  font-family: var(--mono);
+  font-size: var(--t-mono);
+  letter-spacing: var(--ls-mono);
+  color: var(--ink-3);
+}
+.lm-plaza__guide b {
+  font-weight: 600;
+  color: var(--ink);
+  margin-right: 2px;
+}
+.lm-plaza__guide-sep {
+  color: var(--ink-4);
+  opacity: 0.6;
+}
+
+/* ---------- TOOLTIP ---------- */
+.lm-plaza__tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  border-radius: var(--r-2);
+  padding: var(--s-3) var(--s-4);
+  box-shadow: var(--shadow-paper-soft);
+  font-size: var(--t-small);
+  max-width: calc(260px * var(--scale));
+  z-index: 10;
+}
+.lm-plaza__tooltip-who {
+  display: flex; align-items: center; gap: var(--s-2);
+  color: var(--ink-3);
+  font-family: var(--mono);
+  font-size: var(--t-mono);
+  letter-spacing: var(--ls-mono);
+  margin-bottom: calc(6px * var(--scale));
+}
+.lm-plaza__tooltip-name {
+  font-size: var(--t-h4);
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: var(--ls-normal);
+  margin-bottom: calc(4px * var(--scale));
+}
+.lm-plaza__tooltip-stats {
+  display: flex; gap: var(--s-4);
+  font-family: var(--mono);
+  font-size: var(--t-mono);
+  color: var(--ink-3);
+  letter-spacing: var(--ls-mono);
+}
+.lm-plaza__tooltip-stats b { color: var(--ink); font-weight: 600; font-family: var(--font); letter-spacing: var(--ls-normal); font-size: var(--t-small); }
+
+/* ---------- DRILL-IN PANEL ---------- */
+.lm-drill {
+  background: var(--card);
+  border-left: 1px solid var(--rule);
+  display: flex; flex-direction: column;
+  overflow: auto;
+  min-height: 0;
+}
+@keyframes lm-drill-in {
+  from { transform: translateX(40px); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+
+.lm-drill__head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: var(--s-5) var(--s-6);
+  border-bottom: 1px solid var(--rule-2);
+  background: var(--paper);
+}
+.lm-drill__head-meta { display: flex; align-items: center; gap: var(--s-3); }
+.lm-drill__head-role {
+  display: inline-flex; align-items: center; gap: var(--s-2);
+  font-family: var(--mono); font-size: var(--t-mono);
+  letter-spacing: var(--ls-mono);
+  color: var(--ink-3);
+}
+.lm-drill__close {
+  width: calc(32px * var(--scale)); height: calc(32px * var(--scale));
+  display: grid; place-items: center;
+  border-radius: var(--r-pill);
+  color: var(--ink-2);
+  transition: background var(--dur-1);
+}
+.lm-drill__close svg { width: 50%; height: 50%; }
+.lm-drill__close:hover { background: var(--card); }
+
+.lm-drill__hero {
+  display: grid; grid-template-columns: auto 1fr; gap: var(--s-5);
+  padding: var(--s-6); align-items: start;
+}
+.lm-drill__hero-dot { width: calc(72px * var(--scale)); height: calc(72px * var(--scale)); border-radius: 50%; flex: 0 0 calc(72px * var(--scale)); }
+.lm-drill__hero > svg { width: calc(96px * var(--scale)); height: calc(96px * var(--scale)); }
+.lm-drill__hero-name {
+  font-size: var(--t-h2);
+  font-weight: 600;
+  letter-spacing: var(--ls-tight);
+  line-height: var(--lh-tight);
+  color: var(--ink);
+}
+.lm-drill__hero-title {
+  font-family: var(--mono);
+  font-size: var(--t-mono);
+  letter-spacing: var(--ls-mono);
+  color: var(--ink-3);
+  margin-top: calc(6px * var(--scale));
+}
+.lm-drill__hero-bio {
+  margin: var(--s-4) 0 0;
+  font-size: var(--t-small);
+  color: var(--ink-2);
+  line-height: var(--lh-normal);
+  text-wrap: pretty;
+}
+
+.lm-drill__stats {
+  display: grid; grid-template-columns: 1fr 1fr 1fr;
+  background: var(--paper);
+  border-top: 1px solid var(--rule-2);
+  border-bottom: 1px solid var(--rule-2);
+}
+.lm-drill__stats .lm-stat {
+  padding: var(--s-5) var(--s-5);
+  border-right: 1px solid var(--rule-2);
+}
+.lm-drill__stats .lm-stat:last-child { border-right: 0; }
+
+.lm-drill__ideology {
+  display: grid; grid-template-columns: calc(80px * var(--scale)) 1fr calc(100px * var(--scale));
+  align-items: center; gap: var(--s-4);
+  padding: var(--s-5) var(--s-6);
+  background: var(--paper);
+  border-bottom: 1px solid var(--rule-2);
+}
+.lm-drill__ideology-label, .lm-drill__ideology-value {
+  font-family: var(--mono); font-size: var(--t-mono);
+  letter-spacing: var(--ls-eyebrow); text-transform: uppercase;
+  color: var(--ink-3);
+}
+.lm-drill__ideology-value { text-align: right; color: var(--ink); }
+.lm-drill__ideology-track {
+  position: relative;
+  height: calc(4px * var(--scale));
+  background: var(--rule-2);
+  border-radius: calc(2px * var(--scale));
+}
+.lm-drill__ideology-thumb {
+  position: absolute; top: calc(-4px * var(--scale));
+  width: calc(12px * var(--scale)); height: calc(12px * var(--scale)); border-radius: 50%;
+  transform: translateX(-50%);
+  border: calc(2px * var(--scale)) solid var(--paper);
+  box-shadow: 0 0 0 1px var(--ink-3);
+}
+
+.lm-drill__quotes {
+  padding: var(--s-6);
+  flex: 1;
+}
+.lm-drill__quotes-h {
+  margin: 0 0 var(--s-4);
+  font-family: var(--mono);
+  font-size: var(--t-mono);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 500;
+}
+.lm-drill__empty {
+  background: var(--card);
+  border-radius: var(--r-2);
+  padding: var(--s-4);
+  color: var(--ink-3);
+  font-size: var(--t-small);
+}
+.lm-drill__quote {
+  border-top: 1px solid var(--rule-2);
+  padding: var(--s-4) 0;
+}
+.lm-drill__quote:first-child { border-top: 1px solid var(--ink); }
+.lm-drill__quote-text {
+  margin: 0;
+  font-size: var(--t-body);
+  line-height: var(--lh-normal);
+  color: var(--ink);
+  letter-spacing: var(--ls-normal);
+  text-wrap: pretty;
+}
+.lm-drill__quote-meta {
+  display: flex; gap: var(--s-4);
+  margin-top: var(--s-2);
+  font-family: var(--mono);
+  font-size: var(--t-mono);
+  color: var(--ink-4);
+  letter-spacing: var(--ls-mono);
+}

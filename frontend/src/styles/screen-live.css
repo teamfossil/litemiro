@@ -1,0 +1,377 @@
+/* =====================================================================
+   진행 화면 (Phase 4) — Live
+   풀스크린 고정. 좌(광장) | 우(사이드바, 토글)
+   ===================================================================== */
+
+.lm-live {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 0fr;
+  min-height: 0;
+  overflow: hidden;
+  transition: grid-template-columns 280ms var(--ease-out);
+  background: linear-gradient(180deg, var(--paper) 0%, var(--card) 80%, var(--sand) 100%);
+}
+.lm-live.is-sidebar-open { grid-template-columns: 1fr calc(420px * var(--scale)); }
+
+/* 사이드바가 열렸을 때 헤더의 중복 Stat은 숨김 (사이드바에 풀 stats가 있음) */
+.lm-live.is-sidebar-open .lm-live__head-right .lm-stat { display: none; }
+
+/* ---------- LEFT (광장 + 헤더 + 푸터) ---------- */
+.lm-live__main {
+  display: flex; flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ---------- HEADER ---------- */
+.lm-live__head {
+  padding: var(--s-5) var(--s-9) var(--s-4);
+  display: flex; justify-content: space-between; align-items: center;
+  gap: var(--s-6);
+  border-bottom: 1px solid var(--rule-2);
+  flex: 0 0 auto;
+}
+.lm-live__head-left { display: flex; align-items: center; gap: var(--s-5); min-width: 0; }
+.lm-live__status {
+  display: flex; flex-direction: column;
+  gap: calc(6px * var(--scale));
+  min-width: 0;
+}
+.lm-live__status-tag {
+  display: inline-block;
+  align-self: flex-start;
+  font-family: var(--mono);
+  font-size: var(--t-mono);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding: calc(3px * var(--scale)) var(--s-3);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-1);
+  white-space: nowrap;
+}
+.lm-live__status-text {
+  font-size: var(--t-h4);
+  letter-spacing: var(--ls-normal);
+  font-weight: 500;
+  color: var(--ink);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lm-live__head-right { display: flex; gap: var(--s-6); align-items: center; flex-wrap: nowrap; }
+
+/* ---------- CANVAS ---------- */
+.lm-live__canvas {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+.lm-live__svg { width: 100%; height: 100%; display: block; }
+.lm-live__node,
+.lm-live__node-shadow {
+  /* 라운드 간 노드 이동·크기 변화를 연속적으로 보간. CSS가 처리. */
+  transition:
+    cx 760ms cubic-bezier(0.22, 1, 0.36, 1),
+    cy 760ms cubic-bezier(0.22, 1, 0.36, 1),
+    r  760ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.lm-live__canvas-axis {
+  position: absolute; left: var(--s-9); right: var(--s-9); bottom: var(--s-3);
+  display: flex; justify-content: space-between;
+  font-family: var(--mono);
+  font-size: var(--t-mono);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--ink-4);
+  pointer-events: none;
+  transition: opacity var(--dur-3) var(--ease-out);
+}
+
+/* ---------- FOOTER + PROGRESS ---------- */
+.lm-live__foot {
+  padding: var(--s-4) var(--s-9) var(--s-5);
+  display: flex; flex-direction: column;
+  gap: var(--s-4);
+  border-top: 1px solid var(--rule-2);
+  background: var(--paper);
+  flex: 0 0 auto;
+}
+.lm-live__progress {
+  position: relative;
+  height: calc(4px * var(--scale));
+  background: var(--rule-2);
+  border-radius: calc(2px * var(--scale));
+  margin: var(--s-4) 0 var(--s-2);
+}
+.lm-live__progress-bar {
+  position: absolute; top: 0; left: 0; bottom: 0;
+  background: var(--ink);
+  border-radius: calc(2px * var(--scale));
+  transition: width 80ms linear;
+}
+.lm-live__progress-tick {
+  position: absolute;
+  top: calc(-14px * var(--scale));
+  width: 1px; height: calc(18px * var(--scale));
+  background: var(--rule);
+}
+.lm-live__progress-tick span {
+  position: absolute;
+  top: calc(-18px * var(--scale)); left: 0;
+  transform: translateX(-50%);
+  font-family: var(--mono);
+  font-size: var(--t-mono);
+  letter-spacing: var(--ls-mono);
+  color: var(--ink-4);
+  white-space: nowrap;
+}
+.lm-live__foot-actions {
+  display: flex; justify-content: flex-end; gap: var(--s-3);
+}
+
+/* ===================================================================
+   RIGHT SIDEBAR — 활동 피드
+   =================================================================== */
+.lm-live__sidebar {
+  display: flex; flex-direction: column;
+  background: var(--paper);
+  border-left: 1px solid var(--rule);
+  min-height: 0;
+  overflow: hidden;
+}
+.lm-live__sidebar-head {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  padding: var(--s-5) var(--s-5) var(--s-4);
+  border-bottom: 1px solid var(--rule-2);
+  flex: 0 0 auto;
+}
+.lm-live__sidebar-eyebrow {
+  font-family: var(--mono);
+  font-size: var(--t-mono);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: calc(4px * var(--scale));
+  white-space: nowrap;
+}
+.lm-live__sidebar-title {
+  margin: 0;
+  font-size: var(--t-h3);
+  font-weight: 600;
+  letter-spacing: var(--ls-tight);
+  color: var(--ink);
+  white-space: nowrap;
+}
+.lm-live__sidebar-close {
+  width: calc(28px * var(--scale)); height: calc(28px * var(--scale));
+  display: grid; place-items: center;
+  border-radius: var(--r-pill);
+  color: var(--ink-3);
+  transition: background var(--dur-1);
+}
+.lm-live__sidebar-close svg { width: 50%; height: 50%; }
+.lm-live__sidebar-close:hover { background: var(--card); color: var(--ink); }
+
+/* ---------- STATS GRID ---------- */
+.lm-live__stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1px;
+  background: var(--rule-2);
+  padding: 1px;
+  flex: 0 0 auto;
+}
+.lm-live__stat {
+  background: var(--paper);
+  padding: var(--s-3) var(--s-4);
+  display: flex; flex-direction: column;
+  gap: calc(4px * var(--scale));
+}
+.lm-live__stat--micro { background: var(--card); }
+.lm-live__stat-k {
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--ink-4);
+  white-space: nowrap;
+}
+.lm-live__stat-v {
+  font-size: var(--t-h4);
+  font-weight: 600;
+  letter-spacing: var(--ls-tight);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.lm-live__stat-v small {
+  font-weight: 400;
+  color: var(--ink-4);
+  font-size: var(--t-small);
+}
+.lm-live__stat-v--mono {
+  font-family: var(--mono);
+  font-size: var(--t-small);
+  letter-spacing: var(--ls-mono);
+  font-weight: 500;
+}
+
+/* ---------- ACTIVITY FEED ---------- */
+.lm-live__feed {
+  flex: 1;
+  display: flex; flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.lm-live__feed-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: var(--s-4) var(--s-5) var(--s-3);
+  border-bottom: 1px solid var(--rule-2);
+  flex: 0 0 auto;
+}
+.lm-live__feed-tag {
+  font-family: var(--mono);
+  font-size: var(--t-mono);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.lm-live__feed-hint {
+  font-size: var(--t-micro);
+  color: var(--ink-4);
+  white-space: nowrap;
+}
+.lm-live__feed-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--s-2) var(--s-3) var(--s-4);
+  display: flex; flex-direction: column;
+  gap: var(--s-2);
+}
+.lm-live__feed-empty {
+  padding: var(--s-7) var(--s-5);
+  text-align: center;
+  color: var(--ink-4);
+  font-size: var(--t-small);
+}
+
+/* ---------- ACTION ITEM ---------- */
+.lm-live__act {
+  background: var(--paper);
+  border: 1px solid var(--rule-2);
+  border-radius: var(--r-2);
+  padding: var(--s-3) var(--s-3);
+  display: flex; flex-direction: column;
+  gap: calc(6px * var(--scale));
+  animation: lm-live-fadein 280ms var(--ease-out);
+}
+@keyframes lm-live-fadein {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.lm-live__act--create  { border-left: calc(3px * var(--scale)) solid var(--accent); }
+.lm-live__act--quote   { border-left: calc(3px * var(--scale)) solid var(--r-columnist); }
+.lm-live__act--repost  { border-left: calc(3px * var(--scale)) solid var(--r-academic); }
+.lm-live__act--like    { border-left: calc(3px * var(--scale)) solid var(--r-citizen-p); }
+.lm-live__act--follow  { border-left: calc(3px * var(--scale)) solid var(--ink-3); }
+
+.lm-live__act-head {
+  display: flex; align-items: center; gap: var(--s-2);
+  flex-wrap: wrap;
+}
+.lm-live__act-round {
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  letter-spacing: var(--ls-mono);
+  color: var(--ink-4);
+  font-weight: 600;
+}
+
+.lm-live__act-badge {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  padding: calc(2px * var(--scale)) calc(6px * var(--scale));
+  border-radius: var(--r-1);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.lm-live__act-badge--create { background: var(--accent); color: var(--paper); }
+.lm-live__act-badge--quote  { background: var(--r-columnist); color: var(--paper); }
+.lm-live__act-badge--repost { background: var(--r-academic); color: var(--paper); }
+.lm-live__act-badge--like   { background: var(--r-citizen-p); color: var(--paper); }
+.lm-live__act-badge--follow { background: var(--ink-3); color: var(--paper); }
+
+.lm-live__act-body {
+  margin: 0;
+  font-size: var(--t-small);
+  line-height: 1.45;
+  color: var(--ink);
+  letter-spacing: var(--ls-normal);
+  text-wrap: pretty;
+}
+
+.lm-live__act-target {
+  display: flex; align-items: center; gap: calc(6px * var(--scale));
+  padding-top: calc(4px * var(--scale));
+  border-top: 1px dashed var(--rule-2);
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+}
+.lm-live__act-target-arrow {
+  font-family: var(--mono);
+  color: var(--ink-4);
+  font-size: var(--t-small);
+}
+
+/* ---------- AGENT CHIP ---------- */
+.lm-live__agent {
+  display: inline-flex; align-items: center; gap: calc(6px * var(--scale));
+  min-width: 0;
+}
+.lm-live__agent--sm svg { width: calc(22px * var(--scale)); height: calc(22px * var(--scale)); }
+.lm-live__agent--lg svg { width: calc(32px * var(--scale)); height: calc(32px * var(--scale)); }
+.lm-live__agent-dot {
+  display: inline-block;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.lm-live__agent-name {
+  font-size: var(--t-small);
+  font-weight: 500;
+  color: var(--ink-2);
+  letter-spacing: var(--ls-normal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: calc(180px * var(--scale));
+}
+.lm-live__viral-tag {
+  font-style: normal;
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: var(--highlight-bg);
+  color: var(--ink);
+  padding: calc(1px * var(--scale)) calc(4px * var(--scale));
+  margin-left: calc(4px * var(--scale));
+  border-radius: calc(2px * var(--scale));
+}
+
+/* ---------- RESPONSIVE ---------- */
+@media (max-width: 1100px) {
+  .lm-live.is-sidebar-open { grid-template-columns: 1fr 380px; }
+}
+@media (max-width: 900px) {
+  .lm-live.is-sidebar-open { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
+  .lm-live__sidebar { border-left: 0; border-top: 1px solid var(--rule); max-height: 40vh; }
+}

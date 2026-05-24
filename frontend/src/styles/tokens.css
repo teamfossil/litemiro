@@ -1,0 +1,139 @@
+/* =====================================================================
+   라이트미로 (LightMiro) — 디자인 토큰
+   v3.4 통합본 기반. 모든 색·타입·간격을 여기서만 정의한다.
+   ===================================================================== */
+
+:root {
+  /* ---- 1. BASE — off-white 3색 ---- */
+  --paper:   #FAF7EE;   /* 메인 캔버스 */
+  --card:    #F1ECDD;   /* 카드/패널 */
+  --sand:    #E5DECB;   /* 강조 패널, 깊은 배경 */
+
+  /* ---- 2. INK — 명도 4단 ---- */
+  --ink:     #1A1813;   /* 본문, 헤딩 */
+  --ink-2:   #38332A;   /* 본문 부 */
+  --ink-3:   #5C5447;   /* 메타, 캡션 */
+  --ink-4:   #8E8674;   /* 비활성, 보조 */
+
+  /* ---- 3. LINE ---- */
+  --rule:    #C9C1AD;   /* 강한 1px 구분선 */
+  --rule-2:  #DDD5C0;   /* 약한 1px 구분선, 카드 보더 */
+
+  /* ---- 4. ROLE PALETTE (D01) — 12 entity_type 색 ----
+     채도 고정, 명도 변주는 같은 역할 안에서 개체별로 ±L17% 범위.
+     큰 그룹: 미디어(warm), 정치(amber), 시민(cool-blue),
+            전문가(teal-green), 조직(neutral). */
+  --r-broadcast:   #B85138;   /* 방송기자 */
+  --r-investig:    #C77B4F;   /* 탐사기자 */
+  --r-columnist:   #C9923D;   /* 칼럼니스트 */
+  --r-politician:  #A68240;   /* 정치인 */
+  --r-pundit:      #8F6B3D;   /* 평론가 */
+  --r-citizen-m:   #6D8FA6;   /* 시민·온건 */
+  --r-citizen-p:   #4F7591;   /* 시민·진보 */
+  --r-citizen-x:   #7896A0;   /* 시민·실용 */
+  --r-academic:    #4F7B6E;   /* 학자 */
+  --r-lawyer:      #6E8770;   /* 법조 */
+  --r-ngo:         #8B8170;   /* 시민단체 */
+  --r-corp:        #6E6D7D;   /* 기업 */
+
+  /* ---- 5. SEMANTIC ---- */
+  --accent:        #B85138;   /* 강조 (선택, 활성, 1차 액션) */
+  --highlight-bg:  #E8D78A;   /* 텍스트 하이라이트 (마커펜) */
+  --positive:      #4F7B6E;
+  --negative:      #B85138;
+
+  /* ---- 0. SCALE — 전역 UI 배율. 1.0 = 디자인 원본 크기. ---- */
+  --scale: 0.67;
+
+  /* ---- 6. TYPOGRAPHY ---- */
+  --font:  "Pretendard Variable", Pretendard, -apple-system, system-ui, sans-serif;
+  --mono:  "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --serif: "EB Garamond", "Times New Roman", serif;
+
+  /* type ramp — body=16 기준, 1.25 scale, --scale 로 균등 축소 */
+  --t-display:   calc(72px * var(--scale));
+  --t-h1:        calc(44px * var(--scale));
+  --t-h2:        calc(32px * var(--scale));
+  --t-h3:        calc(24px * var(--scale));
+  --t-h4:        calc(20px * var(--scale));
+  --t-body:      calc(16px * var(--scale));
+  --t-small:     calc(14px * var(--scale));
+  --t-micro:     calc(12px * var(--scale));
+  --t-mono:      calc(13px * var(--scale));
+
+  --lh-tight:    1.05;
+  --lh-snug:     1.2;
+  --lh-normal:   1.45;
+  --lh-loose:    1.6;
+
+  --ls-tight:    -0.02em;
+  --ls-normal:   -0.005em;
+  --ls-mono:     0.02em;
+  --ls-eyebrow:  0.06em;
+
+  /* ---- 7. SPACING — 4px grid, --scale 로 균등 축소 ---- */
+  --s-1:   calc(4px * var(--scale));
+  --s-2:   calc(8px * var(--scale));
+  --s-3:   calc(12px * var(--scale));
+  --s-4:   calc(16px * var(--scale));
+  --s-5:   calc(20px * var(--scale));
+  --s-6:   calc(24px * var(--scale));
+  --s-7:   calc(32px * var(--scale));
+  --s-8:   calc(40px * var(--scale));
+  --s-9:   calc(48px * var(--scale));
+  --s-10:  calc(64px * var(--scale));
+  --s-11:  calc(80px * var(--scale));
+  --s-12:  calc(96px * var(--scale));
+
+  /* ---- 8. RADII ---- */
+  --r-1:   2px;   /* 작은 태그, 인풋 */
+  --r-2:   4px;   /* 카드, 버튼 — 기본 */
+  --r-3:   8px;   /* 큰 패널 */
+  --r-pill: 999px;
+
+  /* ---- 9. SHADOWS — 종이감 유지, 강하게 X ---- */
+  --shadow-1: 0 1px 2px rgba(26, 24, 19, 0.04);
+  --shadow-2: 0 4px 12px rgba(26, 24, 19, 0.06);
+  --shadow-3: 0 12px 28px rgba(26, 24, 19, 0.10);
+
+  /* "종이 위 종이" 효과 — sharp offset (Memphis-paper), --scale 로 균등 축소 */
+  --shadow-paper: calc(6px * var(--scale)) calc(6px * var(--scale)) 0 var(--sand);
+  --shadow-paper-soft: calc(4px * var(--scale)) calc(4px * var(--scale)) 0 var(--card);
+
+  /* ---- 10. MOTION ---- */
+  --ease-out:  cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in:   cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-in-out: cubic-bezier(0.83, 0, 0.17, 1);
+  --dur-1:  120ms;   /* 작은 hover */
+  --dur-2:  220ms;   /* 토글, 패널 슬라이드 */
+  --dur-3:  400ms;   /* 화면 트랜지션 */
+
+  /* ---- 11. LAYOUT — --scale 로 균등 축소 ---- */
+  --max-width: calc(1680px * var(--scale));
+  --header-h:  calc(64px * var(--scale));
+  --sidebar-w: calc(320px * var(--scale));
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+body {
+  font-family: var(--font);
+  font-size: var(--t-body);
+  line-height: var(--lh-normal);
+  color: var(--ink);
+  background: var(--paper);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "ss03","cv11","calt";
+}
+button, input, textarea, select { font-family: inherit; font-size: inherit; color: inherit; }
+button { background: none; border: 0; padding: 0; cursor: pointer; }
+
+/* =====================================================================
+   USAGE NOTES (구현자용)
+   ---------------------------------------------------------------------
+   - 색을 인라인으로 박지 말 것. CSS var 사용.
+   - 같은 역할 안에서 개체 구별은 명도 ±17%로만. 채도 변경 금지.
+   - 베이스 3색 외 다른 베이지/오프화이트를 새로 만들지 말 것.
+   - 텍스트 하이라이트는 항상 --highlight-bg (마커펜) 사용.
+   - 카드 보더는 --rule-2, 패널 구분은 --rule.
+   ===================================================================== */

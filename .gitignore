@@ -81,3 +81,11 @@ secrets/
 
 # Tooling working directories
 .omc/
+.claude/
+SKILL.md
+
+# Frontend (frontend/) — Node / Vite
+node_modules/
+.vite/
+.vercel/
+*.tsbuildinfo
