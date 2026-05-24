@@ -110,6 +110,14 @@ SocialGraph.from_dict({follower_id: [followee_id, ...], ...}) -> SocialGraph
 `persona_traits`에는 `AgentProfile.model_dump(mode="json")` 전체를 넣는다
 (MVP 미사용 필드 보존, 후속 단계 확장 여지 확보).
 
+> **비용 가정 (검증 의무)**: Phase 0/3 비용 추정 표는 `activation_rate=0.5`
+> 평균 가정에 의존한다. 본 매핑은 에이전트별 `post_rate` 를 그대로 사용하므로,
+> Phase 1 산출의 `mean(post_rate)` 가 비용 표 가정에서 ±0.1 이상 벗어나면 비용
+> 표 재산정 필요. **quick 첫 실행 시
+> `statistics.fmean(a.activation_rate for a in agents)` 로 측정**하여 차이가 크면
+> §8 후속 마일스톤에서 다룬다. (Phase 1 `ProfileGenerator` 가 어떤 prior 로
+> `post_rate` 를 결정하는지는 별도 명세 — Phase 1 측 책임.)
+
 ### 4.2 `memory_summary` 알고리즘
 
 ```
@@ -213,6 +221,12 @@ store = StateStore(
    불일치 시 `ValueError`.
 3. **agent_count 일관성** — `len(OntologyA.agents) == OntologyA.agent_count`.
 4. **재현성** — 동일 입력 + 동일 seed → 동일 `Agent` 튜플, 동일 `SocialGraph.to_dict()`.
+5. **페르소나–메모리 모순 검출** — 각 `agent_id` 에 대해
+   `set(AgentProfile.topics) & set(reduce(union, [m.topics for m in SemanticMemory]))`
+   가 공집합이면 warning 로그. MVP 는 warning 만, 후속 단계에서 hard error 승격
+   검토. Phase 2 design 의 `OntologyLoader.validate_consistency` 두 번째 의도
+   ("페르소나 관심사 vs 메모리 경험 모순 검출") 반영. **빈 `semantic` 리스트는
+   warning 면제** (cold start 케이스).
 
 ## 7. E2E 스모크 테스트
 
