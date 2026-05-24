@@ -197,6 +197,119 @@ class TestCheckpoint:
             await b.restore_checkpoint(0)
 
 
+class TestRestoreAtomicity:
+    """Restore must be all-or-nothing: any failure leaves the store unchanged."""
+
+    @staticmethod
+    def _snapshot(
+        store: StateStore,
+    ) -> tuple[tuple[str, ...], tuple[str, ...], dict[str, list[str]]]:
+        return (
+            store.list_agent_ids(),
+            tuple(p.post_id for p in store.list_posts()),
+            dict(store.social.to_dict()),
+        )
+
+    def _populated_store(
+        self,
+        tmp_path: Path,
+        make_agent: Callable[..., Agent],
+        make_post: Callable[..., Post],
+        *,
+        global_seed: int = 1,
+    ) -> StateStore:
+        social = FakeSocialGraph()
+        social.follow("orig-a", "orig-b")
+        store = _make_store(
+            tmp_path,
+            agents=[make_agent(agent_id="orig-a"), make_agent(agent_id="orig-b")],
+            social=social,
+            global_seed=global_seed,
+        )
+        store.add_post(make_post(post_id="orig-p"))
+        return store
+
+    def test_seed_mismatch_leaves_state_unchanged(
+        self,
+        tmp_path: Path,
+        make_agent: Callable[..., Agent],
+        make_post: Callable[..., Post],
+    ) -> None:
+        store = self._populated_store(tmp_path, make_agent, make_post, global_seed=1)
+        before = self._snapshot(store)
+        payload = {
+            "agents": {"new-a": make_agent(agent_id="new-a").model_dump(mode="json")},
+            "posts": {"new-p": make_post(post_id="new-p").model_dump(mode="json")},
+            "social": {"new-a": ["new-b"]},
+            "global_seed": 999,
+        }
+        with pytest.raises(ValueError, match="global_seed mismatch"):
+            store._deserialize_from_dict(payload)
+        assert self._snapshot(store) == before
+
+    def test_missing_agents_key_raises_and_leaves_unchanged(
+        self,
+        tmp_path: Path,
+        make_agent: Callable[..., Agent],
+        make_post: Callable[..., Post],
+    ) -> None:
+        store = self._populated_store(tmp_path, make_agent, make_post, global_seed=1)
+        before = self._snapshot(store)
+        with pytest.raises(ValueError, match="malformed checkpoint"):
+            store._deserialize_from_dict({"posts": {}, "global_seed": 1})
+        assert self._snapshot(store) == before
+
+    def test_missing_posts_key_raises_and_leaves_unchanged(
+        self,
+        tmp_path: Path,
+        make_agent: Callable[..., Agent],
+        make_post: Callable[..., Post],
+    ) -> None:
+        store = self._populated_store(tmp_path, make_agent, make_post, global_seed=1)
+        before = self._snapshot(store)
+        with pytest.raises(ValueError, match="malformed checkpoint"):
+            store._deserialize_from_dict({"agents": {}, "global_seed": 1})
+        assert self._snapshot(store) == before
+
+    def test_invalid_agent_data_raises_and_leaves_unchanged(
+        self,
+        tmp_path: Path,
+        make_agent: Callable[..., Agent],
+        make_post: Callable[..., Post],
+    ) -> None:
+        store = self._populated_store(tmp_path, make_agent, make_post, global_seed=1)
+        before = self._snapshot(store)
+        payload = {
+            "agents": {"bad": {"agent_id": 42}},  # agent_id must be str
+            "posts": {},
+            "social": {},
+            "global_seed": 1,
+        }
+        with pytest.raises(Exception):  # noqa: B017 — pydantic ValidationError
+            store._deserialize_from_dict(payload)
+        assert self._snapshot(store) == before
+
+    def test_invalid_post_data_raises_and_leaves_unchanged(
+        self,
+        tmp_path: Path,
+        make_agent: Callable[..., Agent],
+        make_post: Callable[..., Post],
+    ) -> None:
+        # Agent block parses cleanly, but post block fails — proves the
+        # swap happens after BOTH parse, not field-by-field.
+        store = self._populated_store(tmp_path, make_agent, make_post, global_seed=1)
+        before = self._snapshot(store)
+        payload = {
+            "agents": {"new-a": make_agent(agent_id="new-a").model_dump(mode="json")},
+            "posts": {"bad": {"post_id": "bad"}},  # missing required fields
+            "social": {},
+            "global_seed": 1,
+        }
+        with pytest.raises(Exception):  # noqa: B017 — pydantic ValidationError
+            store._deserialize_from_dict(payload)
+        assert self._snapshot(store) == before
+
+
 class TestPruneAndLatest:
     async def test_keep_three_most_recent(self, tmp_path: Path) -> None:
         store = _make_store(tmp_path)

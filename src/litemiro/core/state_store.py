@@ -130,23 +130,27 @@ class StateStore:
         }
 
     def _deserialize_from_dict(self, payload: Mapping[str, Any]) -> None:
-        # JSON has no tuple, so `interests` / `topics` arrive as lists
-        # — strict mode would reject the coercion.
-        self._agents = {
-            aid: Agent.model_validate(data, strict=False)
-            for aid, data in payload.get("agents", {}).items()
-        }
-        self._posts = {
-            pid: Post.model_validate(data, strict=False)
-            for pid, data in payload.get("posts", {}).items()
-        }
-        self._social = self._social_factory(payload.get("social", {}))
+        # Atomic: validate every part into locals first, then swap. Any
+        # failure (seed mismatch, malformed payload, validation error)
+        # leaves the store unchanged.
         recorded = payload.get("global_seed")
         if recorded is not None and recorded != self._global_seed:
             raise ValueError(
                 f"global_seed mismatch on restore: "
                 f"checkpoint={recorded!r}, store={self._global_seed!r}"
             )
+        if "agents" not in payload or "posts" not in payload:
+            raise ValueError("malformed checkpoint: 'agents' and 'posts' keys are required")
+        # JSON has no tuple, so `interests` / `topics` arrive as lists
+        # — strict mode would reject the coercion.
+        new_agents = {
+            aid: Agent.model_validate(data, strict=False) for aid, data in payload["agents"].items()
+        }
+        new_posts = {
+            pid: Post.model_validate(data, strict=False) for pid, data in payload["posts"].items()
+        }
+        new_social = self._social_factory(payload.get("social", {}))
+        self._agents, self._posts, self._social = new_agents, new_posts, new_social
 
 
 __all__ = ["StateStore"]
