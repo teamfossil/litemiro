@@ -122,6 +122,43 @@ def test_schema_rejects_extra_keys_inside_action(validator: Draft7Validator) -> 
     assert list(validator.iter_errors(payload))
 
 
+@pytest.mark.parametrize(
+    "action_payload",
+    [
+        {"type": "CREATE_POST", "content": "hi", "target_post_id": "p-1"},
+        {"type": "CREATE_POST", "content": "hi", "target_agent_id": "a-2"},
+        {"type": "LIKE_POST", "target_post_id": "p-1", "content": "x"},
+        {"type": "LIKE_POST", "target_post_id": "p-1", "target_agent_id": "a-2"},
+        {"type": "REPOST", "target_post_id": "p-1", "content": "x"},
+        {"type": "REPOST", "target_post_id": "p-1", "target_agent_id": "a-2"},
+        {
+            "type": "QUOTE_POST",
+            "target_post_id": "p-1",
+            "content": "x",
+            "target_agent_id": "a-2",
+        },
+        {"type": "FOLLOW", "target_agent_id": "a-2", "target_post_id": "p-1"},
+        {"type": "FOLLOW", "target_agent_id": "a-2", "content": "x"},
+        {"type": "DO_NOTHING", "target_post_id": "p-1"},
+        {"type": "DO_NOTHING", "target_agent_id": "a-2"},
+        {"type": "DO_NOTHING", "content": "x"},
+    ],
+    ids=lambda p: p["type"] + "+" + ",".join(sorted(k for k in p if k != "type")),
+)
+def test_schema_rejects_forbidden_fields(
+    validator: Draft7Validator, action_payload: dict[str, Any]
+) -> None:
+    payload: dict[str, Any] = {
+        "round_num": 0,
+        "timestamp": "2026-04-01T10:00:00+00:00",
+        "agent_id": "a-1",
+        "action": action_payload,
+    }
+    assert list(validator.iter_errors(payload)), (
+        f"schema accepted forbidden-field combination: {action_payload}"
+    )
+
+
 def test_schema_self_check() -> None:
     """The bundled schema must itself be a valid Draft 7 document."""
     Draft7Validator.check_schema(round_event_schema())

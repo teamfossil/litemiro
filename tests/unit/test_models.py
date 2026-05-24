@@ -77,6 +77,39 @@ class TestActionPayloadConsistency:
         with pytest.raises(ValidationError):
             Action.model_validate({"type": "DO_NOTHING", "extra": 1})
 
+    def test_create_post_rejects_targets(self) -> None:
+        with pytest.raises(ValidationError, match="CREATE_POST"):
+            Action(type=ActionType.CREATE_POST, content="hi", target_post_id="p-1")
+        with pytest.raises(ValidationError, match="CREATE_POST"):
+            Action(type=ActionType.CREATE_POST, content="hi", target_agent_id="a-2")
+
+    def test_like_post_rejects_extras(self) -> None:
+        with pytest.raises(ValidationError, match="LIKE_POST"):
+            Action(type=ActionType.LIKE_POST, target_post_id="p-1", content="x")
+        with pytest.raises(ValidationError, match="LIKE_POST"):
+            Action(type=ActionType.LIKE_POST, target_post_id="p-1", target_agent_id="a-2")
+
+    def test_repost_rejects_extras(self) -> None:
+        with pytest.raises(ValidationError, match="REPOST"):
+            Action(type=ActionType.REPOST, target_post_id="p-1", content="x")
+        with pytest.raises(ValidationError, match="REPOST"):
+            Action(type=ActionType.REPOST, target_post_id="p-1", target_agent_id="a-2")
+
+    def test_quote_post_rejects_target_agent(self) -> None:
+        with pytest.raises(ValidationError, match="QUOTE_POST"):
+            Action(
+                type=ActionType.QUOTE_POST,
+                target_post_id="p-1",
+                content="x",
+                target_agent_id="a-2",
+            )
+
+    def test_follow_rejects_extras(self) -> None:
+        with pytest.raises(ValidationError, match="FOLLOW"):
+            Action(type=ActionType.FOLLOW, target_agent_id="a-2", target_post_id="p-1")
+        with pytest.raises(ValidationError, match="FOLLOW"):
+            Action(type=ActionType.FOLLOW, target_agent_id="a-2", content="x")
+
 
 class TestPostHotScore:
     def test_zero_engagement_zero_score(self) -> None:

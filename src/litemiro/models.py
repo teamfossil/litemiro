@@ -33,6 +33,37 @@ class ActionType(StrEnum):
     DO_NOTHING = "DO_NOTHING"
 
 
+# Per-type (required, forbidden) payload contract. Mirrors the prompt
+# schema in ``prompts/action_selector.py`` and the JSON Schema's
+# allOf/if-then block — keep all three in sync when adding a type.
+_ACTION_FIELD_RULES: dict[ActionType, tuple[frozenset[str], frozenset[str]]] = {
+    ActionType.CREATE_POST: (
+        frozenset({"content"}),
+        frozenset({"target_post_id", "target_agent_id"}),
+    ),
+    ActionType.LIKE_POST: (
+        frozenset({"target_post_id"}),
+        frozenset({"target_agent_id", "content"}),
+    ),
+    ActionType.REPOST: (
+        frozenset({"target_post_id"}),
+        frozenset({"target_agent_id", "content"}),
+    ),
+    ActionType.QUOTE_POST: (
+        frozenset({"target_post_id", "content"}),
+        frozenset({"target_agent_id"}),
+    ),
+    ActionType.FOLLOW: (
+        frozenset({"target_agent_id"}),
+        frozenset({"target_post_id", "content"}),
+    ),
+    ActionType.DO_NOTHING: (
+        frozenset(),
+        frozenset({"target_post_id", "target_agent_id", "content"}),
+    ),
+}
+
+
 # _FROZEN drops ``strict`` so that values rehydrated from JSONL (where
 # enums arrive as strings, ints as ints) parse cleanly. The wire-format
 # JSON Schema is the strict gate. _STRICT keeps strict mode for engine-
@@ -54,19 +85,18 @@ class Action(BaseModel):
 
     @model_validator(mode="after")
     def _enforce_target_consistency(self) -> Action:
-        t = self.type
-        if t is ActionType.CREATE_POST and not self.content:
-            raise ValueError("CREATE_POST requires non-empty content")
-        if t is ActionType.QUOTE_POST and (not self.target_post_id or not self.content):
-            raise ValueError("QUOTE_POST requires target_post_id and content")
-        if t in (ActionType.LIKE_POST, ActionType.REPOST) and not self.target_post_id:
-            raise ValueError(f"{t.value} requires target_post_id")
-        if t is ActionType.FOLLOW and not self.target_agent_id:
-            raise ValueError("FOLLOW requires target_agent_id")
-        if t is ActionType.DO_NOTHING and (
-            self.target_post_id or self.target_agent_id or self.content
-        ):
-            raise ValueError("DO_NOTHING must carry no payload")
+        required, forbidden = _ACTION_FIELD_RULES[self.type]
+        values: dict[str, str | None] = {
+            "target_post_id": self.target_post_id,
+            "target_agent_id": self.target_agent_id,
+            "content": self.content,
+        }
+        missing = sorted(name for name in required if not values[name])
+        if missing:
+            raise ValueError(f"{self.type.value} requires {', '.join(missing)}")
+        extra = sorted(name for name in forbidden if values[name] is not None)
+        if extra:
+            raise ValueError(f"{self.type.value} must not carry {', '.join(extra)}")
         return self
 
 
