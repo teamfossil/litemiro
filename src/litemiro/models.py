@@ -91,6 +91,11 @@ class Action(BaseModel):
             "target_agent_id": self.target_agent_id,
             "content": self.content,
         }
+        # Empty string is *missing* on required (matches the prompt's
+        # "non-empty content" rule) and *carried* on forbidden (anything
+        # not-None is a violation). The two checks deliberately use
+        # different syntactic forms — `not v` and `v is not None` — to
+        # encode that asymmetry.
         missing = sorted(name for name in required if not values[name])
         if missing:
             raise ValueError(f"{self.type.value} requires {', '.join(missing)}")

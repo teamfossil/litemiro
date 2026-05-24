@@ -110,6 +110,17 @@ class TestActionPayloadConsistency:
         with pytest.raises(ValidationError, match="FOLLOW"):
             Action(type=ActionType.FOLLOW, target_agent_id="a-2", content="x")
 
+    def test_forbidden_field_empty_string_still_rejected(self) -> None:
+        # `""` on a forbidden field counts as "carried" — only None is
+        # absent. Keeps the validator's contract symmetric with the
+        # JSON Schema, which rejects "" via the `"type": "null"` pin.
+        with pytest.raises(ValidationError, match="LIKE_POST"):
+            Action(type=ActionType.LIKE_POST, target_post_id="p-1", content="")
+        with pytest.raises(ValidationError, match="FOLLOW"):
+            Action(type=ActionType.FOLLOW, target_agent_id="a-2", target_post_id="")
+        with pytest.raises(ValidationError, match="DO_NOTHING"):
+            Action(type=ActionType.DO_NOTHING, content="")
+
 
 class TestPostHotScore:
     def test_zero_engagement_zero_score(self) -> None:
