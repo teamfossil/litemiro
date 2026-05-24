@@ -13,9 +13,11 @@ from pathlib import Path
 
 import pytest
 
+# NOTE — `tests.e2e._phase1_to_phase2_helpers` 는 OntologyLoader (Issue #13, owner=C) 머지
+# 전까지의 임시 매핑이다. Loader 머지 시 본 import 와 helper 모듈을 모두 제거하고
+# 호출부를 ``OntologyLoader`` 메서드로 교체한다.
 from litemiro.core.agent_scheduler import AgentScheduler
 from litemiro.core.state_store import StateStore
-from litemiro.models import Agent
 from litemiro.phase1.models import (
     AgentOrigin,
     AgentProfile,
@@ -29,47 +31,11 @@ from litemiro.phase1.models import (
     SemanticMemory,
 )
 from litemiro.social.graph import SocialGraph
-
-# ── helpers (Loader 미구현 동안의 임시 매핑, contract Section 4 그대로) ─────
-
-
-def _memory_summary_top_n(semantic: list[SemanticMemory], *, n: int = 3) -> str | None:
-    """Contract Section 4.2: top-N concat by (simulation_count desc, last_relevant_sim desc, id asc)."""
-    if not semantic:
-        return None
-    ordered = sorted(semantic, key=lambda m: (-m.simulation_count, -m.last_relevant_sim, m.id))
-    return "; ".join(m.summary for m in ordered[:n])
-
-
-def _build_agent(profile: AgentProfile, store: MemoryStore | None) -> Agent:
-    """Contract Section 4.1."""
-    return Agent(
-        agent_id=profile.agent_id,
-        interests=tuple(profile.topics),
-        persona_traits=profile.model_dump(mode="json"),
-        memory_summary=_memory_summary_top_n(store.semantic if store else []),
-        activation_rate=profile.behavior_tendency.post_rate,
-    )
-
-
-def _build_agents(ontology_a: OntologyA, ontology_b: OntologyB) -> tuple[Agent, ...]:
-    """결정적 순서 (agent_id 사전순)."""
-    return tuple(
-        _build_agent(ontology_a.agents[aid], ontology_b.stores.get(aid))
-        for aid in sorted(ontology_a.agents)
-    )
-
-
-def _build_social_graph(ontology_a: OntologyA) -> SocialGraph:
-    """Contract Section 4.3: self-follow / 미지 agent 사전 필터링."""
-    known = set(ontology_a.agents)
-    edges: dict[str, list[str]] = {}
-    for aid, profile in ontology_a.agents.items():
-        followees = [f for f in profile.initial_following if f != aid and f in known]
-        if followees:
-            edges[aid] = followees
-    return SocialGraph.from_dict(edges)
-
+from tests.e2e._phase1_to_phase2_helpers import (
+    build_agents,
+    build_social_graph,
+    memory_summary_top_n,
+)
 
 # ── fixtures ─────────────────────────────────────────────────────────
 
@@ -169,7 +135,7 @@ def ontology_b() -> OntologyB:
 def test_build_agents_maps_post_rate_to_activation_rate(
     ontology_a: OntologyA, ontology_b: OntologyB
 ) -> None:
-    agents = {a.agent_id: a for a in _build_agents(ontology_a, ontology_b)}
+    agents = {a.agent_id: a for a in build_agents(ontology_a, ontology_b)}
 
     assert agents["agent_001"].activation_rate == pytest.approx(0.7)
     assert agents["agent_002"].activation_rate == pytest.approx(0.4)
@@ -179,7 +145,7 @@ def test_build_agents_maps_post_rate_to_activation_rate(
 def test_build_agents_maps_topics_to_interests(
     ontology_a: OntologyA, ontology_b: OntologyB
 ) -> None:
-    agents = {a.agent_id: a for a in _build_agents(ontology_a, ontology_b)}
+    agents = {a.agent_id: a for a in build_agents(ontology_a, ontology_b)}
 
     assert agents["agent_001"].interests == ("정치", "경제")
     assert agents["agent_002"].interests == ("기술",)
@@ -190,7 +156,7 @@ def test_persona_traits_preserve_unused_fields(
     ontology_a: OntologyA, ontology_b: OntologyB
 ) -> None:
     """Section 4.1: model_dump 전체 보존 — 후속 단계가 참조할 미사용 필드 유지."""
-    agents = {a.agent_id: a for a in _build_agents(ontology_a, ontology_b)}
+    agents = {a.agent_id: a for a in build_agents(ontology_a, ontology_b)}
     traits = agents["agent_001"].persona_traits
 
     assert traits["behavior_tendency"]["reply_rate"] == pytest.approx(0.3)
@@ -200,7 +166,7 @@ def test_persona_traits_preserve_unused_fields(
 def test_memory_summary_orders_by_sim_count_then_recency(
     ontology_a: OntologyA, ontology_b: OntologyB
 ) -> None:
-    agents = {a.agent_id: a for a in _build_agents(ontology_a, ontology_b)}
+    agents = {a.agent_id: a for a in build_agents(ontology_a, ontology_b)}
 
     # contract Section 4.2: top-3 by (simulation_count desc, last_relevant_sim desc)
     # m4(9), m2(5,10), m3(5,2) — m1(1) dropped
@@ -210,14 +176,14 @@ def test_memory_summary_orders_by_sim_count_then_recency(
 def test_memory_summary_is_none_for_empty_semantic(
     ontology_a: OntologyA, ontology_b: OntologyB
 ) -> None:
-    agents = {a.agent_id: a for a in _build_agents(ontology_a, ontology_b)}
+    agents = {a.agent_id: a for a in build_agents(ontology_a, ontology_b)}
     assert agents["agent_003"].memory_summary is None
 
 
 def test_memory_summary_handles_under_n_entries(
     ontology_a: OntologyA, ontology_b: OntologyB
 ) -> None:
-    agents = {a.agent_id: a for a in _build_agents(ontology_a, ontology_b)}
+    agents = {a.agent_id: a for a in build_agents(ontology_a, ontology_b)}
     assert agents["agent_002"].memory_summary == "유일한 기억"
 
 
@@ -227,7 +193,7 @@ def test_memory_summary_breaks_full_ties_by_id() -> None:
         _sem("m_b", "b", sim_count=5, last_sim=3),
         _sem("m_a", "a", sim_count=5, last_sim=3),
     ]
-    assert _memory_summary_top_n(tied) == "a; b"
+    assert memory_summary_top_n(tied) == "a; b"
 
 
 def test_social_graph_drops_self_follow_and_unknown(ontology_a: OntologyA) -> None:
@@ -237,7 +203,7 @@ def test_social_graph_drops_self_follow_and_unknown(ontology_a: OntologyA) -> No
     모델 생성 시점에 이미 제거하므로 helper 의 `f != aid` 가드는
     belt-and-suspenders 다. 본 테스트는 unknown follow drop 만 실효 검증한다.
     """
-    graph = _build_social_graph(ontology_a)
+    graph = build_social_graph(ontology_a)
 
     # agent_001 had [agent_002, agent_001, agent_999]:
     #   - agent_001 (self) 은 AgentProfile 단계에서 이미 제거됨 (가드 도달 전)
@@ -250,8 +216,8 @@ def test_social_graph_drops_self_follow_and_unknown(ontology_a: OntologyA) -> No
 def test_state_store_constructible_from_ontology(
     ontology_a: OntologyA, ontology_b: OntologyB, tmp_path: Path
 ) -> None:
-    agents = _build_agents(ontology_a, ontology_b)
-    graph = _build_social_graph(ontology_a)
+    agents = build_agents(ontology_a, ontology_b)
+    graph = build_social_graph(ontology_a)
 
     store = StateStore(
         agents=agents,
@@ -271,7 +237,7 @@ def test_scheduler_is_deterministic_across_runs(
     """동일 입력 + 동일 seed → 동일 활성 에이전트 집합."""
 
     def _run() -> tuple[str, ...]:
-        agents = _build_agents(ontology_a, ontology_b)
+        agents = build_agents(ontology_a, ontology_b)
         scheduler = AgentScheduler(global_seed=ontology_a.seed)
         return scheduler.select_active(agents, round_num=0)
 
@@ -280,5 +246,5 @@ def test_scheduler_is_deterministic_across_runs(
 
 def test_build_agents_order_is_stable(ontology_a: OntologyA, ontology_b: OntologyB) -> None:
     """contract Section 5: agent_id 사전순 보장."""
-    ids = tuple(a.agent_id for a in _build_agents(ontology_a, ontology_b))
+    ids = tuple(a.agent_id for a in build_agents(ontology_a, ontology_b))
     assert ids == ("agent_001", "agent_002", "agent_003")
