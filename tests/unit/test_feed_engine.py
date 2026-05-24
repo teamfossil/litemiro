@@ -1,7 +1,7 @@
 """TDD spec for ``litemiro.feed.engine.FeedEngine``.
 
-Notion §3.2 says only "FeedEngine → SocialGraph: 팔로우 관계 기반 피드
-필터링" and §9.2 only lists generic test-points. B locks the contract:
+Notion Section 3.2 says only "FeedEngine → SocialGraph: 팔로우 관계 기반 피드
+필터링" and Section 9.2 only lists generic test-points. B locks the contract:
 
 * **Candidate pool** = (posts whose author the agent *follows*)
   unioned with (posts whose ``topics`` overlap with the agent's
@@ -222,7 +222,7 @@ class TestDeterminism:
 
 
 class TestSemanticMatching:
-    """Notion §3.2 candidacy includes semantic interest-topic similarity.
+    """Notion Section 3.2 candidacy includes semantic interest-topic similarity.
 
     Without an embedder ``FeedEngine`` keeps the W2 default behaviour
     (exact topic match only). When an ``EmbedderLike`` is injected,

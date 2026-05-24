@@ -1,7 +1,7 @@
 """``SocialGraph`` — agent follow-graph component owned by **B**.
 
 The Notion design doc only states that this component must support
-"팔로우/언팔로우, 순환 참조 방지, 직렬화/역직렬화" (Phase 2 §9.2). The
+"팔로우/언팔로우, 순환 참조 방지, 직렬화/역직렬화" (Phase 2 Section 9.2). The
 contract pinned here — and exercised by ``tests/unit/test_social_graph``
 — is:
 

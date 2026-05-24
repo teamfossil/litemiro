@@ -1,6 +1,6 @@
 """TDD spec for ``litemiro.topics.extractor.TopicExtractor``.
 
-Notion §3.2 only says "CREATE_POST → 새 포스트 등록". B locks the
+Notion Section 3.2 only says "CREATE_POST → 새 포스트 등록". B locks the
 contract so A can call this surface without reasoning about embeddings:
 
 * Vocabulary is **pre-embedded** at construction — ``extract`` calls
