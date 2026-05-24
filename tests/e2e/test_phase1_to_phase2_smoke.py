@@ -33,15 +33,11 @@ from litemiro.social.graph import SocialGraph
 # ── helpers (Loader 미구현 동안의 임시 매핑, contract §4 그대로) ─────
 
 
-def _memory_summary_top_n(
-    semantic: list[SemanticMemory], *, n: int = 3
-) -> str | None:
+def _memory_summary_top_n(semantic: list[SemanticMemory], *, n: int = 3) -> str | None:
     """Contract §4.2: top-N concat by (simulation_count desc, last_relevant_sim desc)."""
     if not semantic:
         return None
-    ordered = sorted(
-        semantic, key=lambda m: (-m.simulation_count, -m.last_relevant_sim)
-    )
+    ordered = sorted(semantic, key=lambda m: (-m.simulation_count, -m.last_relevant_sim))
     return "; ".join(m.summary for m in ordered[:n])
 
 
@@ -56,9 +52,7 @@ def _build_agent(profile: AgentProfile, store: MemoryStore | None) -> Agent:
     )
 
 
-def _build_agents(
-    ontology_a: OntologyA, ontology_b: OntologyB
-) -> tuple[Agent, ...]:
+def _build_agents(ontology_a: OntologyA, ontology_b: OntologyB) -> tuple[Agent, ...]:
     """결정적 순서 (agent_id 사전순)."""
     return tuple(
         _build_agent(ontology_a.agents[aid], ontology_b.stores.get(aid))
@@ -256,9 +250,7 @@ def test_scheduler_is_deterministic_across_runs(
     assert _run() == _run()
 
 
-def test_build_agents_order_is_stable(
-    ontology_a: OntologyA, ontology_b: OntologyB
-) -> None:
+def test_build_agents_order_is_stable(ontology_a: OntologyA, ontology_b: OntologyB) -> None:
     """contract §5: agent_id 사전순 보장."""
     ids = tuple(a.agent_id for a in _build_agents(ontology_a, ontology_b))
     assert ids == ("agent_001", "agent_002", "agent_003")
