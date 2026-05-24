@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -16,6 +17,8 @@ from jsonschema import Draft7Validator, FormatChecker
 
 from litemiro.models import Action, ActionType, ContextSummary, LLMMeta, RoundEvent
 from litemiro.schemas import round_event_schema
+
+_SAMPLE_JSONL = Path(__file__).resolve().parents[1] / "data" / "round_event_sample.jsonl"
 
 
 @pytest.fixture(scope="module")
@@ -162,3 +165,14 @@ def test_schema_rejects_forbidden_fields(
 def test_schema_self_check() -> None:
     """The bundled schema must itself be a valid Draft 7 document."""
     Draft7Validator.check_schema(round_event_schema())
+
+
+def test_sample_jsonl_still_valid(validator: Draft7Validator) -> None:
+    # CI runs the same check via `litemiro.cli.validate`; pin it inside
+    # pytest so schema regressions break locally too, not only in CI.
+    lines = _SAMPLE_JSONL.read_text(encoding="utf-8").splitlines()
+    assert lines, f"sample fixture empty: {_SAMPLE_JSONL}"
+    for i, raw in enumerate(lines, 1):
+        payload = json.loads(raw)
+        errs = list(validator.iter_errors(payload))
+        assert errs == [], f"line {i}: " + "; ".join(e.message for e in errs)

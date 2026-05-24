@@ -58,6 +58,8 @@ class TestActionPayloadConsistency:
         with pytest.raises(ValidationError, match="DO_NOTHING"):
             Action(type=ActionType.DO_NOTHING, target_post_id="p-1")
         with pytest.raises(ValidationError, match="DO_NOTHING"):
+            Action(type=ActionType.DO_NOTHING, target_agent_id="a-2")
+        with pytest.raises(ValidationError, match="DO_NOTHING"):
             Action(type=ActionType.DO_NOTHING, content="x")
 
     def test_do_nothing_valid_when_empty(self) -> None:
