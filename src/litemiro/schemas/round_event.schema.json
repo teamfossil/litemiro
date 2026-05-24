@@ -32,15 +32,36 @@
       "allOf": [
         {
           "if": { "properties": { "type": { "const": "CREATE_POST" } } },
-          "then": { "required": ["content"], "properties": { "content": { "type": "string", "minLength": 1 } } }
+          "then": {
+            "required": ["content"],
+            "properties": {
+              "content": { "type": "string", "minLength": 1 },
+              "target_post_id": { "type": "null" },
+              "target_agent_id": { "type": "null" }
+            }
+          }
         },
         {
           "if": { "properties": { "type": { "const": "LIKE_POST" } } },
-          "then": { "required": ["target_post_id"], "properties": { "target_post_id": { "type": "string", "minLength": 1 } } }
+          "then": {
+            "required": ["target_post_id"],
+            "properties": {
+              "target_post_id": { "type": "string", "minLength": 1 },
+              "target_agent_id": { "type": "null" },
+              "content": { "type": "null" }
+            }
+          }
         },
         {
           "if": { "properties": { "type": { "const": "REPOST" } } },
-          "then": { "required": ["target_post_id"], "properties": { "target_post_id": { "type": "string", "minLength": 1 } } }
+          "then": {
+            "required": ["target_post_id"],
+            "properties": {
+              "target_post_id": { "type": "string", "minLength": 1 },
+              "target_agent_id": { "type": "null" },
+              "content": { "type": "null" }
+            }
+          }
         },
         {
           "if": { "properties": { "type": { "const": "QUOTE_POST" } } },
@@ -48,13 +69,31 @@
             "required": ["target_post_id", "content"],
             "properties": {
               "target_post_id": { "type": "string", "minLength": 1 },
-              "content": { "type": "string", "minLength": 1 }
+              "content": { "type": "string", "minLength": 1 },
+              "target_agent_id": { "type": "null" }
             }
           }
         },
         {
           "if": { "properties": { "type": { "const": "FOLLOW" } } },
-          "then": { "required": ["target_agent_id"], "properties": { "target_agent_id": { "type": "string", "minLength": 1 } } }
+          "then": {
+            "required": ["target_agent_id"],
+            "properties": {
+              "target_agent_id": { "type": "string", "minLength": 1 },
+              "target_post_id": { "type": "null" },
+              "content": { "type": "null" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "DO_NOTHING" } } },
+          "then": {
+            "properties": {
+              "target_post_id": { "type": "null" },
+              "target_agent_id": { "type": "null" },
+              "content": { "type": "null" }
+            }
+          }
         }
       ]
     },

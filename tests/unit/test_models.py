@@ -58,6 +58,8 @@ class TestActionPayloadConsistency:
         with pytest.raises(ValidationError, match="DO_NOTHING"):
             Action(type=ActionType.DO_NOTHING, target_post_id="p-1")
         with pytest.raises(ValidationError, match="DO_NOTHING"):
+            Action(type=ActionType.DO_NOTHING, target_agent_id="a-2")
+        with pytest.raises(ValidationError, match="DO_NOTHING"):
             Action(type=ActionType.DO_NOTHING, content="x")
 
     def test_do_nothing_valid_when_empty(self) -> None:
@@ -76,6 +78,50 @@ class TestActionPayloadConsistency:
     def test_extra_fields_rejected(self) -> None:
         with pytest.raises(ValidationError):
             Action.model_validate({"type": "DO_NOTHING", "extra": 1})
+
+    def test_create_post_rejects_targets(self) -> None:
+        with pytest.raises(ValidationError, match="CREATE_POST"):
+            Action(type=ActionType.CREATE_POST, content="hi", target_post_id="p-1")
+        with pytest.raises(ValidationError, match="CREATE_POST"):
+            Action(type=ActionType.CREATE_POST, content="hi", target_agent_id="a-2")
+
+    def test_like_post_rejects_extras(self) -> None:
+        with pytest.raises(ValidationError, match="LIKE_POST"):
+            Action(type=ActionType.LIKE_POST, target_post_id="p-1", content="x")
+        with pytest.raises(ValidationError, match="LIKE_POST"):
+            Action(type=ActionType.LIKE_POST, target_post_id="p-1", target_agent_id="a-2")
+
+    def test_repost_rejects_extras(self) -> None:
+        with pytest.raises(ValidationError, match="REPOST"):
+            Action(type=ActionType.REPOST, target_post_id="p-1", content="x")
+        with pytest.raises(ValidationError, match="REPOST"):
+            Action(type=ActionType.REPOST, target_post_id="p-1", target_agent_id="a-2")
+
+    def test_quote_post_rejects_target_agent(self) -> None:
+        with pytest.raises(ValidationError, match="QUOTE_POST"):
+            Action(
+                type=ActionType.QUOTE_POST,
+                target_post_id="p-1",
+                content="x",
+                target_agent_id="a-2",
+            )
+
+    def test_follow_rejects_extras(self) -> None:
+        with pytest.raises(ValidationError, match="FOLLOW"):
+            Action(type=ActionType.FOLLOW, target_agent_id="a-2", target_post_id="p-1")
+        with pytest.raises(ValidationError, match="FOLLOW"):
+            Action(type=ActionType.FOLLOW, target_agent_id="a-2", content="x")
+
+    def test_forbidden_field_empty_string_still_rejected(self) -> None:
+        # `""` on a forbidden field counts as "carried" — only None is
+        # absent. Keeps the validator's contract symmetric with the
+        # JSON Schema, which rejects "" via the `"type": "null"` pin.
+        with pytest.raises(ValidationError, match="LIKE_POST"):
+            Action(type=ActionType.LIKE_POST, target_post_id="p-1", content="")
+        with pytest.raises(ValidationError, match="FOLLOW"):
+            Action(type=ActionType.FOLLOW, target_agent_id="a-2", target_post_id="")
+        with pytest.raises(ValidationError, match="DO_NOTHING"):
+            Action(type=ActionType.DO_NOTHING, content="")
 
 
 class TestPostHotScore:
