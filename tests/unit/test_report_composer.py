@@ -1,9 +1,12 @@
 """ReportComposer 단위 테스트.
 
-핵심 계약은 두 가지:
+핵심 계약:
+
 1. 정상 경로 — primary 모델만 호출, Markdown 그대로 반환, ``fallback_used=False``.
-2. 폴백 경로 — primary 가 예외를 던지면 fallback 모델로 한 번 더 호출,
-   ``fallback_used=True``. 폴백도 실패하면 그 예외는 그대로 전파한다.
+2. primary 재시도 — primary 가 첫 시도에서 실패해도 tenacity 재시도 1 회로
+   회복 (PRD §4.3). 폴백 안 탐.
+3. 폴백 경로 — primary 가 재시도까지 모두 실패하면 fallback 모델로 한 번 호출.
+   ``fallback_used=True``. 폴백도 실패하면 그 예외는 그대로 전파.
 """
 
 from __future__ import annotations
@@ -102,10 +105,40 @@ class TestPrimaryPath:
         assert "전반 요약." in user
 
 
-class TestFallback:
-    async def test_falls_back_when_primary_raises(self) -> None:
+class TestPrimaryRetry:
+    async def test_primary_recovers_on_second_attempt(self) -> None:
+        """primary 가 첫 시도 503 후 재시도에서 성공 → 폴백 안 탐."""
+
         llm = _FakeLLM()
-        llm.queue("primary-m", RuntimeError("primary down"))
+        llm.queue(
+            "primary-m",
+            RuntimeError("transient 503"),
+            LLMResponse(content="회복된 본문", prompt_tokens=10, completion_tokens=20),
+        )
+        composer = ReportComposer(llm=llm)
+        config = ReportConfig(
+            composer_primary_model="primary-m", composer_fallback_model="fallback-m"
+        )
+
+        out = await composer.compose(result=_result(), insights=_insights(), config=config)
+
+        assert out.markdown == "회복된 본문"
+        assert out.model == "primary-m"
+        assert out.fallback_used is False
+        assert out.tokens_used == 30
+        assert [c[2] for c in llm.calls] == ["primary-m", "primary-m"]
+
+
+class TestFallback:
+    async def test_falls_back_when_primary_exhausts_retries(self) -> None:
+        """primary 가 재시도까지 모두 실패하면 fallback 으로 1회 호출."""
+
+        llm = _FakeLLM()
+        llm.queue(
+            "primary-m",
+            RuntimeError("primary down 1"),
+            RuntimeError("primary down 2"),
+        )
         llm.queue(
             "fallback-m",
             LLMResponse(content="폴백 본문", prompt_tokens=20, completion_tokens=40),
@@ -121,11 +154,15 @@ class TestFallback:
         assert out.model == "fallback-m"
         assert out.fallback_used is True
         assert out.tokens_used == 60
-        assert [c[2] for c in llm.calls] == ["primary-m", "fallback-m"]
+        assert [c[2] for c in llm.calls] == ["primary-m", "primary-m", "fallback-m"]
 
     async def test_fallback_failure_propagates(self) -> None:
         llm = _FakeLLM()
-        llm.queue("primary-m", RuntimeError("primary down"))
+        llm.queue(
+            "primary-m",
+            RuntimeError("primary down 1"),
+            RuntimeError("primary down 2"),
+        )
         llm.queue("fallback-m", RuntimeError("fallback also down"))
         composer = ReportComposer(llm=llm)
         config = ReportConfig(
@@ -134,4 +171,4 @@ class TestFallback:
 
         with pytest.raises(RuntimeError, match="fallback also down"):
             await composer.compose(result=_result(), insights=_insights(), config=config)
-        assert len(llm.calls) == 2
+        assert [c[2] for c in llm.calls] == ["primary-m", "primary-m", "fallback-m"]

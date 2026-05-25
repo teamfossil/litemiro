@@ -104,5 +104,6 @@ async def test_pipeline_falls_back_when_composer_primary_fails() -> None:
 
     assert report.fallback_used is True
     assert report.model == "openrouter/qwen/qwen-plus"
-    # analyzer 1 + composer primary fail 1 + composer fallback 1 = 3
-    assert len(llm.calls) == 3
+    # analyzer 1 + composer primary 시도 2 (재시도 1 회, PRD §4.3)
+    # + composer fallback 1 = 4
+    assert len(llm.calls) == 4
