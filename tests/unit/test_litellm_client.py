@@ -191,6 +191,59 @@ class TestEnvironmentFallback:
         assert stub.calls[0]["base_url"] == "http://explicit"
 
 
+class TestMaxOutputTokens:
+    """``max_tokens`` is forwarded so OpenRouter doesn't pre-bill the full
+    context window. Silent by default — only flips on when explicitly
+    requested or when the env var is set."""
+
+    async def test_omitted_when_unset(self, stub: _Stub, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("LITEMIRO_MAX_OUTPUT_TOKENS", raising=False)
+        client = LiteLLMClient(api_key="k", base_url="http://x")
+        await client.complete(system="s", user="u", model="m")
+        assert "max_tokens" not in stub.calls[0]
+
+    async def test_explicit_arg_forwarded(
+        self, stub: _Stub, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("LITEMIRO_MAX_OUTPUT_TOKENS", raising=False)
+        client = LiteLLMClient(api_key="k", base_url="http://x", max_output_tokens=4096)
+        await client.complete(system="s", user="u", model="m")
+        assert stub.calls[0]["max_tokens"] == 4096
+
+    async def test_env_var_picked_up(self, stub: _Stub, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("LITEMIRO_MAX_OUTPUT_TOKENS", "2048")
+        client = LiteLLMClient(api_key="k", base_url="http://x")
+        await client.complete(system="s", user="u", model="m")
+        assert stub.calls[0]["max_tokens"] == 2048
+
+    async def test_explicit_overrides_env(
+        self, stub: _Stub, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LITEMIRO_MAX_OUTPUT_TOKENS", "999")
+        client = LiteLLMClient(api_key="k", base_url="http://x", max_output_tokens=1234)
+        await client.complete(system="s", user="u", model="m")
+        assert stub.calls[0]["max_tokens"] == 1234
+
+    async def test_garbage_env_falls_through(
+        self, stub: _Stub, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Non-numeric or non-positive values are ignored rather than
+        # raising — we'd rather let the backend pick a ceiling than
+        # crash the round on a typo'd env var.
+        monkeypatch.setenv("LITEMIRO_MAX_OUTPUT_TOKENS", "not a number")
+        client = LiteLLMClient(api_key="k", base_url="http://x")
+        await client.complete(system="s", user="u", model="m")
+        assert "max_tokens" not in stub.calls[0]
+
+    async def test_zero_env_falls_through(
+        self, stub: _Stub, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LITEMIRO_MAX_OUTPUT_TOKENS", "0")
+        client = LiteLLMClient(api_key="k", base_url="http://x")
+        await client.complete(system="s", user="u", model="m")
+        assert "max_tokens" not in stub.calls[0]
+
+
 def test_protocol_is_satisfied() -> None:
     assert isinstance(LiteLLMClient(api_key="k"), LLMClient)
 
