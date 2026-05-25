@@ -7,21 +7,21 @@ Phase 2(라운드 시뮬레이션)의 입력 객체(`Agent`, `SocialGraph`, `Sta
 변환하는 단일 경계 — `OntologyLoader` — 의 동작을 고정한다.
 
 본 문서는 **MVP 통합 1차분**의 계약만을 정의한다. 메모리 갱신 사이클, 동적 토픽
-가중치 등은 §8 후속 마일스톤에서 다룬다.
+가중치 등은 Section 8 후속 마일스톤에서 다룬다.
 
 ## 1. 범위
 
 | 항목 | MVP 포함 | 비고 |
 |---|---|---|
-| `OntologyA` → `Agent[]` 매핑 | O | §4.1 |
-| `OntologyB` → `Agent.memory_summary` (top-N concat) | O | §4.2 |
-| `initial_following` → `SocialGraph` | O | §4.3 |
-| `OntologyLoader` API | O | §5 |
-| 스키마 검증 (jsonschema) | O | §6 |
-| E2E 스모크 테스트 | O | §7 |
-| Phase 2 → Phase 1 메모리 갱신 | X | post-MVP (§8) |
-| 동적 `MemoryConfig` 반영 | X | post-MVP (§8) |
-| `OntologyA.ontology.topic_hierarchy` 활용 | X | post-MVP (§8) |
+| `OntologyA` → `Agent[]` 매핑 | O | Section 4.1 |
+| `OntologyB` → `Agent.memory_summary` (top-N concat) | O | Section 4.2 |
+| `initial_following` → `SocialGraph` | O | Section 4.3 |
+| `OntologyLoader` API | O | Section 5 |
+| 스키마 검증 (jsonschema) | O | Section 6 |
+| E2E 스모크 테스트 | O | Section 7 |
+| Phase 2 → Phase 1 메모리 갱신 | X | post-MVP (Section 8) |
+| 동적 `MemoryConfig` 반영 | X | post-MVP (Section 8) |
+| `OntologyA.ontology.topic_hierarchy` 활용 | X | post-MVP (Section 8) |
 
 ## 2. Phase 1 출력 (소비 측 관점)
 
@@ -93,7 +93,7 @@ StateStore(
 SocialGraph.from_dict({follower_id: [followee_id, ...], ...}) -> SocialGraph
 ```
 
-→ self-follow는 `ValueError`. `OntologyLoader`가 사전 필터링한다(§4.3).
+→ self-follow는 `ValueError`. `OntologyLoader`가 사전 필터링한다(Section 4.3).
 
 ## 4. 매핑 규칙
 
@@ -104,7 +104,7 @@ SocialGraph.from_dict({follower_id: [followee_id, ...], ...}) -> SocialGraph
 | `agent_id` | `AgentProfile.agent_id` | passthrough |
 | `interests` | `AgentProfile.topics` | `tuple(...)` |
 | `persona_traits` | `AgentProfile` 전체 dict | `model_dump(mode="json")` |
-| `memory_summary` | `OntologyB.stores[agent_id].semantic` | §4.2 알고리즘 |
+| `memory_summary` | `OntologyB.stores[agent_id].semantic` | Section 4.2 알고리즘 |
 | `activation_rate` | `AgentProfile.behavior_tendency.post_rate` | passthrough |
 
 `persona_traits`에는 `AgentProfile.model_dump(mode="json")` 전체를 넣는다
@@ -115,7 +115,7 @@ SocialGraph.from_dict({follower_id: [followee_id, ...], ...}) -> SocialGraph
 > Phase 1 산출의 `mean(post_rate)` 가 비용 표 가정에서 ±0.1 이상 벗어나면 비용
 > 표 재산정 필요. **quick 첫 실행 시
 > `statistics.fmean(a.activation_rate for a in agents)` 로 측정**하여 차이가 크면
-> §8 후속 마일스톤에서 다룬다. (Phase 1 `ProfileGenerator` 가 어떤 prior 로
+> Section 8 후속 마일스톤에서 다룬다. (Phase 1 `ProfileGenerator` 가 어떤 prior 로
 > `post_rate` 를 결정하는지는 별도 명세 — Phase 1 측 책임.)
 
 ### 4.2 `memory_summary` 알고리즘
@@ -138,7 +138,7 @@ else:
 - **N=3 근거**: `MemoryConfig.retrieval_max` 기본값과 일치. post-MVP에서 동적화.
 - **정렬 기준**: `simulation_count desc` (자주 회상된 기억 우선) →
   동률 시 `last_relevant_sim desc` (최근에 회상된 기억 우선) →
-  그래도 동률이면 `id asc` (결정성 보장, §6.4).
+  그래도 동률이면 `id asc` (결정성 보장, Section 6.4).
 - **결합자 "; "**: 토큰 효율과 가독성 트레이드오프. Phase 3 분석에서 의미
   단위 분리 필요시 조정.
 - **빈 리스트는 `None`**: `Agent.memory_summary: str | None` 계약과 일치.
@@ -196,7 +196,7 @@ class OntologyLoader:
         *,
         ontology_a: OntologyA,
     ) -> SocialGraph:
-        """§4.3 매핑."""
+        """Section 4.3 매핑."""
 ```
 
 호출자(통합 진입점, **owner: A**)는 위 3개를 조합하여 `StateStore`를 생성한다.

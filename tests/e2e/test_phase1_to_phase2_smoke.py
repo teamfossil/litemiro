@@ -30,11 +30,11 @@ from litemiro.phase1.models import (
 )
 from litemiro.social.graph import SocialGraph
 
-# ── helpers (Loader 미구현 동안의 임시 매핑, contract §4 그대로) ─────
+# ── helpers (Loader 미구현 동안의 임시 매핑, contract Section 4 그대로) ─────
 
 
 def _memory_summary_top_n(semantic: list[SemanticMemory], *, n: int = 3) -> str | None:
-    """Contract §4.2: top-N concat by (simulation_count desc, last_relevant_sim desc, id asc)."""
+    """Contract Section 4.2: top-N concat by (simulation_count desc, last_relevant_sim desc, id asc)."""
     if not semantic:
         return None
     ordered = sorted(semantic, key=lambda m: (-m.simulation_count, -m.last_relevant_sim, m.id))
@@ -42,7 +42,7 @@ def _memory_summary_top_n(semantic: list[SemanticMemory], *, n: int = 3) -> str 
 
 
 def _build_agent(profile: AgentProfile, store: MemoryStore | None) -> Agent:
-    """Contract §4.1."""
+    """Contract Section 4.1."""
     return Agent(
         agent_id=profile.agent_id,
         interests=tuple(profile.topics),
@@ -61,7 +61,7 @@ def _build_agents(ontology_a: OntologyA, ontology_b: OntologyB) -> tuple[Agent, 
 
 
 def _build_social_graph(ontology_a: OntologyA) -> SocialGraph:
-    """Contract §4.3: self-follow / 미지 agent 사전 필터링."""
+    """Contract Section 4.3: self-follow / 미지 agent 사전 필터링."""
     known = set(ontology_a.agents)
     edges: dict[str, list[str]] = {}
     for aid, profile in ontology_a.agents.items():
@@ -189,7 +189,7 @@ def test_build_agents_maps_topics_to_interests(
 def test_persona_traits_preserve_unused_fields(
     ontology_a: OntologyA, ontology_b: OntologyB
 ) -> None:
-    """§4.1: model_dump 전체 보존 — 후속 단계가 참조할 미사용 필드 유지."""
+    """Section 4.1: model_dump 전체 보존 — 후속 단계가 참조할 미사용 필드 유지."""
     agents = {a.agent_id: a for a in _build_agents(ontology_a, ontology_b)}
     traits = agents["agent_001"].persona_traits
 
@@ -202,7 +202,7 @@ def test_memory_summary_orders_by_sim_count_then_recency(
 ) -> None:
     agents = {a.agent_id: a for a in _build_agents(ontology_a, ontology_b)}
 
-    # contract §4.2: top-3 by (simulation_count desc, last_relevant_sim desc)
+    # contract Section 4.2: top-3 by (simulation_count desc, last_relevant_sim desc)
     # m4(9), m2(5,10), m3(5,2) — m1(1) dropped
     assert agents["agent_001"].memory_summary == "최다 회상 기억; 중간 회상 최신; 중간 회상 과거"
 
@@ -222,7 +222,7 @@ def test_memory_summary_handles_under_n_entries(
 
 
 def test_memory_summary_breaks_full_ties_by_id() -> None:
-    """두 정렬 키가 모두 동률이면 id 사전순으로 결정 (재현성, §6.4)."""
+    """두 정렬 키가 모두 동률이면 id 사전순으로 결정 (재현성, Section 6.4)."""
     tied = [
         _sem("m_b", "b", sim_count=5, last_sim=3),
         _sem("m_a", "a", sim_count=5, last_sim=3),
@@ -231,9 +231,17 @@ def test_memory_summary_breaks_full_ties_by_id() -> None:
 
 
 def test_social_graph_drops_self_follow_and_unknown(ontology_a: OntologyA) -> None:
+    """unknown agent_id drop 을 실효 검증.
+
+    self-follow 는 `AgentProfile._no_self_follow` (`phase1/models.py`) 가
+    모델 생성 시점에 이미 제거하므로 helper 의 `f != aid` 가드는
+    belt-and-suspenders 다. 본 테스트는 unknown follow drop 만 실효 검증한다.
+    """
     graph = _build_social_graph(ontology_a)
 
-    # agent_001 had [agent_002, agent_001, agent_999]; only agent_002 survives
+    # agent_001 had [agent_002, agent_001, agent_999]:
+    #   - agent_001 (self) 은 AgentProfile 단계에서 이미 제거됨 (가드 도달 전)
+    #   - agent_999 (unknown) 는 helper 가 제거 — 본 테스트의 실효 케이스
     assert graph.following("agent_001") == frozenset({"agent_002"})
     assert graph.following("agent_002") == frozenset({"agent_003"})
     assert graph.following("agent_003") == frozenset()
@@ -271,6 +279,6 @@ def test_scheduler_is_deterministic_across_runs(
 
 
 def test_build_agents_order_is_stable(ontology_a: OntologyA, ontology_b: OntologyB) -> None:
-    """contract §5: agent_id 사전순 보장."""
+    """contract Section 5: agent_id 사전순 보장."""
     ids = tuple(a.agent_id for a in _build_agents(ontology_a, ontology_b))
     assert ids == ("agent_001", "agent_002", "agent_003")
