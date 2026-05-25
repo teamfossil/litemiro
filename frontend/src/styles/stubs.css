@@ -1,0 +1,38 @@
+/* =====================================================================
+   Stub screens — placeholder for screens not yet implemented.
+   ===================================================================== */
+.lm-stub {
+  flex: 1;
+  display: grid; place-items: center;
+  padding: var(--s-12);
+}
+.lm-stub__inner {
+  max-width: 640px;
+  display: flex; flex-direction: column; gap: var(--s-4);
+  align-items: flex-start;
+  text-align: left;
+}
+.lm-stub__eyebrow {
+  font-family: var(--mono);
+  font-size: var(--t-mono);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.lm-stub__title {
+  margin: 0;
+  font-size: var(--t-display);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--ls-tight);
+  font-weight: 600;
+  color: var(--ink);
+}
+.lm-stub__desc {
+  margin: 0;
+  font-size: var(--t-h4);
+  line-height: var(--lh-normal);
+  color: var(--ink-3);
+  text-wrap: pretty;
+  max-width: 56ch;
+}
+.lm-stub__actions { margin-top: var(--s-4); display: flex; gap: var(--s-3); }

@@ -1,0 +1,201 @@
+/* =====================================================================
+   라이트미로 — Shell + Header CSS
+   ===================================================================== */
+
+/* ---------- SHELL ---------- */
+.lm-shell {
+  height: 100vh;
+  display: flex; flex-direction: column;
+  background: var(--paper);
+  color: var(--ink);
+  overflow: hidden;
+}
+.lm-shell__main {
+  flex: 1; display: flex; flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ---------- BRAND MARK ---------- */
+.lm-brand {
+  display: inline-flex; align-items: center; gap: var(--s-4);
+  color: var(--ink);
+}
+.lm-brand__dots { display: inline-flex; gap: calc(3px * var(--scale)); align-items: center; }
+.lm-brand__dots span { display: inline-block; border-radius: 50%; }
+.lm-brand__word {
+  font-family: var(--mono);
+  font-size: var(--t-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.lm-brand--lg .lm-brand__word { font-size: var(--t-h4); letter-spacing: 0.12em; }
+
+/* ---------- HEADER ---------- */
+.lm-header {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: var(--s-7);
+  padding: 0 var(--s-7);
+  height: var(--header-h);
+  border-bottom: 1px solid var(--rule-2);
+  background: var(--paper);
+  position: sticky; top: 0; z-index: 40;
+}
+.lm-header__left { display: flex; align-items: center; gap: var(--s-5); min-width: 0; }
+.lm-header__brand {
+  display: inline-flex; align-items: center;
+  padding: var(--s-2) 0;
+  cursor: pointer;
+}
+.lm-header__plaza {
+  display: flex; align-items: baseline; gap: var(--s-3);
+  padding-left: var(--s-5);
+  border-left: 1px solid var(--rule-2);
+  min-width: 0;
+}
+.lm-header__plaza-tag {
+  font-family: var(--mono);
+  font-size: var(--t-mono);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--ink-4);
+  white-space: nowrap;
+}
+.lm-header__plaza-title {
+  font-size: var(--t-body);
+  color: var(--ink);
+  font-weight: 500;
+  letter-spacing: var(--ls-normal);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  min-width: 0;
+}
+
+/* ---------- HEADER PHASE LABEL (시드 등 광장 nav 이전 단계, 헤더 중앙) ---------- */
+.lm-header__phase {
+  display: flex; align-items: baseline; gap: var(--s-3);
+  justify-self: center;
+  min-width: 0;
+}
+.lm-header__phase-tag {
+  font-family: var(--mono);
+  font-size: var(--t-mono);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--ink-4);
+  white-space: nowrap;
+}
+.lm-header__phase-text {
+  font-size: var(--t-body);
+  color: var(--ink);
+  font-weight: 500;
+  letter-spacing: var(--ls-normal);
+  white-space: nowrap;
+}
+
+/* ---------- HEADER NAV (phase rail) ---------- */
+.lm-header__nav {
+  display: flex;
+  align-items: center;
+  gap: calc(2px * var(--scale));
+  padding: calc(4px * var(--scale));
+  background: var(--card);
+  border-radius: var(--r-pill);
+}
+.lm-header__navitem {
+  display: inline-flex; align-items: center; gap: var(--s-2);
+  padding: calc(6px * var(--scale)) var(--s-3);
+  border-radius: var(--r-pill);
+  color: var(--ink-3);
+  font-size: var(--t-small);
+  font-weight: 500;
+  transition: background var(--dur-1), color var(--dur-1);
+}
+.lm-header__navitem:hover { color: var(--ink); }
+.lm-header__navitem.is-active {
+  background: var(--ink);
+  color: var(--paper);
+}
+/* 리포트 도착 전 — 현재 화면 외 단계는 시각적으로 잠금. */
+.lm-header__navitem.is-locked {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.lm-header__navitem.is-locked:hover { color: var(--ink-3); background: transparent; }
+.lm-header__navnum {
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  letter-spacing: 0.04em;
+  opacity: 0.65;
+  white-space: nowrap;
+}
+.lm-header__navlabel { letter-spacing: var(--ls-normal); white-space: nowrap; }
+
+/* ---------- HEADER RIGHT ---------- */
+.lm-header__right { display: flex; align-items: center; gap: var(--s-3); justify-self: end; }
+.lm-header__iconbtn {
+  width: calc(36px * var(--scale)); height: calc(36px * var(--scale));
+  display: grid; place-items: center;
+  border-radius: var(--r-pill);
+  color: var(--ink-2);
+  transition: background var(--dur-1);
+}
+.lm-header__iconbtn:hover { background: var(--card); }
+.lm-header__avatar {
+  width: calc(36px * var(--scale)); height: calc(36px * var(--scale));
+  border-radius: var(--r-pill);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  display: grid; place-items: center;
+}
+.lm-header__avatar-dot { width: calc(12px * var(--scale)); height: calc(12px * var(--scale)); border-radius: 50%; }
+
+/* ---------- SCREEN HEADER ---------- */
+.lm-screen-header {
+  display: flex; justify-content: space-between; align-items: flex-end;
+  gap: var(--s-9);
+  padding: var(--s-9) 0 var(--s-7);
+  border-bottom: 1px solid var(--rule-2);
+  margin-bottom: var(--s-7);
+}
+.lm-screen-header__main { display: flex; flex-direction: column; gap: var(--s-3); flex: 1; min-width: 0; max-width: 80ch; }
+.lm-screen-header__eyebrow {
+  font-family: var(--mono);
+  font-size: var(--t-mono);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.lm-screen-header__title {
+  margin: 0;
+  font-size: var(--t-h1);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--ls-tight);
+  font-weight: 600;
+  color: var(--ink);
+  text-wrap: balance;
+  max-width: 28ch;
+}
+.lm-screen-header__sub {
+  margin: 0;
+  font-size: var(--t-h4);
+  line-height: var(--lh-normal);
+  color: var(--ink-3);
+  font-weight: 450;
+  text-wrap: balance;
+}
+.lm-screen-header__aside { display: flex; gap: var(--s-6); align-items: flex-end; }
+.lm-screen-header__meta { display: flex; gap: var(--s-7); }
+.lm-screen-header__actions { display: flex; gap: var(--s-3); }
+
+/* ---------- RESPONSIVE ---------- */
+@media (max-width: 1280px) {
+  .lm-header { grid-template-columns: auto 1fr auto; gap: var(--s-5); }
+  .lm-header__plaza { display: none; }
+}
+@media (max-width: 900px) {
+  .lm-header__nav { display: none; }
+}

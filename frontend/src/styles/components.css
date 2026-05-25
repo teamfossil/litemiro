@@ -1,0 +1,208 @@
+/* =====================================================================
+   라이트미로 — 컴포넌트 CSS
+   tokens.css 위에 얹는다. component명 = .lm-* 네임스페이스.
+   ===================================================================== */
+
+/* ---------- PILL ---------- */
+.lm-pill {
+  display: inline-flex; align-items: center; gap: var(--s-2);
+  padding: var(--s-2) var(--s-4);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-pill);
+  background: var(--paper);
+  color: var(--ink-2);
+  font-size: var(--t-small);
+  font-weight: 500;
+  letter-spacing: var(--ls-normal);
+  transition: border-color var(--dur-1) var(--ease-out),
+              background var(--dur-1) var(--ease-out),
+              color var(--dur-1) var(--ease-out);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.lm-pill:hover { border-color: var(--ink-3); }
+.lm-pill.is-active {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+.lm-pill__dot {
+  width: calc(8px * var(--scale)); height: calc(8px * var(--scale)); border-radius: 50%;
+  background: var(--pill-dot, var(--ink));
+  flex: 0 0 calc(8px * var(--scale));
+}
+.lm-pill--sm { padding: calc(4px * var(--scale)) var(--s-3); font-size: var(--t-micro); }
+.lm-pill--lg { padding: var(--s-3) var(--s-5); font-size: var(--t-body); }
+
+/* ---------- BADGE ---------- */
+.lm-badge {
+  display: inline-block;
+  padding: calc(2px * var(--scale)) var(--s-2);
+  border-radius: var(--r-1);
+  background: var(--card);
+  color: var(--ink-3);
+  font-family: var(--mono);
+  font-size: var(--t-mono);
+  letter-spacing: var(--ls-mono);
+  text-transform: uppercase;
+  line-height: 1.4;
+}
+.lm-badge--anchor { background: var(--highlight-bg); color: var(--ink); }
+.lm-badge--ink    { background: var(--ink); color: var(--paper); }
+.lm-badge--outline {
+  background: transparent;
+  border: 1px solid var(--rule);
+  color: var(--ink-3);
+}
+
+/* ---------- SWATCH ---------- */
+.lm-swatch {
+  display: inline-block;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+/* ---------- BUTTON ---------- */
+.lm-btn {
+  display: inline-flex; align-items: center; gap: var(--s-3);
+  padding: var(--s-3) var(--s-5);
+  border-radius: var(--r-2);
+  font-size: var(--t-body);
+  font-weight: 500;
+  letter-spacing: var(--ls-normal);
+  line-height: 1.2;
+  transition: background var(--dur-1) var(--ease-out),
+              color var(--dur-1) var(--ease-out),
+              border-color var(--dur-1) var(--ease-out);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.lm-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.lm-btn--primary {
+  background: var(--ink); color: var(--paper); border: 1px solid var(--ink);
+}
+.lm-btn--primary:hover:not(:disabled) { background: #000; }
+
+.lm-btn--secondary {
+  background: var(--paper); color: var(--ink); border: 1px solid var(--ink);
+}
+.lm-btn--secondary:hover:not(:disabled) { background: var(--card); }
+
+.lm-btn--ghost {
+  background: transparent; color: var(--ink-2); border: 1px solid transparent;
+}
+.lm-btn--ghost:hover:not(:disabled) { background: var(--card); }
+
+.lm-btn--link {
+  background: transparent; color: var(--ink); border: 0;
+  padding: var(--s-2) 0;
+  border-bottom: 1px solid var(--ink-3);
+  border-radius: 0;
+}
+.lm-btn--link:hover:not(:disabled) { border-color: var(--ink); }
+
+.lm-btn--sm { padding: var(--s-2) var(--s-4); font-size: var(--t-small); }
+.lm-btn--lg { padding: var(--s-4) var(--s-6); font-size: var(--t-h4); }
+
+/* ---------- ARROW GLYPH ---------- */
+.lm-arrow {
+  display: inline-block;
+  border-top: 1.5px solid currentColor;
+  border-right: 1.5px solid currentColor;
+  flex: 0 0 auto;
+}
+
+/* ---------- SECTION LABEL ---------- */
+.lm-section { display: flex; flex-direction: column; gap: var(--s-3); }
+.lm-section__eyebrow {
+  font-family: var(--mono);
+  font-size: var(--t-mono);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.lm-section__title {
+  margin: 0;
+  font-size: var(--t-h1);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--ls-tight);
+  font-weight: 600;
+  color: var(--ink);
+  text-wrap: balance;
+}
+.lm-section__sub {
+  margin: 0;
+  font-size: var(--t-h4);
+  line-height: var(--lh-normal);
+  color: var(--ink-3);
+  font-weight: 450;
+  text-wrap: pretty;
+}
+
+/* ---------- STAT ---------- */
+.lm-stat { display: flex; flex-direction: column; gap: calc(4px * var(--scale)); min-width: 0; }
+.lm-stat--right { align-items: flex-end; text-align: right; }
+.lm-stat__label {
+  font-family: var(--mono);
+  font-size: var(--t-mono);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+.lm-stat__value {
+  font-size: var(--t-h2);
+  font-weight: 600;
+  letter-spacing: var(--ls-tight);
+  color: var(--ink);
+  line-height: var(--lh-tight);
+}
+.lm-stat__delta {
+  font-size: var(--t-small);
+  color: var(--ink-3);
+}
+
+/* ---------- HIGHLIGHT (marker pen) ---------- */
+.lm-hl {
+  font-style: normal;
+  background: linear-gradient(transparent 62%, var(--highlight-bg) 62% 92%, transparent 92%);
+  padding: 0 calc(3px * var(--scale));
+}
+.lm-hl--green  { background: linear-gradient(transparent 62%, #D7E0D6 62% 92%, transparent 92%); }
+.lm-hl--mauve  { background: linear-gradient(transparent 62%, #E4D6E0 62% 92%, transparent 92%); }
+
+/* ---------- CARD ---------- */
+.lm-card {
+  background: var(--paper);
+  border: 1px solid var(--rule-2);
+  border-radius: var(--r-2);
+}
+.lm-card--ink {
+  background: var(--ink);
+  color: var(--paper);
+  border: 1px solid var(--ink);
+}
+.lm-card--sand { background: var(--sand); }
+
+/* ---------- DIVIDER ---------- */
+.lm-hr  { height: 1px; background: var(--rule);   border: 0; margin: 0; }
+.lm-hr2 { height: 1px; background: var(--rule-2); border: 0; margin: 0; }
+
+/* ---------- LOADING SHIMMER (place holder) ---------- */
+.lm-shimmer {
+  position: relative; overflow: hidden;
+  background: var(--card);
+}
+.lm-shimmer::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+  animation: lm-shimmer 1.4s linear infinite;
+}
+@keyframes lm-shimmer {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(100%); }
+}
+
+/* ---------- TYPOGRAPHY UTILS ---------- */
+.lm-mono { font-family: var(--mono); }
+.lm-num  { font-variant-numeric: tabular-nums; }
