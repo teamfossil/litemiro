@@ -1,8 +1,8 @@
 """Validate committed fixture files against Pydantic models and JSON Schema.
 
-These tests load ``tests/data/sample_ontology_{a,b}.json`` — the reference
-output of a quick-preset pipeline run — and verify every contract that
-the Phase 2 OntologyLoader depends on.
+These tests load ``tests/data/sample_quick_preset_ontology_{a,b}.json`` —
+the reference output of a quick-preset pipeline run — and verify every
+contract that the Phase 2 OntologyLoader depends on.
 """
 
 from __future__ import annotations
@@ -10,20 +10,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from litemiro.phase1.models import OntologyA, OntologyB
 from litemiro.phase1.serializer import OntologySerializer
 from litemiro.phase1.validator import OntologyValidator
 
 DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
-FIXTURE_A = DATA_DIR / "sample_ontology_a.json"
-FIXTURE_B = DATA_DIR / "sample_ontology_b.json"
-
-pytestmark = pytest.mark.skipif(
-    not FIXTURE_A.exists() or not FIXTURE_B.exists(),
-    reason="fixture files not yet generated — run e2e tests first",
-)
+FIXTURE_A = DATA_DIR / "sample_quick_preset_ontology_a.json"
+FIXTURE_B = DATA_DIR / "sample_quick_preset_ontology_b.json"
 
 
 class TestFixturePydanticValidation:

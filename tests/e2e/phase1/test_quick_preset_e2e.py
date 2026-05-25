@@ -544,25 +544,3 @@ async def test_quick_preset_agent_fields(tmp_path: Path) -> None:
         bt = profile.behavior_tendency
         for field in ("post_rate", "reply_rate", "repost_rate", "controversy_affinity"):
             assert 0.0 <= getattr(bt, field) <= 1.0, f"{agent_id} {field} out of range"
-
-
-async def test_quick_preset_generates_fixtures(tmp_path: Path) -> None:
-    """Generate fixture files and validate they can be written."""
-    ontology_a, ontology_b = await OntologyPipeline(_make_config(tmp_path), _MockLLM()).run()
-
-    serializer = OntologySerializer()
-    json_a = serializer.serialize_a(ontology_a)
-    json_b = serializer.serialize_b(ontology_b)
-
-    fixture_a = DATA_DIR / "sample_ontology_a.json"
-    fixture_b = DATA_DIR / "sample_ontology_b.json"
-    fixture_a.write_text(json_a, encoding="utf-8")
-    fixture_b.write_text(json_b, encoding="utf-8")
-
-    assert fixture_a.exists()
-    assert fixture_b.exists()
-
-    reloaded_a = OntologyA.model_validate_json(fixture_a.read_text(encoding="utf-8"))
-    reloaded_b = OntologyB.model_validate_json(fixture_b.read_text(encoding="utf-8"))
-    assert reloaded_a.agent_count == ontology_a.agent_count
-    assert len(reloaded_b.stores) == len(ontology_b.stores)

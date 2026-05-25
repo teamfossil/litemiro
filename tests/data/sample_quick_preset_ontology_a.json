@@ -3,9 +3,9 @@
   "seed": 42,
   "agent_count": 100,
   "preset": "quick",
-  "source_document": "/Users/younkyumjin/Documents/Github/LiteMiro/tests/data/sample_document.txt",
+  "source_document": "tests/data/sample_document.txt",
   "simulation_requirement": "한국 AI 규제 정책을 둘러싼 이해관계자 간 소셜 미디어 토론 시뮬레이션",
-  "generated_at": "2026-05-25T04:36:58.220407Z",
+  "generated_at": "2026-05-25T05:23:04.759549Z",
   "ontology": {
     "entity_types": [
       {
