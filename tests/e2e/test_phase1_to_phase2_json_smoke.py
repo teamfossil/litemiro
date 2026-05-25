@@ -129,10 +129,14 @@ def test_state_store_constructs_from_json(
 
 
 def test_scheduler_deterministic_from_json(ontology_a: OntologyA, ontology_b: OntologyB) -> None:
-    """contract Section 8.1 ④: 동일 seed → round 0, 1 양쪽에서 동일 활성 셋.
+    """contract Section 8.1 ④: 동일 seed → round 0, 1 각각 결정적 + 라운드 의존.
 
-    AgentScheduler 가 라운드별 RNG 파생을 결정적으로 수행하는지 두 라운드에서
-    각각 두 번 실행해 비교한다.
+    두 가지를 동시에 잡는다:
+    (a) 라운드 내 결정성: `_run(r) == _run(r)` 가 round 0/1 양쪽에서 성립.
+    (b) 라운드 의존 RNG 파생: `_run(0) != _run(1)` — `_derive_seed` 가 round_num
+        을 무시하는 회귀가 들어오면 양쪽이 같아져 본 가드가 깨진다. sample
+        fixture (post_rate=0.7/0.4/0.1, seed=42) 에서 두 라운드의 활성 셋이
+        실제로 다르다는 것을 사전 확인 후 추가한 가드.
     """
 
     def _run(round_num: int) -> tuple[str, ...]:
@@ -142,6 +146,7 @@ def test_scheduler_deterministic_from_json(ontology_a: OntologyA, ontology_b: On
 
     assert _run(0) == _run(0)
     assert _run(1) == _run(1)
+    assert _run(0) != _run(1)
 
 
 def test_validate_consistency_zero_warnings_on_sample_fixture(
