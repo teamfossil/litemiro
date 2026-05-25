@@ -74,15 +74,3 @@ tests/  unit/  e2e/    pytest, asyncio_mode=auto
 Phase 2 → Phase 3 JSONL 계약. 한 줄에 한 이벤트. 권위 스키마:
 `src/litemiro/schemas/round_event.schema.json`. `RoundEvent.to_jsonl()` 가 표준
 직렬화 (sorted keys, ensure_ascii=False, exclude_none).
-
-## Owner
-
-- A — 권현재 (`core/`)
-- B — 김태우 (`action/`, `feed/`, `social/`, `prompts/`, `topics/`)
-- C — 배강민 (`integration/`, `budget/`, `eventlog/` — 신규)
-- Phase 1 — Younkyum (`phase1/`)
-- 추가 2 인 (주보경 / 진윤겸) 역할 미확정 — Issue #28
-
-## 통합 계약
-
-`docs/integration/phase1-2-contract.md` 가 권위. PR #12 머지 시점에 락인됨.
