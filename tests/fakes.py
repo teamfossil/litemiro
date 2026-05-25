@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
+from pathlib import Path
 
 from litemiro.models import (
     Action,
@@ -29,6 +30,7 @@ class InMemoryStateStore:
         self._agents: dict[str, Agent] = dict(agents or {})
         self._posts: dict[str, Post] = dict(posts or {})
         self._global_seed = global_seed
+        self.checkpoint_calls: list[int] = []
 
     def get_agent(self, agent_id: str) -> Agent:
         try:
@@ -66,6 +68,14 @@ class InMemoryStateStore:
         if agent.agent_id in self._agents:
             raise KeyError(f"agent already exists: {agent.agent_id}")
         self._agents[agent.agent_id] = agent
+
+    async def save_checkpoint(self, round_num: int) -> Path:
+        # RoundManager 단위 테스트가 ``StateStoreLike`` Protocol 의 마지막
+        # 호출 단계를 검증할 수 있도록 await-able no-op 으로 둔다. 호출 횟수
+        # 만 카운트 — 실제 디스크 직렬화는 통합 테스트에서 실 ``StateStore``
+        # 로 검증.
+        self.checkpoint_calls.append(round_num)
+        return Path(f"checkpoint_round_{round_num:04d}.json")
 
 
 class InMemoryEventLogger:
