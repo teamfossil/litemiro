@@ -30,7 +30,9 @@ class TestConstruction:
         EventLogger(target)
         assert target.parent.is_dir()
 
-    def test_bare_filename_does_not_raise(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_bare_filename_does_not_raise(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         # ``Path("run.jsonl").parent`` is ``.``; mkdir should treat it
         # as a no-op rather than raising on cwd creation.
         monkeypatch.chdir(tmp_path)
@@ -75,9 +77,7 @@ class TestMultipleLogs:
             await logger.aclose()
 
         lines = path.read_text(encoding="utf-8").splitlines()
-        assert [json.loads(line)["agent_id"] for line in lines] == [
-            f"a-{i:03d}" for i in range(5)
-        ]
+        assert [json.loads(line)["agent_id"] for line in lines] == [f"a-{i:03d}" for i in range(5)]
 
     async def test_appends_to_existing_file(self, tmp_path: Path) -> None:
         path = tmp_path / "run.jsonl"
