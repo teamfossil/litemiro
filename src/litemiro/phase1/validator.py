@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import statistics
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 import structlog
@@ -146,8 +147,10 @@ class OntologyValidator:
             if store is None or not store.semantic:
                 continue
 
-            persona_topics = {topic for topic in profile.topics if topic}
-            memory_topics = {topic for memory in store.semantic for topic in memory.topics if topic}
+            persona_topics = _normalized_topic_set(profile.topics)
+            memory_topics = _normalized_topic_set(
+                topic for memory in store.semantic for topic in memory.topics
+            )
             if persona_topics & memory_topics:
                 continue
 
@@ -155,6 +158,10 @@ class OntologyValidator:
                 f"agent '{agent_id}' persona topics do not overlap semantic memory topics"
             )
         return warnings
+
+
+def _normalized_topic_set(topics: Iterable[str]) -> set[str]:
+    return {topic.strip().casefold() for topic in topics if topic.strip()}
 
 
 __all__ = ["OntologyValidator", "ValidationResult"]

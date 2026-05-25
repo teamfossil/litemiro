@@ -47,7 +47,10 @@ def _make_b(agent_ids: list[str]) -> OntologyB:
 
 
 def _make_profile(
-    agent_id: str, ideology: float = 0.5, following: list[str] | None = None
+    agent_id: str,
+    ideology: float = 0.5,
+    following: list[str] | None = None,
+    topics: list[str] | None = None,
 ) -> AgentProfile:
     return AgentProfile(
         agent_id=agent_id,
@@ -56,7 +59,7 @@ def _make_profile(
         origin=AgentOrigin.EXTRACTED,
         skeleton={"layer": "test"},
         ideology=ideology,
-        topics=["AI"],
+        topics=topics or ["AI"],
         behavior_tendency=BehaviorTendency(),
         initial_following=following or [],
     )
@@ -131,6 +134,28 @@ class TestOntologyValidator:
 
         assert result.valid
         assert any("persona topics" in warning for warning in result.warnings)
+
+    def test_persona_memory_topic_overlap_is_case_insensitive(self) -> None:
+        agents = {"a1": _make_profile("a1", topics=["policy"])}
+        b = OntologyB(
+            stores={
+                "a1": MemoryStore(
+                    agent_id="a1",
+                    semantic=[
+                        SemanticMemory(
+                            id="seed_a1_1",
+                            summary="policy update",
+                            topics=["Policy"],
+                        )
+                    ],
+                )
+            }
+        )
+
+        result = OntologyValidator().validate(_make_a(agents), b)
+
+        assert result.valid
+        assert not any("persona topics" in warning for warning in result.warnings)
 
     def test_empty_semantic_memory_skips_topic_mismatch_warning(self) -> None:
         agents = {"a1": _make_profile("a1")}

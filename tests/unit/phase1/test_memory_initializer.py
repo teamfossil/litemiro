@@ -124,6 +124,25 @@ class TestMemoryInitializer:
 
         assert stores["a1"].semantic[0].topics == ["privacy", "Policy", "consumer"]
 
+    def test_seed_memory_topics_filter_english_stop_words_from_summary(self) -> None:
+        graph = LocalGraph.build(
+            ExtractionResult(
+                entities=[
+                    Entity(
+                        id="a1",
+                        type="Profile",
+                        name="Privacy Case",
+                        summary="the of to privacy report",
+                    )
+                ]
+            )
+        )
+        agents = {"a1": _make_profile("a1", topics=["sports"])}
+
+        stores = MemoryInitializer(graph=graph, seed=42).initialize(agents)
+
+        assert stores["a1"].semantic[0].topics == ["Profile", "privacy", "report"]
+
     def test_relationship_memory_topics_come_from_graph_not_persona(self) -> None:
         graph = LocalGraph.build(
             ExtractionResult(

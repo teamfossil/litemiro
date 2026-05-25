@@ -29,6 +29,31 @@ _ALLY_TYPES = {"COLLEAGUES", "ALLIES", "WORKS_FOR", "BELONGS_TO"}
 _BIDIRECTIONAL_TYPES = {"COLLEAGUES", "ALLIES"}
 _MAX_MEMORY_TOPICS = 3
 _KEYWORD_RE = re.compile(r"\w+")
+_ENGLISH_STOP_WORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "by",
+    "for",
+    "from",
+    "has",
+    "have",
+    "in",
+    "into",
+    "is",
+    "it",
+    "of",
+    "on",
+    "or",
+    "that",
+    "the",
+    "to",
+    "with",
+}
 _TOPIC_ATTRIBUTE_KEYS = {
     "beat",
     "category",
@@ -266,7 +291,9 @@ def _keywords_from_text(text: str) -> list[str]:
 
 def _is_topic_token(token: str) -> bool:
     cleaned = token.strip("_")
-    return len(cleaned) >= 2 and not cleaned.isdigit()
+    if len(cleaned) < 2 or cleaned.isdigit():
+        return False
+    return not (cleaned.isascii() and cleaned.casefold() in _ENGLISH_STOP_WORDS)
 
 
 def _dedupe_topics(candidates: list[str]) -> list[str]:
