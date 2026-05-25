@@ -36,7 +36,9 @@ construction time, posts whose topic's parent matches an agent interest
 also enter the candidate pool and the ranking score is boosted by the
 match kind (direct > parent > cosine). Weights are opt-in: with
 ``topic_hierarchy=None`` the engine keeps the W2-default behaviour
-(pure ``hot_score`` ranking, no parent expansion). Issue #18.
+(pure ``hot_score`` ranking, no parent expansion) — so the three
+``*_match_weight`` parameters are honoured only when a hierarchy is
+provided, and passing them without one is a silent no-op. Issue #18.
 """
 
 from __future__ import annotations
