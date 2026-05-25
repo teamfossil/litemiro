@@ -35,6 +35,7 @@ from litemiro.phase3.models import (
 )
 
 _STATS_ONLY_MODEL = "statistics-only"
+_OVERVIEW_CATEGORY = "overview"
 
 _SYSTEM_PROMPT = (
     "당신은 소셜 미디어 시뮬레이션 결과를 분석하는 데이터 분석가다. "
@@ -96,7 +97,7 @@ class PatternAnalyzer:
 
 def _build_prompts(result: AggregationResult, preset: Preset) -> list[tuple[str, str, str]]:
     if preset is Preset.QUICK:
-        return [("overview", _SYSTEM_PROMPT, _quick_prompt(result))]
+        return [(_OVERVIEW_CATEGORY, _SYSTEM_PROMPT, _quick_prompt(result))]
     instruction = _STANDARD_INSTRUCTION if preset is Preset.STANDARD else _FULL_INSTRUCTION
     if preset in (Preset.STANDARD, Preset.FULL):
         return [
@@ -167,7 +168,10 @@ def _statistics_only_summary(*, category: str, result: AggregationResult) -> str
     )
     header = f"[LLM 분석 실패 — 통계 수치만 인용] {scope}."
     detail: str
-    if category == CATEGORY_ACTION_DISTRIBUTION:
+    if category == _OVERVIEW_CATEGORY:
+        # quick 프리셋 (1 콜, 합성 키 "overview") 폴백: 4 카테고리 통계를 한 번에.
+        detail = _format_overview(result)
+    elif category == CATEGORY_ACTION_DISTRIBUTION:
         detail = _format_action_distribution(data)
     elif category == CATEGORY_NETWORK_METRICS:
         detail = _format_network_metrics(data)
@@ -178,6 +182,17 @@ def _statistics_only_summary(*, category: str, result: AggregationResult) -> str
     else:
         detail = _format_generic(data)
     return f"{header} {detail}".strip()
+
+
+def _format_overview(result: AggregationResult) -> str:
+    return " ".join(
+        [
+            _format_action_distribution(result.categories.get(CATEGORY_ACTION_DISTRIBUTION, {})),
+            _format_network_metrics(result.categories.get(CATEGORY_NETWORK_METRICS, {})),
+            _format_topic_flow(result.categories.get(CATEGORY_TOPIC_FLOW, {})),
+            _format_time_series(result.categories.get(CATEGORY_TIME_SERIES, {})),
+        ]
+    )
 
 
 def _format_action_distribution(data: Mapping[str, Any]) -> str:

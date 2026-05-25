@@ -333,3 +333,34 @@ class TestResilience:
         assert "FOLLOW 이벤트 2건" in by_cat[CATEGORY_NETWORK_METRICS].summary
         assert "포스트 1건" in by_cat[CATEGORY_TOPIC_FLOW].summary
         assert "2라운드" in by_cat[CATEGORY_TIME_SERIES].summary
+
+    async def test_quick_preset_failure_yields_aggregated_statistics_fallback(self) -> None:
+        """quick 프리셋 (1 콜, category='overview') 폴백은 4 카테고리 통계를 한 줄로 합성한다.
+
+        회귀 가드: `_statistics_only_summary` 가 `_format_generic({})` 분기로 빠져
+        `카테고리 데이터: {}` 같은 빈 텍스트만 남기던 회귀 (#49) 가 다시 들어오지
+        않도록 4 카테고리 핵심 수치가 모두 포함되는지 검증한다.
+        """
+
+        llm = _FakeLLM()
+        llm.queue("overview", RuntimeError("down 1"), RuntimeError("down 2"))
+        analyzer = PatternAnalyzer(llm=llm)
+
+        out = await analyzer.analyze(
+            result=_stub_result(), config=ReportConfig(preset=Preset.QUICK)
+        )
+
+        assert len(out.items) == 1
+        item = out.items[0]
+        assert item.category == "overview"
+        assert item.model == "statistics-only"
+        assert item.tokens_used == 0
+        assert "LLM 분석 실패" in item.summary
+        # 4 카테고리 핵심 수치가 모두 한 줄에 들어가야 한다.
+        assert "총 10건의 액션" in item.summary
+        assert "FOLLOW 이벤트 2건" in item.summary
+        assert "포스트 1건" in item.summary
+        assert "2라운드" in item.summary
+        # 빈 dict 회귀 가드.
+        assert "카테고리 데이터: {}" not in item.summary
+        assert llm.calls_for("overview") == 2
