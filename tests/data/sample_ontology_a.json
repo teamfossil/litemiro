@@ -1,0 +1,101 @@
+{
+  "version": 1,
+  "seed": 42,
+  "agent_count": 3,
+  "preset": "quick",
+  "source_document": "sample/integration_smoke.txt",
+  "simulation_requirement": "3-agent integration smoke for Phase 1 → Phase 2 mapping",
+  "generated_at": "2026-05-24T12:00:00+00:00",
+  "ontology": {
+    "entity_types": [
+      {
+        "name": "Journalist",
+        "description": "취재·보도 활동을 하는 인물",
+        "attributes": ["분야", "매체"]
+      },
+      {
+        "name": "Academic",
+        "description": "연구·교육 활동을 하는 인물",
+        "attributes": ["전공", "소속"]
+      },
+      {
+        "name": "Citizen",
+        "description": "일반 시민·소비자",
+        "attributes": ["연령대"]
+      }
+    ],
+    "edge_types": [
+      {
+        "name": "follows",
+        "source": "Person",
+        "target": "Person",
+        "description": "follow 관계 (소셜 그래프)"
+      }
+    ]
+  },
+  "agents": {
+    "agent_001": {
+      "agent_id": "agent_001",
+      "name": "김기자",
+      "entity_type": "Journalist",
+      "origin": "extracted",
+      "derived_from": null,
+      "skeleton": {"분야": "정치", "매체": "데일리뉴스"},
+      "ideology": 0.45,
+      "topics": ["정치", "경제"],
+      "sensitive_topics": [],
+      "personality": "분석적이고 회의적",
+      "speech_style": "~다 체",
+      "background": "10년차 정치부 기자",
+      "behavior_tendency": {
+        "post_rate": 0.7,
+        "reply_rate": 0.3,
+        "repost_rate": 0.2,
+        "controversy_affinity": 0.6
+      },
+      "initial_following": ["agent_002", "agent_001", "agent_999"]
+    },
+    "agent_002": {
+      "agent_id": "agent_002",
+      "name": "박교수",
+      "entity_type": "Academic",
+      "origin": "extracted",
+      "derived_from": null,
+      "skeleton": {"전공": "경제학", "소속": "한국대"},
+      "ideology": 0.55,
+      "topics": ["기술", "경제"],
+      "sensitive_topics": ["정치"],
+      "personality": "차분하고 통계 중심",
+      "speech_style": "~입니다 체",
+      "background": "경제학과 부교수, 데이터 분석가",
+      "behavior_tendency": {
+        "post_rate": 0.4,
+        "reply_rate": 0.5,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.3
+      },
+      "initial_following": ["agent_001"]
+    },
+    "agent_003": {
+      "agent_id": "agent_003",
+      "name": "이시민",
+      "entity_type": "Citizen",
+      "origin": "derived",
+      "derived_from": "agent_001",
+      "skeleton": {"연령대": "30대"},
+      "ideology": 0.5,
+      "topics": ["문화"],
+      "sensitive_topics": [],
+      "personality": "호기심 많고 친근함",
+      "speech_style": "~요 체",
+      "background": "직장인, 일상적 소비자",
+      "behavior_tendency": {
+        "post_rate": 0.1,
+        "reply_rate": 0.4,
+        "repost_rate": 0.3,
+        "controversy_affinity": 0.4
+      },
+      "initial_following": []
+    }
+  }
+}

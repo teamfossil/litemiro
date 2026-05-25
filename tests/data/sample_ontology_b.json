@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "config": {
+    "episodic_max": 10,
+    "semantic_max": 5,
+    "episodic_decay_rate": 0.1,
+    "semantic_decay_rate": 0.05,
+    "retrieval_max": 3,
+    "token_budget_per_agent": 120
+  },
+  "stores": {
+    "agent_001": {
+      "agent_id": "agent_001",
+      "episodic": [],
+      "semantic": [
+        {
+          "id": "m1",
+          "summary": "낮은 회상 기억",
+          "topics": ["정치"],
+          "dominant_sentiment": "중립",
+          "key_relationships": [
+            {"agent_id": "agent_002", "nature": "neutral"}
+          ],
+          "simulation_count": 1,
+          "last_relevant_sim": 0
+        },
+        {
+          "id": "m2",
+          "summary": "중간 회상 최신",
+          "topics": ["경제"],
+          "dominant_sentiment": "부정",
+          "key_relationships": [
+            {"agent_id": "agent_002", "nature": "conflict"}
+          ],
+          "simulation_count": 5,
+          "last_relevant_sim": 10
+        },
+        {
+          "id": "m3",
+          "summary": "중간 회상 과거",
+          "topics": ["정치"],
+          "dominant_sentiment": "긍정",
+          "key_relationships": [],
+          "simulation_count": 5,
+          "last_relevant_sim": 2
+        },
+        {
+          "id": "m4",
+          "summary": "최다 회상 기억",
+          "topics": ["정치", "경제"],
+          "dominant_sentiment": "중립",
+          "key_relationships": [
+            {"agent_id": "agent_003", "nature": "agreement"}
+          ],
+          "simulation_count": 9,
+          "last_relevant_sim": 7
+        }
+      ]
+    },
+    "agent_002": {
+      "agent_id": "agent_002",
+      "episodic": [],
+      "semantic": [
+        {
+          "id": "m1",
+          "summary": "유일한 기억",
+          "topics": ["기술"],
+          "dominant_sentiment": "중립",
+          "key_relationships": [],
+          "simulation_count": 2,
+          "last_relevant_sim": 1
+        }
+      ]
+    },
+    "agent_003": {
+      "agent_id": "agent_003",
+      "episodic": [],
+      "semantic": []
+    }
+  }
+}
