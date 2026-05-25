@@ -1,0 +1,174 @@
+"""`DataAggregator` — JSONL RoundEvent → 카테고리별 통계.
+
+LLM 호출 없음. 결정적. 같은 입력은 항상 같은 ``AggregationResult`` 를
+돌려준다 — 동일 보고서를 재현하려면 본 단계가 결정성을 보장해야 한다
+(Section 3 Phase 3 메모리 노트의 "재현성 강제").
+
+집계는 4 카테고리:
+
+* ``action_distribution`` — ActionType 별 카운트 / 비율
+* ``network_metrics`` — FOLLOW 액션 기반 신규 엣지 / 인기 노드
+* ``topic_flow`` — CREATE_POST·QUOTE_POST 의 content 샘플
+* ``time_series`` — 라운드별 액션 수 / DO_NOTHING 비율 / active agents
+"""
+
+from __future__ import annotations
+
+import json
+from collections import Counter, defaultdict
+from pathlib import Path
+from typing import Any
+
+from litemiro.models import ActionType, RoundEvent
+from litemiro.phase3.models import (
+    CATEGORY_ACTION_DISTRIBUTION,
+    CATEGORY_NETWORK_METRICS,
+    CATEGORY_TIME_SERIES,
+    CATEGORY_TOPIC_FLOW,
+    AggregationResult,
+)
+
+_TOPIC_FLOW_SAMPLE_LIMIT = 10
+_TOP_N = 5
+
+
+class DataAggregator:
+    @staticmethod
+    def aggregate(jsonl_path: Path) -> AggregationResult:
+        events = list(_load_events(jsonl_path))
+        return DataAggregator.aggregate_events(events)
+
+    @staticmethod
+    def aggregate_events(events: list[RoundEvent]) -> AggregationResult:
+        agents = sorted({e.agent_id for e in events})
+        rounds = sorted({e.round_num for e in events})
+        return AggregationResult(
+            n_events=len(events),
+            n_agents=len(agents),
+            n_rounds=len(rounds),
+            categories={
+                CATEGORY_ACTION_DISTRIBUTION: _action_distribution(events),
+                CATEGORY_NETWORK_METRICS: _network_metrics(events),
+                CATEGORY_TOPIC_FLOW: _topic_flow(events),
+                CATEGORY_TIME_SERIES: _time_series(events),
+            },
+        )
+
+
+def _load_events(path: Path) -> list[RoundEvent]:
+    events: list[RoundEvent] = []
+    with path.open(encoding="utf-8") as fh:
+        for lineno, raw in enumerate(fh, start=1):
+            stripped = raw.strip()
+            if not stripped:
+                continue
+            try:
+                payload = json.loads(stripped)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"{path}:{lineno} JSON 파싱 실패: {exc.msg}") from exc
+            try:
+                events.append(RoundEvent.model_validate(payload))
+            except Exception as exc:
+                raise ValueError(f"{path}:{lineno} RoundEvent 검증 실패: {exc}") from exc
+    return events
+
+
+def _action_distribution(events: list[RoundEvent]) -> dict[str, Any]:
+    counts: Counter[str] = Counter(e.action.type.value for e in events)
+    total = sum(counts.values()) or 1
+    # ActionType enum 선언 순서를 그대로 유지해 결정성 확보.
+    ordered_types = [t.value for t in ActionType]
+    distribution = {t: counts.get(t, 0) for t in ordered_types}
+    ratios = {t: counts.get(t, 0) / total for t in ordered_types}
+    per_agent: dict[str, int] = defaultdict(int)
+    for e in events:
+        per_agent[e.agent_id] += 1
+    return {
+        "counts": distribution,
+        "ratios": ratios,
+        "total": total,
+        "top_active_agents": [
+            {"agent_id": aid, "actions": n}
+            for aid, n in sorted(per_agent.items(), key=lambda kv: (-kv[1], kv[0]))[:_TOP_N]
+        ],
+    }
+
+
+def _network_metrics(events: list[RoundEvent]) -> dict[str, Any]:
+    follow_edges: list[tuple[str, str]] = []
+    followee_counts: Counter[str] = Counter()
+    follower_counts: Counter[str] = Counter()
+    for e in events:
+        if e.action.type is ActionType.FOLLOW and e.action.target_agent_id is not None:
+            follow_edges.append((e.agent_id, e.action.target_agent_id))
+            followee_counts[e.action.target_agent_id] += 1
+            follower_counts[e.agent_id] += 1
+    return {
+        "n_follow_events": len(follow_edges),
+        "top_followed": [
+            {"agent_id": aid, "follows_received": n}
+            for aid, n in sorted(followee_counts.items(), key=lambda kv: (-kv[1], kv[0]))[:_TOP_N]
+        ],
+        "top_followers": [
+            {"agent_id": aid, "follows_given": n}
+            for aid, n in sorted(follower_counts.items(), key=lambda kv: (-kv[1], kv[0]))[:_TOP_N]
+        ],
+    }
+
+
+def _topic_flow(events: list[RoundEvent]) -> dict[str, Any]:
+    samples: list[dict[str, Any]] = []
+    posts_per_agent: Counter[str] = Counter()
+    posts_per_round: defaultdict[int, int] = defaultdict(int)
+    for e in events:
+        if e.action.type in (ActionType.CREATE_POST, ActionType.QUOTE_POST):
+            posts_per_agent[e.agent_id] += 1
+            posts_per_round[e.round_num] += 1
+            if len(samples) < _TOPIC_FLOW_SAMPLE_LIMIT:
+                samples.append(
+                    {
+                        "round_num": e.round_num,
+                        "agent_id": e.agent_id,
+                        "action": e.action.type.value,
+                        "content": e.action.content or "",
+                    }
+                )
+    return {
+        "n_posts": sum(posts_per_round.values()),
+        "posts_per_round": [
+            {"round_num": r, "n": posts_per_round[r]} for r in sorted(posts_per_round)
+        ],
+        "top_posters": [
+            {"agent_id": aid, "posts": n}
+            for aid, n in sorted(posts_per_agent.items(), key=lambda kv: (-kv[1], kv[0]))[:_TOP_N]
+        ],
+        "samples": samples,
+    }
+
+
+def _time_series(events: list[RoundEvent]) -> dict[str, Any]:
+    by_round: defaultdict[int, list[RoundEvent]] = defaultdict(list)
+    for e in events:
+        by_round[e.round_num].append(e)
+    rounds = sorted(by_round)
+    series = []
+    for r in rounds:
+        round_events = by_round[r]
+        do_nothing = sum(1 for ev in round_events if ev.action.type is ActionType.DO_NOTHING)
+        active = len({ev.agent_id for ev in round_events})
+        series.append(
+            {
+                "round_num": r,
+                "n_actions": len(round_events),
+                "n_do_nothing": do_nothing,
+                "do_nothing_ratio": do_nothing / len(round_events) if round_events else 0.0,
+                "n_active_agents": active,
+            }
+        )
+    return {
+        "rounds": rounds,
+        "series": series,
+    }
+
+
+__all__ = ["DataAggregator"]
