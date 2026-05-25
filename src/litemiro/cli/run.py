@@ -3,29 +3,32 @@
 ``run_simulation`` (`integration/run.py`) 위의 얇은 argparse + 실 sentence-
 transformers + LiteLLM wiring. issue #53.
 
-Topic vocabulary 는 OntologyA 의 모든 ``AgentProfile.topics`` 의 union 을 정렬해
-사용한다 — Phase 1 산출이 스스로 declare 한 토픽 어휘를 그대로 가져오므로 별도
-큐레이션 불필요. ``topic_hierarchy`` 는 MVP 미사용 (contract Section 1).
+결정성 seed 는 ``OntologyA.seed`` 가 단독 소스 — CLI 가 ``--seed`` 를 따로
+받지 않는다 (Phase 1 산출이 이미 declare 한 값). Topic vocabulary 역시
+``run_simulation`` 이 ``OntologyA`` 에서 자동 도출하므로 본 CLI 는 인자만
+파싱하고 실 의존 (LLM / Embedder) 만 인스턴스화해 넘긴다.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import structlog
+
 from litemiro.embedding.sentence_transformers import STEmbedder
-from litemiro.integration.ontology_loader import OntologyLoader
 from litemiro.integration.run import run_simulation
 from litemiro.llm.litellm_client import LiteLLMClient
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from litemiro.core._types import SimulationResult
     from litemiro.interfaces import EmbedderLike, LLMClient
+
+log = structlog.get_logger(__name__)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -35,7 +38,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--ontology-a", required=True, type=Path, help="Path to OntologyA JSON")
     parser.add_argument("--ontology-b", required=True, type=Path, help="Path to OntologyB JSON")
-    parser.add_argument("--rounds", type=int, default=15, help="Total simulation rounds")
+    parser.add_argument(
+        "--rounds", type=int, default=15, help="Total simulation rounds (default: 15)"
+    )
     parser.add_argument(
         "--output-dir",
         type=Path,
@@ -53,26 +58,25 @@ def _build_parser() -> argparse.ArgumentParser:
         default=1_000_000,
         help="Per-simulation token cap (default: 1_000_000)",
     )
-    parser.add_argument("--semaphore-limit", type=int, default=10)
-    parser.add_argument("--batch-size", type=int, default=20)
-    parser.add_argument("--cooldown-seconds", type=float, default=0.5)
-    return parser
-
-
-def _topic_vocabulary(*, ontology_a_path: Path, ontology_b_path: Path) -> tuple[str, ...]:
-    """OntologyA 의 모든 agent topics 의 union, 정렬.
-
-    TopicExtractor 가 vocabulary 의 결정적 순서를 요구하지는 않지만, 같은 입력
-    이 같은 vocab 을 만들어내야 결정성 테스트가 깨끗하다.
-    """
-    ontology_a, _ = OntologyLoader.load(
-        ontology_a_path=ontology_a_path,
-        ontology_b_path=ontology_b_path,
+    parser.add_argument(
+        "--semaphore-limit",
+        type=int,
+        default=10,
+        help="Max concurrent LLM calls per batch (default: 10)",
     )
-    vocab: set[str] = set()
-    for profile in ontology_a.agents.values():
-        vocab.update(profile.topics)
-    return tuple(sorted(vocab))
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=20,
+        help="Active agents per concurrency batch (default: 20)",
+    )
+    parser.add_argument(
+        "--cooldown-seconds",
+        type=float,
+        default=0.5,
+        help="Sleep between batches to ease rate limits (default: 0.5)",
+    )
+    return parser
 
 
 def _print_result(result: SimulationResult) -> None:
@@ -88,17 +92,16 @@ async def _run(
     *,
     llm_client: LLMClient,
     embedder: EmbedderLike,
-    vocabulary: Sequence[str],
 ) -> SimulationResult:
     """argparse 결과 + 의존성 → ``run_simulation`` 호출. 테스트가 직접 부르는
-    경계로 두어 monkeypatch 없이 fake 주입이 가능하게 한다."""
+    경계로 두어 의존성 주입이 깨끗하다 — main 의 `LiteLLMClient` / `STEmbedder`
+    인스턴스화 단계를 우회해 fake 로 닫는다."""
     output_dir: Path = args.output_dir
     return await run_simulation(
         ontology_a_path=args.ontology_a,
         ontology_b_path=args.ontology_b,
         llm_client=llm_client,
         embedder=embedder,
-        topic_vocabulary=vocabulary,
         rounds=args.rounds,
         event_log_path=output_dir / "events.jsonl",
         checkpoint_dir=output_dir / "checkpoints",
@@ -112,17 +115,18 @@ async def _run(
 
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
+    if not os.environ.get("OPENROUTER_API_KEY"):
+        # Pre-flight 체크: LiteLLM 호출 시점까지 가지 않고 즉시 실패.
+        # 빠진 키로 OntologyLoader.load + StateStore 세팅 같은 비용을 치른 뒤
+        # 첫 라운드의 LLM call 에서 실패하는 것보다 사용자 피드백이 명확하다.
+        print("Error: OPENROUTER_API_KEY is not set", file=sys.stderr)
+        return 1
     try:
-        vocabulary = _topic_vocabulary(
-            ontology_a_path=args.ontology_a,
-            ontology_b_path=args.ontology_b,
-        )
         llm_client = LiteLLMClient()
         embedder = STEmbedder()
-        result = asyncio.run(
-            _run(args, llm_client=llm_client, embedder=embedder, vocabulary=vocabulary)
-        )
+        result = asyncio.run(_run(args, llm_client=llm_client, embedder=embedder))
     except Exception as exc:
+        log.error("litemiro_run.failed", error=str(exc))
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     _print_result(result)

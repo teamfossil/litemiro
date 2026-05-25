@@ -1,9 +1,9 @@
 """``litemiro-run`` CLI 테스트 — issue #53 DoD lock-in.
 
 세 영역:
-* argv 파싱 (필수 인자 / 기본값)
-* topic vocabulary 추출 결정성 (sample fixture)
-* main 통합 — sample fixture + monkeypatch 한 fake LLM/Embedder 로 1 라운드+
+* argv 파싱 (필수 인자 / 기본값 / 커스텀 동시성 인자)
+* `_run` 경계 직접 호출 (의존성 주입 lock-in)
+* `main` 통합 — sample fixture + monkeypatch 한 fake LLM/Embedder 로 3 라운드
   실행이 정상 종료하고 stdout 에 결과 요약이 떨어지는지 검증
 """
 
@@ -94,18 +94,21 @@ def test_parser_accepts_custom_concurrency(tmp_path: Path) -> None:
     assert args.token_budget == 5000
 
 
-# ── topic vocabulary ─────────────────────────────────────────────────
+# ── _run 경계 직접 호출 ─────────────────────────────────────────────
 
 
-def test_topic_vocabulary_is_union_of_agent_topics_sorted() -> None:
-    """sample fixture: agent_001=정치/경제, agent_002=기술/경제, agent_003=문화
-    → union {경제, 기술, 문화, 정치}, 정렬.
+async def test_run_boundary_accepts_injected_dependencies(tmp_path: Path) -> None:
+    """``_run`` 의 docstring 약속 (의존성 주입 lock-in) 을 직접 호출로 검증.
+
+    main 의 `LiteLLMClient` / `STEmbedder` 인스턴스화 단계를 우회한다.
     """
-    vocab = run_cli._topic_vocabulary(
-        ontology_a_path=_SAMPLE_A,
-        ontology_b_path=_SAMPLE_B,
-    )
-    assert vocab == ("경제", "기술", "문화", "정치")
+    args = run_cli._build_parser().parse_args(_argv_with_paths(tmp_path))
+    result = await run_cli._run(args, llm_client=_FakeLLM(), embedder=_FakeEmbedder())
+
+    assert result.rounds_run == 3
+    assert result.early_exit is False
+    assert result.event_log_path == tmp_path / "events.jsonl"
+    assert result.checkpoint_dir == tmp_path / "checkpoints"
 
 
 # ── main 통합 ────────────────────────────────────────────────────────
@@ -118,6 +121,8 @@ def _patch_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     monkeypatch.setattr(run_cli, "LiteLLMClient", _FakeLLM)
     monkeypatch.setattr(run_cli, "STEmbedder", _FakeEmbedder)
+    # main 의 pre-flight 체크는 OPENROUTER_API_KEY 가 필요. 테스트에서는 더미값.
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
 
 
 def _read_lines(path: Path) -> Iterable[str]:
@@ -154,8 +159,10 @@ def test_main_produces_jsonl_and_checkpoints(
     checkpoint_dir = tmp_path / "checkpoints"
     assert event_log.is_file()
     assert checkpoint_dir.is_dir()
-    # 활성 에이전트당 한 라인. sample fixture seed=42 에서 round 0+1+2 합산.
-    assert len(list(_read_lines(event_log))) >= 1
+    # sample fixture seed=42, post_rates 0.7/0.4/0.1 에서 round 0 / 2 는 활성
+    # 0 명, round 1 만 agent_002 활성 → 정확히 1 라인. `>= 1` 로 두면 RNG 회귀
+    # 가 라인 0 줄어들어도 못 잡으므로 정확값으로 pin.
+    assert len(list(_read_lines(event_log))) == 1
     assert any(checkpoint_dir.glob("checkpoint_round_*.json"))
 
 
@@ -182,3 +189,21 @@ def test_main_returns_one_and_prints_error_on_failure(
     assert exit_code == 1
     captured = capsys.readouterr()
     assert "Error" in captured.err
+
+
+def test_main_returns_one_when_api_key_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """OPENROUTER_API_KEY 누락 시 LLM 호출 전에 빠른 실패."""
+    monkeypatch.setattr(run_cli, "LiteLLMClient", _FakeLLM)
+    monkeypatch.setattr(run_cli, "STEmbedder", _FakeEmbedder)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+    exit_code = run_cli.main(_argv_with_paths(tmp_path))
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "OPENROUTER_API_KEY" in captured.err
+    assert not (tmp_path / "events.jsonl").exists()

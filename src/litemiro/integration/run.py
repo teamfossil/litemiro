@@ -39,6 +39,21 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from litemiro.interfaces import EmbedderLike, LLMClient
+    from litemiro.phase1.models import OntologyA
+
+
+def derive_topic_vocabulary(ontology_a: OntologyA) -> tuple[str, ...]:
+    """OntologyA 의 모든 agent topics 의 union, 정렬.
+
+    ``run_simulation`` 의 ``topic_vocabulary`` 인자가 ``None`` 일 때 기본값
+    으로 사용된다. CLI 는 인자를 안 넘기면 본 함수가 호출되므로 ``OntologyLoader.
+    load`` 가 한 번만 일어난다. ``topic_hierarchy`` 는 contract Section 1 의
+    post-MVP 항목이라 미사용.
+    """
+    vocab: set[str] = set()
+    for profile in ontology_a.agents.values():
+        vocab.update(profile.topics)
+    return tuple(sorted(vocab))
 
 
 async def run_simulation(
@@ -47,10 +62,10 @@ async def run_simulation(
     ontology_b_path: Path,
     llm_client: LLMClient,
     embedder: EmbedderLike,
-    topic_vocabulary: Sequence[str],
     rounds: int,
     event_log_path: Path,
     checkpoint_dir: Path,
+    topic_vocabulary: Sequence[str] | None = None,
     llm_model: str = "openrouter/qwen/qwen-plus",
     token_budget: int = 1_000_000,
     semaphore_limit: int = 10,
@@ -58,6 +73,9 @@ async def run_simulation(
     cooldown_seconds: float = 0.5,
 ) -> SimulationResult:
     """결정성 보장: 동일 입력 + 동일 seed → 동일 JSONL + 체크포인트.
+
+    ``topic_vocabulary`` 가 ``None`` 이면 ``derive_topic_vocabulary`` 가 자동
+    도출 — CLI 가 별도로 ``OntologyLoader.load`` 를 한 번 더 부르지 않도록 함.
 
     실패 시 부분 산출물 (이미 기록된 JSONL 라인 / 체크포인트) 은 그대로 유지
     — EventLogger 의 line-level flush 가 partial-but-valid 를 보장하므로 Phase 3
@@ -84,6 +102,8 @@ async def run_simulation(
             count=len(consistency_warnings),
             agent_ids=tuple(w.agent_id for w in consistency_warnings),
         )
+    if topic_vocabulary is None:
+        topic_vocabulary = derive_topic_vocabulary(ontology_a)
     agents = OntologyLoader.build_agents(ontology_a=ontology_a, ontology_b=ontology_b)
     social = OntologyLoader.build_social_graph(ontology_a=ontology_a)
     store = StateStore(
@@ -140,4 +160,4 @@ async def run_simulation(
     )
 
 
-__all__ = ["run_simulation"]
+__all__ = ["derive_topic_vocabulary", "run_simulation"]

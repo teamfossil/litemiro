@@ -23,7 +23,8 @@ from typing import TYPE_CHECKING
 import pytest
 
 from litemiro.cli.validate import validate_file
-from litemiro.integration.run import run_simulation
+from litemiro.integration.ontology_loader import OntologyLoader
+from litemiro.integration.run import derive_topic_vocabulary, run_simulation
 from litemiro.models import LLMResponse
 
 if TYPE_CHECKING:
@@ -151,6 +152,18 @@ async def test_run_simulation_is_deterministic_across_runs(
         return out
 
     assert _digest(log_a) == _digest(log_b)
+
+
+def test_derive_topic_vocabulary_union_of_agent_topics_sorted() -> None:
+    """sample fixture: agent_001=정치/경제, agent_002=기술/경제, agent_003=문화
+    → union {경제, 기술, 문화, 정치}, 정렬.
+
+    ``run_simulation`` 의 default 경로가 ``OntologyLoader.load`` 를 한 번만
+    호출하도록 본 helper 가 추출 책임을 진다 — CLI 가 별도로 ``load`` 를 부르지
+    않게 함 (PR #56 리뷰 반영).
+    """
+    ontology_a, _ = OntologyLoader.load(ontology_a_path=_SAMPLE_A, ontology_b_path=_SAMPLE_B)
+    assert derive_topic_vocabulary(ontology_a) == ("경제", "기술", "문화", "정치")
 
 
 async def test_run_simulation_rejects_negative_rounds(tmp_path: Path) -> None:
