@@ -17,6 +17,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import structlog
+
 from litemiro.action.selector import ActionSelector
 from litemiro.budget.manager import TokenBudgetManager
 from litemiro.core._types import SimulationResult
@@ -29,6 +31,8 @@ from litemiro.feed.engine import FeedEngine
 from litemiro.integration.ontology_loader import OntologyLoader
 from litemiro.social.graph import SocialGraph
 from litemiro.topics.extractor import TopicExtractor
+
+log = structlog.get_logger(__name__)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -68,6 +72,18 @@ async def run_simulation(
         ontology_a_path=ontology_a_path,
         ontology_b_path=ontology_b_path,
     )
+    # Section 6.5 persona-memory topic overlap. MVP 는 warning-only 라 진행은
+    # 막지 않지만 어디서도 호출이 안 되면 (#21 task 2) 누적 비율 측정이 사장
+    # 되므로 RunBootstrap 단에서 한 번 부르고 structlog 로 흘린다.
+    consistency_warnings = OntologyLoader.validate_consistency(
+        ontology_a=ontology_a, ontology_b=ontology_b
+    )
+    if consistency_warnings:
+        log.warning(
+            "run_simulation.persona_memory_overlap_warnings",
+            count=len(consistency_warnings),
+            agent_ids=tuple(w.agent_id for w in consistency_warnings),
+        )
     agents = OntologyLoader.build_agents(ontology_a=ontology_a, ontology_b=ontology_b)
     social = OntologyLoader.build_social_graph(ontology_a=ontology_a)
     store = StateStore(

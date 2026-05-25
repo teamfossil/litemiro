@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from litemiro.cli.validate import validate_file
 from litemiro.integration.run import run_simulation
 from litemiro.models import LLMResponse
 
@@ -118,6 +119,15 @@ async def test_run_simulation_jsonl_lines_match_llm_calls(tmp_path: Path) -> Non
         payload = json.loads(line)
         assert payload["action"]["type"] == "DO_NOTHING"  # fallback 폴백 경로
         assert payload["llm_meta"]["fallback_used"] is True
+
+
+async def test_run_simulation_jsonl_passes_round_event_schema(tmp_path: Path) -> None:
+    """contract Section 8.1 / Issue #25 DoD ③: 산출 JSONL 이 `round_event.schema.json`
+    스키마를 모든 라인에서 통과한다. RunBootstrap 이 Phase 3 ingest 게이트와
+    정합함을 lock-in 한다.
+    """
+    event_log_path, *_ = await _run(tmp_path)
+    assert validate_file(event_log_path) == 0
 
 
 async def test_run_simulation_is_deterministic_across_runs(

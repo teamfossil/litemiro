@@ -75,7 +75,7 @@ class InMemoryStateStore:
         # 만 카운트 — 실제 디스크 직렬화는 통합 테스트에서 실 ``StateStore``
         # 로 검증.
         self.checkpoint_calls.append(round_num)
-        return Path(f"/dev/null/checkpoint_round_{round_num:04d}.json")
+        return Path(f"checkpoint_round_{round_num:04d}.json")
 
 
 class InMemoryEventLogger:
