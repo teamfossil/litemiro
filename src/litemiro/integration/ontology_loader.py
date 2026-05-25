@@ -13,10 +13,11 @@ from typing import Any
 
 import structlog
 from jsonschema import Draft7Validator, FormatChecker
-from pydantic import ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from litemiro.models import Agent
 from litemiro.phase1.models import (
+    AgentOrigin,
     AgentProfile,
     MemoryStore,
     OntologyA,
@@ -29,6 +30,21 @@ from litemiro.social.graph import SocialGraph
 log = structlog.get_logger(__name__)
 
 _MEMORY_TOP_N = 3
+
+
+class ConsistencyWarning(BaseModel):
+    """`OntologyLoader.validate_consistency` 결과 단위.
+
+    Contract Section 6.5 에서 hard-error 승격 판단 데이터로 쓰인다 — 이슈 #21
+    task 2 의 누적 비율 측정에 ``origin`` 분류가 필요해 함께 보존한다.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    agent_id: str
+    origin: AgentOrigin
+    persona_topics: tuple[str, ...]
+    memory_topics: tuple[str, ...]
 
 
 class OntologyLoader:
@@ -84,6 +100,49 @@ class OntologyLoader:
             _build_agent(ontology_a.agents[aid], ontology_b.stores.get(aid))
             for aid in sorted(ontology_a.agents)
         )
+
+    @staticmethod
+    def validate_consistency(
+        *,
+        ontology_a: OntologyA,
+        ontology_b: OntologyB,
+    ) -> tuple[ConsistencyWarning, ...]:
+        """Section 6.5 페르소나-메모리 모순 검출.
+
+        각 에이전트의 ``AgentProfile.topics`` 와 ``SemanticMemory.topics`` 합집합
+        교집합이 공집합이면 warning. 빈 ``semantic`` 리스트는 cold start 로 면제.
+        반환은 발견된 warning 의 결정적 튜플 (agent_id 사전순) — 이슈 #21 task 2
+        가 비율을 누적 집계할 수 있게 정량 데이터로 노출한다. 동시에 ``structlog``
+        에 동일 정보를 찍어 운영 로그에서도 추적 가능하게 둔다.
+
+        MVP 는 warning 만 — hard-error 승격은 누적 측정 후 결정 (이슈 #21).
+        """
+        warnings: list[ConsistencyWarning] = []
+        for aid in sorted(ontology_a.agents):
+            profile = ontology_a.agents[aid]
+            store = ontology_b.stores.get(aid)
+            memories = store.semantic if store else []
+            if not memories:
+                continue
+            memory_topics: set[str] = set().union(*(set(m.topics) for m in memories))
+            persona_topics = set(profile.topics)
+            if persona_topics & memory_topics:
+                continue
+            warning = ConsistencyWarning(
+                agent_id=aid,
+                origin=profile.origin,
+                persona_topics=tuple(sorted(persona_topics)),
+                memory_topics=tuple(sorted(memory_topics)),
+            )
+            log.warning(
+                "ontology_loader.persona_memory_mismatch",
+                agent_id=warning.agent_id,
+                origin=warning.origin.value,
+                persona_topics=warning.persona_topics,
+                memory_topics=warning.memory_topics,
+            )
+            warnings.append(warning)
+        return tuple(warnings)
 
     @staticmethod
     def build_social_graph(*, ontology_a: OntologyA) -> SocialGraph:
@@ -179,4 +238,4 @@ def _build_agent(profile: AgentProfile, store: MemoryStore | None) -> Agent:
     )
 
 
-__all__ = ["OntologyLoader"]
+__all__ = ["ConsistencyWarning", "OntologyLoader"]

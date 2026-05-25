@@ -42,12 +42,13 @@ def _profile(
     topics: list[str],
     post_rate: float,
     following: Iterable[str] = (),
+    origin: AgentOrigin = AgentOrigin.EXTRACTED,
 ) -> AgentProfile:
     return AgentProfile(
         agent_id=aid,
         name=f"agent-{aid}",
         entity_type="Journalist",
-        origin=AgentOrigin.EXTRACTED,
+        origin=origin,
         topics=topics,
         personality="중립적이고 분석적",
         speech_style="~다 체",
@@ -396,3 +397,114 @@ def test_load_rejects_reference_mismatch(tmp_path: Path) -> None:
     path_a, path_b = _write_pair(tmp_path, a, b)
     with pytest.raises(ValueError, match="agent_id 참조 불일치"):
         OntologyLoader.load(ontology_a_path=path_a, ontology_b_path=path_b)
+
+
+# ── validate_consistency — Section 6.5 ───────────────────────────────
+
+
+def test_validate_consistency_flags_disjoint_topics(
+    ontology_a: OntologyA, ontology_b: OntologyB
+) -> None:
+    """페르소나 ↔ 기억 토픽 합집합 교집합이 ∅ 이면 warning."""
+    warnings = OntologyLoader.validate_consistency(ontology_a=ontology_a, ontology_b=ontology_b)
+    # agent_001 (정치, 경제) ∩ {정치} = {정치} → pass
+    # agent_002 (기술) ∩ {정치} = ∅ → warning
+    # agent_003 → empty semantic → exempt
+    assert len(warnings) == 1
+    only = warnings[0]
+    assert only.agent_id == "agent_002"
+    assert only.origin == AgentOrigin.EXTRACTED
+    assert only.persona_topics == ("기술",)
+    assert only.memory_topics == ("정치",)
+
+
+def test_validate_consistency_passes_when_topics_overlap() -> None:
+    """페르소나-기억 토픽 교집합이 비지 않으면 warning 없음."""
+    a = OntologyA(
+        seed=1,
+        agent_count=1,
+        preset=Preset.QUICK,
+        source_document="x",
+        simulation_requirement="x",
+        generated_at=datetime(2026, 5, 25, tzinfo=UTC),
+        ontology=Ontology(entity_types=[], edge_types=[]),
+        agents={"a1": _profile("a1", topics=["정치", "기술"], post_rate=0.5)},
+    )
+    b = OntologyB(
+        stores={
+            "a1": MemoryStore(
+                agent_id="a1",
+                semantic=[_sem("m1", "x", sim_count=1, last_sim=1)],  # topics=["정치"]
+            )
+        }
+    )
+    assert OntologyLoader.validate_consistency(ontology_a=a, ontology_b=b) == ()
+
+
+def test_validate_consistency_exempts_cold_start() -> None:
+    """semantic 리스트가 비면 cold start — 토픽 불일치여도 warning 안 함."""
+    a = OntologyA(
+        seed=1,
+        agent_count=1,
+        preset=Preset.QUICK,
+        source_document="x",
+        simulation_requirement="x",
+        generated_at=datetime(2026, 5, 25, tzinfo=UTC),
+        ontology=Ontology(entity_types=[], edge_types=[]),
+        agents={"a1": _profile("a1", topics=["전혀_다른_주제"], post_rate=0.5)},
+    )
+    b = OntologyB(stores={"a1": MemoryStore(agent_id="a1", semantic=[])})
+    assert OntologyLoader.validate_consistency(ontology_a=a, ontology_b=b) == ()
+
+
+def test_validate_consistency_orders_warnings_by_agent_id() -> None:
+    """결정성 — warning 순서는 agent_id 사전순."""
+    a = OntologyA(
+        seed=1,
+        agent_count=3,
+        preset=Preset.QUICK,
+        source_document="x",
+        simulation_requirement="x",
+        generated_at=datetime(2026, 5, 25, tzinfo=UTC),
+        ontology=Ontology(entity_types=[], edge_types=[]),
+        agents={
+            "z_last": _profile("z_last", topics=["X"], post_rate=0.5),
+            "a_first": _profile("a_first", topics=["Y"], post_rate=0.5),
+            "m_mid": _profile("m_mid", topics=["Z"], post_rate=0.5),
+        },
+    )
+    b = OntologyB(
+        stores={
+            aid: MemoryStore(
+                agent_id=aid,
+                semantic=[_sem("m1", "x", sim_count=1, last_sim=1)],  # 모두 ["정치"]
+            )
+            for aid in ("z_last", "a_first", "m_mid")
+        }
+    )
+    warnings = OntologyLoader.validate_consistency(ontology_a=a, ontology_b=b)
+    assert tuple(w.agent_id for w in warnings) == ("a_first", "m_mid", "z_last")
+
+
+def test_validate_consistency_preserves_derived_origin() -> None:
+    """이슈 #21 task 2 가 origin 별 비율을 집계할 수 있게 보존."""
+    a = OntologyA(
+        seed=1,
+        agent_count=1,
+        preset=Preset.QUICK,
+        source_document="x",
+        simulation_requirement="x",
+        generated_at=datetime(2026, 5, 25, tzinfo=UTC),
+        ontology=Ontology(entity_types=[], edge_types=[]),
+        agents={
+            "d1": _profile("d1", topics=["X"], post_rate=0.5, origin=AgentOrigin.DERIVED),
+        },
+    )
+    b = OntologyB(
+        stores={
+            "d1": MemoryStore(agent_id="d1", semantic=[_sem("m1", "x", sim_count=1, last_sim=1)])
+        }
+    )
+    warnings = OntologyLoader.validate_consistency(ontology_a=a, ontology_b=b)
+    assert len(warnings) == 1
+    assert warnings[0].origin == AgentOrigin.DERIVED

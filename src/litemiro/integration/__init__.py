@@ -7,6 +7,6 @@
 
 from __future__ import annotations
 
-from litemiro.integration.ontology_loader import OntologyLoader
+from litemiro.integration.ontology_loader import ConsistencyWarning, OntologyLoader
 
-__all__ = ["OntologyLoader"]
+__all__ = ["ConsistencyWarning", "OntologyLoader"]
