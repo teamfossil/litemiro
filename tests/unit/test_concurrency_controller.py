@@ -162,4 +162,65 @@ class TestFailurePropagation:
             await c.run_batched(items, factory)
 
 
+class TestLoadValidation:
+    """100-agent scale checks against the Phase 2 default config.
+
+    Production defaults are ``semaphore_limit=10``, ``batch_size=20``,
+    ``cooldown_seconds=0.5`` — issue #44 asks for unit-level evidence
+    that those values hold at the simulation scale (100 agents) before
+    sinking real OpenRouter budget into the e2e load probe.
+    """
+
+    async def test_default_config_100_items_in_flight_under_limit(self) -> None:
+        # Mirrors test_max_in_flight_does_not_exceed_limit at the
+        # production scale. cooldown=0 so the gate releases predictably
+        # within a single event-loop pump.
+        c = ConcurrencyController(cooldown_seconds=0.0)
+        in_flight = 0
+        max_in_flight = 0
+        gate = asyncio.Event()
+        observed_lock = asyncio.Lock()
+
+        async def factory(item: str) -> str:
+            nonlocal in_flight, max_in_flight
+            async with observed_lock:
+                in_flight += 1
+                max_in_flight = max(max_in_flight, in_flight)
+            await gate.wait()
+            async with observed_lock:
+                in_flight -= 1
+            return item
+
+        async def release_gate() -> None:
+            for _ in range(500):
+                await asyncio.sleep(0)
+            gate.set()
+
+        items = tuple(f"a-{n:03d}" for n in range(100))
+        results, _ = await asyncio.gather(c.run_batched(items, factory), release_gate())
+        assert results == items
+        assert max_in_flight <= 10
+
+    async def test_default_config_100_items_splits_into_five_batches(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        sleep_calls: list[float] = []
+
+        async def fake_sleep(delay: float) -> None:
+            sleep_calls.append(delay)
+
+        monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+
+        c = ConcurrencyController()
+        items = tuple(f"a-{n:03d}" for n in range(100))
+
+        async def factory(item: str) -> str:
+            return item
+
+        results = await c.run_batched(items, factory)
+        assert results == items
+        # 100 items / batch_size=20 = 5 batches → 4 inter-batch cooldowns
+        assert sleep_calls == [0.5] * 4
+
+
 _AsyncFactory = Callable[[str], Awaitable[str]]
