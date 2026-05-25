@@ -33,6 +33,7 @@ dependencies = [
   "aiohttp>=3.9,<4",
   "litellm>=1.40,<2",
   "openai>=1.30,<2",
+  "python-dotenv>=1.0,<2",
   "tomli>=2.0; python_version<'3.11'",
   "PyPDF2>=3.0,<5",
 ]

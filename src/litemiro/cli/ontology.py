@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 
 import structlog
+from dotenv import load_dotenv
 
 from litemiro.phase1.models import Preset
 from litemiro.phase1.pipeline import OntologyPipeline, PipelineConfig
@@ -31,6 +32,8 @@ class Phase1LiteLLMClient:
 
 
 def main(argv: list[str] | None = None) -> int:
+    load_dotenv()
+
     parser = argparse.ArgumentParser(
         prog="litemiro-ontology",
         description="Run the Phase 1 ontology generation pipeline.",

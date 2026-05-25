@@ -104,6 +104,75 @@ class TestMemoryInitializer:
         assert len(memories) >= 1
         assert any("정치부 기자" in m.summary for m in memories)
 
+    def test_seed_memory_topics_come_from_entity_not_persona(self) -> None:
+        graph = LocalGraph.build(
+            ExtractionResult(
+                entities=[
+                    Entity(
+                        id="a1",
+                        type="Policy",
+                        name="Privacy Act",
+                        attributes={"domain": "privacy"},
+                        summary="consumer data regulation",
+                    )
+                ]
+            )
+        )
+        agents = {"a1": _make_profile("a1", topics=["sports", "music"])}
+
+        stores = MemoryInitializer(graph=graph, seed=42).initialize(agents)
+
+        assert stores["a1"].semantic[0].topics == ["privacy", "Policy", "consumer"]
+
+    def test_seed_memory_topics_filter_english_stop_words_from_summary(self) -> None:
+        graph = LocalGraph.build(
+            ExtractionResult(
+                entities=[
+                    Entity(
+                        id="a1",
+                        type="Profile",
+                        name="Privacy Case",
+                        summary="the of to privacy report",
+                    )
+                ]
+            )
+        )
+        agents = {"a1": _make_profile("a1", topics=["sports"])}
+
+        stores = MemoryInitializer(graph=graph, seed=42).initialize(agents)
+
+        assert stores["a1"].semantic[0].topics == ["Profile", "privacy", "report"]
+
+    def test_relationship_memory_topics_come_from_graph_not_persona(self) -> None:
+        graph = LocalGraph.build(
+            ExtractionResult(
+                entities=[
+                    Entity(id="a1", type="Person", name="Alice", summary="profile seed"),
+                    Entity(
+                        id="a2",
+                        type="Agency",
+                        name="Data Office",
+                        attributes={"field": "housing"},
+                        summary="housing policy enforcement",
+                    ),
+                ],
+                relationships=[
+                    Edge(
+                        source="a1",
+                        target="a2",
+                        type="REPORTS_ON",
+                        description="audits privacy reports",
+                    )
+                ],
+            )
+        )
+        agents = {"a1": _make_profile("a1", topics=["sports"])}
+
+        stores = MemoryInitializer(graph=graph, seed=42).initialize(agents)
+        relationship_memory = next(m for m in stores["a1"].semantic if m.key_relationships)
+
+        assert relationship_memory.topics == ["housing", "Agency", "audits"]
+
     def test_relationship_memories_created(self) -> None:
         graph = _build_rich_graph()
         agents = {

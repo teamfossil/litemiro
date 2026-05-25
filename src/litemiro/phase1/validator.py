@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import statistics
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 import structlog
@@ -30,6 +31,7 @@ class OntologyValidator:
         errors.extend(self._check_referential_integrity(a))
         errors.extend(self._check_memory_references(a, b))
         warnings.extend(self._check_ideology_distribution(a))
+        warnings.extend(self._check_persona_memory_topic_overlap(a, b))
 
         result = ValidationResult(valid=len(errors) == 0, errors=errors, warnings=warnings)
         log.info(
@@ -137,6 +139,29 @@ class OntologyValidator:
                 "simulation may lack ideological diversity"
             )
         return warnings
+
+    def _check_persona_memory_topic_overlap(self, a: OntologyA, b: OntologyB) -> list[str]:
+        warnings: list[str] = []
+        for agent_id, profile in a.agents.items():
+            store = b.stores.get(agent_id)
+            if store is None or not store.semantic:
+                continue
+
+            persona_topics = _normalized_topic_set(profile.topics)
+            memory_topics = _normalized_topic_set(
+                topic for memory in store.semantic for topic in memory.topics
+            )
+            if persona_topics & memory_topics:
+                continue
+
+            warnings.append(
+                f"agent '{agent_id}' persona topics do not overlap semantic memory topics"
+            )
+        return warnings
+
+
+def _normalized_topic_set(topics: Iterable[str]) -> set[str]:
+    return {topic.strip().casefold() for topic in topics if topic.strip()}
 
 
 __all__ = ["OntologyValidator", "ValidationResult"]
