@@ -39,6 +39,9 @@ class TokenBudgetManager:
         return self._used + estimated_tokens <= self._total
 
     def consume(self, *, tokens_used: int) -> None:
+        # ``tokens_used`` is a single raw count — the caller sums
+        # ``prompt_tokens + completion_tokens`` (LiteLLM ``usage`` fields)
+        # before passing it in. The manager doesn't split the two.
         if tokens_used < 0:
             raise ValueError(f"tokens_used must be non-negative, got {tokens_used}")
         self._used += tokens_used
