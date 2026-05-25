@@ -1,8 +1,7 @@
 """End-to-end smoke: Phase 1 출력 → Phase 2 입력 변환 계약 검증.
 
 본 모듈은 :doc:`/integration/phase1-2-contract` (PR #12) 의 매핑 규칙을
-사전에 lock-in 한다. 실제 ``OntologyLoader`` (Issue #13, owner=C) 가 머지되면
-helper 함수를 제거하고 ``OntologyLoader`` 호출로 교체한다.
+``OntologyLoader`` 호출로 lock-in 한다 (Section 8.1, owner=A).
 """
 
 from __future__ import annotations
@@ -13,11 +12,9 @@ from pathlib import Path
 
 import pytest
 
-# NOTE — `tests.e2e._phase1_to_phase2_helpers` 는 OntologyLoader (Issue #13, owner=C) 머지
-# 전까지의 임시 매핑이다. Loader 머지 시 본 import 와 helper 모듈을 모두 제거하고
-# 호출부를 ``OntologyLoader`` 메서드로 교체한다.
 from litemiro.core.agent_scheduler import AgentScheduler
 from litemiro.core.state_store import StateStore
+from litemiro.integration.ontology_loader import OntologyLoader
 from litemiro.phase1.models import (
     AgentOrigin,
     AgentProfile,
@@ -31,11 +28,6 @@ from litemiro.phase1.models import (
     SemanticMemory,
 )
 from litemiro.social.graph import SocialGraph
-from tests.e2e._phase1_to_phase2_helpers import (
-    build_agents,
-    build_social_graph,
-    memory_summary_top_n,
-)
 
 # ── fixtures ─────────────────────────────────────────────────────────
 
@@ -135,7 +127,10 @@ def ontology_b() -> OntologyB:
 def test_build_agents_maps_post_rate_to_activation_rate(
     ontology_a: OntologyA, ontology_b: OntologyB
 ) -> None:
-    agents = {a.agent_id: a for a in build_agents(ontology_a, ontology_b)}
+    agents = {
+        a.agent_id: a
+        for a in OntologyLoader.build_agents(ontology_a=ontology_a, ontology_b=ontology_b)
+    }
 
     assert agents["agent_001"].activation_rate == pytest.approx(0.7)
     assert agents["agent_002"].activation_rate == pytest.approx(0.4)
@@ -145,7 +140,10 @@ def test_build_agents_maps_post_rate_to_activation_rate(
 def test_build_agents_maps_topics_to_interests(
     ontology_a: OntologyA, ontology_b: OntologyB
 ) -> None:
-    agents = {a.agent_id: a for a in build_agents(ontology_a, ontology_b)}
+    agents = {
+        a.agent_id: a
+        for a in OntologyLoader.build_agents(ontology_a=ontology_a, ontology_b=ontology_b)
+    }
 
     assert agents["agent_001"].interests == ("정치", "경제")
     assert agents["agent_002"].interests == ("기술",)
@@ -156,7 +154,10 @@ def test_persona_traits_preserve_unused_fields(
     ontology_a: OntologyA, ontology_b: OntologyB
 ) -> None:
     """Section 4.1: model_dump 전체 보존 — 후속 단계가 참조할 미사용 필드 유지."""
-    agents = {a.agent_id: a for a in build_agents(ontology_a, ontology_b)}
+    agents = {
+        a.agent_id: a
+        for a in OntologyLoader.build_agents(ontology_a=ontology_a, ontology_b=ontology_b)
+    }
     traits = agents["agent_001"].persona_traits
 
     assert traits["behavior_tendency"]["reply_rate"] == pytest.approx(0.3)
@@ -166,7 +167,10 @@ def test_persona_traits_preserve_unused_fields(
 def test_memory_summary_orders_by_sim_count_then_recency(
     ontology_a: OntologyA, ontology_b: OntologyB
 ) -> None:
-    agents = {a.agent_id: a for a in build_agents(ontology_a, ontology_b)}
+    agents = {
+        a.agent_id: a
+        for a in OntologyLoader.build_agents(ontology_a=ontology_a, ontology_b=ontology_b)
+    }
 
     # contract Section 4.2: top-3 by (simulation_count desc, last_relevant_sim desc)
     # m4(9), m2(5,10), m3(5,2) — m1(1) dropped
@@ -176,38 +180,66 @@ def test_memory_summary_orders_by_sim_count_then_recency(
 def test_memory_summary_is_none_for_empty_semantic(
     ontology_a: OntologyA, ontology_b: OntologyB
 ) -> None:
-    agents = {a.agent_id: a for a in build_agents(ontology_a, ontology_b)}
+    agents = {
+        a.agent_id: a
+        for a in OntologyLoader.build_agents(ontology_a=ontology_a, ontology_b=ontology_b)
+    }
     assert agents["agent_003"].memory_summary is None
 
 
 def test_memory_summary_handles_under_n_entries(
     ontology_a: OntologyA, ontology_b: OntologyB
 ) -> None:
-    agents = {a.agent_id: a for a in build_agents(ontology_a, ontology_b)}
+    agents = {
+        a.agent_id: a
+        for a in OntologyLoader.build_agents(ontology_a=ontology_a, ontology_b=ontology_b)
+    }
     assert agents["agent_002"].memory_summary == "유일한 기억"
 
 
 def test_memory_summary_breaks_full_ties_by_id() -> None:
-    """두 정렬 키가 모두 동률이면 id 사전순으로 결정 (재현성, Section 6.4)."""
-    tied = [
-        _sem("m_b", "b", sim_count=5, last_sim=3),
-        _sem("m_a", "a", sim_count=5, last_sim=3),
-    ]
-    assert memory_summary_top_n(tied) == "a; b"
+    """두 정렬 키가 모두 동률이면 id 사전순으로 결정 (재현성, Section 6.4).
+
+    `Loader.build_agents` 경로를 통해 Section 4.2 정렬 결정성을 lock-in.
+    """
+    profile = _profile("agent_a", topics=["정치"], post_rate=0.5)
+    a = OntologyA(
+        seed=1,
+        agent_count=1,
+        preset=Preset.QUICK,
+        source_document="d",
+        simulation_requirement="r",
+        generated_at=datetime(2026, 5, 25, tzinfo=UTC),
+        ontology=Ontology(entity_types=[], edge_types=[]),
+        agents={"agent_a": profile},
+    )
+    b = OntologyB(
+        stores={
+            "agent_a": MemoryStore(
+                agent_id="agent_a",
+                semantic=[
+                    _sem("m_b", "b", sim_count=5, last_sim=3),
+                    _sem("m_a", "a", sim_count=5, last_sim=3),
+                ],
+            ),
+        }
+    )
+    agents = OntologyLoader.build_agents(ontology_a=a, ontology_b=b)
+    assert agents[0].memory_summary == "a; b"
 
 
 def test_social_graph_drops_self_follow_and_unknown(ontology_a: OntologyA) -> None:
     """unknown agent_id drop 을 실효 검증.
 
     self-follow 는 `AgentProfile._no_self_follow` (`phase1/models.py`) 가
-    모델 생성 시점에 이미 제거하므로 helper 의 `f != aid` 가드는
+    모델 생성 시점에 이미 제거하므로 Loader 의 `f != aid` 가드는
     belt-and-suspenders 다. 본 테스트는 unknown follow drop 만 실효 검증한다.
     """
-    graph = build_social_graph(ontology_a)
+    graph = OntologyLoader.build_social_graph(ontology_a=ontology_a)
 
     # agent_001 had [agent_002, agent_001, agent_999]:
     #   - agent_001 (self) 은 AgentProfile 단계에서 이미 제거됨 (가드 도달 전)
-    #   - agent_999 (unknown) 는 helper 가 제거 — 본 테스트의 실효 케이스
+    #   - agent_999 (unknown) 는 Loader 가 제거 — 본 테스트의 실효 케이스
     assert graph.following("agent_001") == frozenset({"agent_002"})
     assert graph.following("agent_002") == frozenset({"agent_003"})
     assert graph.following("agent_003") == frozenset()
@@ -216,8 +248,8 @@ def test_social_graph_drops_self_follow_and_unknown(ontology_a: OntologyA) -> No
 def test_state_store_constructible_from_ontology(
     ontology_a: OntologyA, ontology_b: OntologyB, tmp_path: Path
 ) -> None:
-    agents = build_agents(ontology_a, ontology_b)
-    graph = build_social_graph(ontology_a)
+    agents = OntologyLoader.build_agents(ontology_a=ontology_a, ontology_b=ontology_b)
+    graph = OntologyLoader.build_social_graph(ontology_a=ontology_a)
 
     store = StateStore(
         agents=agents,
@@ -237,7 +269,7 @@ def test_scheduler_is_deterministic_across_runs(
     """동일 입력 + 동일 seed → 동일 활성 에이전트 집합."""
 
     def _run() -> tuple[str, ...]:
-        agents = build_agents(ontology_a, ontology_b)
+        agents = OntologyLoader.build_agents(ontology_a=ontology_a, ontology_b=ontology_b)
         scheduler = AgentScheduler(global_seed=ontology_a.seed)
         return scheduler.select_active(agents, round_num=0)
 
@@ -246,5 +278,8 @@ def test_scheduler_is_deterministic_across_runs(
 
 def test_build_agents_order_is_stable(ontology_a: OntologyA, ontology_b: OntologyB) -> None:
     """contract Section 5: agent_id 사전순 보장."""
-    ids = tuple(a.agent_id for a in build_agents(ontology_a, ontology_b))
+    ids = tuple(
+        a.agent_id
+        for a in OntologyLoader.build_agents(ontology_a=ontology_a, ontology_b=ontology_b)
+    )
     assert ids == ("agent_001", "agent_002", "agent_003")
