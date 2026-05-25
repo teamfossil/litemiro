@@ -1,0 +1,1231 @@
+{
+  "version": 1,
+  "config": {
+    "episodic_max": 10,
+    "semantic_max": 5,
+    "episodic_decay_rate": 0.1,
+    "semantic_decay_rate": 0.05,
+    "retrieval_max": 3,
+    "token_budget_per_agent": 120
+  },
+  "stores": {
+    "corp_naver": {
+      "agent_id": "corp_naver",
+      "episodic": [],
+      "semantic": [
+        {
+          "id": "seed_corp_naver_0",
+          "summary": "자체 AI 모델 운영, 자율규제 선호",
+          "topics": [
+            "AI 규제",
+            "기술 정책"
+          ],
+          "dominant_sentiment": "중립",
+          "key_relationships": [],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        },
+        {
+          "id": "seed_corp_naver_1",
+          "summary": "이준석와(과) 네이버 AI 랩 소장",
+          "topics": [],
+          "dominant_sentiment": "중립",
+          "key_relationships": [
+            {
+              "agent_id": "researcher_lee_js",
+              "nature": "neutral"
+            }
+          ],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        },
+        {
+          "id": "seed_corp_naver_2",
+          "summary": "과학기술정보통신부와(과) AI 규제",
+          "topics": [
+            "AI 규제"
+          ],
+          "dominant_sentiment": "중립",
+          "key_relationships": [
+            {
+              "agent_id": "gov_msit",
+              "nature": "neutral"
+            }
+          ],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        },
+        {
+          "id": "seed_corp_naver_3",
+          "summary": "KAI Alliance와(과) 산업 연합 지지",
+          "topics": [],
+          "dominant_sentiment": "중립",
+          "key_relationships": [
+            {
+              "agent_id": "alliance_kai",
+              "nature": "neutral"
+            }
+          ],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        }
+      ]
+    },
+    "gov_msit": {
+      "agent_id": "gov_msit",
+      "episodic": [],
+      "semantic": [
+        {
+          "id": "seed_gov_msit_0",
+          "summary": "AI 규제의 주무 부처, AI 기본법 시행령 마련",
+          "topics": [
+            "AI 규제",
+            "기술 정책"
+          ],
+          "dominant_sentiment": "중립",
+          "key_relationships": [],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        },
+        {
+          "id": "seed_gov_msit_1",
+          "summary": "김태호와(과) 과기부 장관",
+          "topics": [],
+          "dominant_sentiment": "중립",
+          "key_relationships": [
+            {
+              "agent_id": "pol_kim",
+              "nature": "neutral"
+            }
+          ],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        },
+        {
+          "id": "seed_gov_msit_2",
+          "summary": "네이버와(과) AI 규제",
+          "topics": [],
+          "dominant_sentiment": "중립",
+          "key_relationships": [
+            {
+              "agent_id": "corp_naver",
+              "nature": "neutral"
+            }
+          ],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        },
+        {
+          "id": "seed_gov_msit_3",
+          "summary": "카카오와(과) AI 규제",
+          "topics": [],
+          "dominant_sentiment": "중립",
+          "key_relationships": [
+            {
+              "agent_id": "corp_kakao",
+              "nature": "neutral"
+            }
+          ],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        }
+      ]
+    },
+    "journalist_kim_ys": {
+      "agent_id": "journalist_kim_ys",
+      "episodic": [],
+      "semantic": [
+        {
+          "id": "seed_journalist_kim_ys_0",
+          "summary": "AI 정책 비판적 보도",
+          "topics": [
+            "AI 규제",
+            "기술 정책"
+          ],
+          "dominant_sentiment": "중립",
+          "key_relationships": [],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        },
+        {
+          "id": "seed_journalist_kim_ys_1",
+          "summary": "한겨레신문와(과) 한겨레 소속",
+          "topics": [],
+          "dominant_sentiment": "협력",
+          "key_relationships": [
+            {
+              "agent_id": "media_hankyoreh",
+              "nature": "agreement"
+            }
+          ],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        },
+        {
+          "id": "seed_journalist_kim_ys_2",
+          "summary": "과학기술정보통신부와(과) AI 정책 보도",
+          "topics": [
+            "AI 규제"
+          ],
+          "dominant_sentiment": "중립",
+          "key_relationships": [
+            {
+              "agent_id": "gov_msit",
+              "nature": "neutral"
+            }
+          ],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        }
+      ]
+    },
+    "cso_pam": {
+      "agent_id": "cso_pam",
+      "episodic": [],
+      "semantic": [
+        {
+          "id": "seed_cso_pam_0",
+          "summary": "AI 차별과 편향 문제 지적",
+          "topics": [
+            "AI 규제",
+            "기술 정책"
+          ],
+          "dominant_sentiment": "중립",
+          "key_relationships": [],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        },
+        {
+          "id": "seed_cso_pam_1",
+          "summary": "최수현와(과) 참여연대 활동가",
+          "topics": [],
+          "dominant_sentiment": "중립",
+          "key_relationships": [
+            {
+              "agent_id": "activist_choi",
+              "nature": "neutral"
+            }
+          ],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        },
+        {
+          "id": "seed_cso_pam_2",
+          "summary": "과학기술정보통신부와(과) 정부 정책 비판",
+          "topics": [
+            "AI 규제"
+          ],
+          "dominant_sentiment": "갈등",
+          "key_relationships": [
+            {
+              "agent_id": "gov_msit",
+              "nature": "conflict"
+            }
+          ],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        }
+      ]
+    },
+    "alliance_kai": {
+      "agent_id": "alliance_kai",
+      "episodic": [],
+      "semantic": [
+        {
+          "id": "seed_alliance_kai_0",
+          "summary": "중소 AI 스타트업 연합, 규제 비용 부담 우려",
+          "topics": [
+            "AI 규제",
+            "기술 정책"
+          ],
+          "dominant_sentiment": "중립",
+          "key_relationships": [],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        },
+        {
+          "id": "seed_alliance_kai_1",
+          "summary": "네이버와(과) 산업 연합 지지",
+          "topics": [],
+          "dominant_sentiment": "중립",
+          "key_relationships": [
+            {
+              "agent_id": "corp_naver",
+              "nature": "neutral"
+            }
+          ],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        }
+      ]
+    },
+    "media_hankyoreh": {
+      "agent_id": "media_hankyoreh",
+      "episodic": [],
+      "semantic": [
+        {
+          "id": "seed_media_hankyoreh_0",
+          "summary": "AI 정책 비판적 보도",
+          "topics": [
+            "AI 규제",
+            "기술 정책"
+          ],
+          "dominant_sentiment": "중립",
+          "key_relationships": [],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        },
+        {
+          "id": "seed_media_hankyoreh_1",
+          "summary": "김영수와(과) 한겨레 소속",
+          "topics": [],
+          "dominant_sentiment": "협력",
+          "key_relationships": [
+            {
+              "agent_id": "journalist_kim_ys",
+              "nature": "agreement"
+            }
+          ],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        }
+      ]
+    },
+    "gov_pipc": {
+      "agent_id": "gov_pipc",
+      "episodic": [],
+      "semantic": [
+        {
+          "id": "seed_gov_pipc_0",
+          "summary": "AI 개인정보 처리 가이드라인 발표",
+          "topics": [
+            "AI 규제",
+            "기술 정책"
+          ],
+          "dominant_sentiment": "중립",
+          "key_relationships": [],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        },
+        {
+          "id": "seed_gov_pipc_1",
+          "summary": "박영선와(과) 개인정보위 위원장",
+          "topics": [],
+          "dominant_sentiment": "중립",
+          "key_relationships": [
+            {
+              "agent_id": "pol_park",
+              "nature": "neutral"
+            }
+          ],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        }
+      ]
+    },
+    "pol_kim": {
+      "agent_id": "pol_kim",
+      "episodic": [],
+      "semantic": [
+        {
+          "id": "seed_pol_kim_0",
+          "summary": "과기부 장관, 혁신과 규제 균형 강조",
+          "topics": [
+            "AI 규제",
+            "기술 정책"
+          ],
+          "dominant_sentiment": "중립",
+          "key_relationships": [],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        },
+        {
+          "id": "seed_pol_kim_1",
+          "summary": "과학기술정보통신부와(과) 과기부 장관",
+          "topics": [
+            "AI 규제"
+          ],
+          "dominant_sentiment": "중립",
+          "key_relationships": [
+            {
+              "agent_id": "gov_msit",
+              "nature": "neutral"
+            }
+          ],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        }
+      ]
+    },
+    "pol_park": {
+      "agent_id": "pol_park",
+      "episodic": [],
+      "semantic": [
+        {
+          "id": "seed_pol_park_0",
+          "summary": "개인정보위 위원장, GDPR 참고 규제 강화 주장",
+          "topics": [
+            "AI 규제",
+            "기술 정책"
+          ],
+          "dominant_sentiment": "중립",
+          "key_relationships": [],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        },
+        {
+          "id": "seed_pol_park_1",
+          "summary": "개인정보보호위원회와(과) 개인정보위 위원장",
+          "topics": [],
+          "dominant_sentiment": "중립",
+          "key_relationships": [
+            {
+              "agent_id": "gov_pipc",
+              "nature": "neutral"
+            }
+          ],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        }
+      ]
+    },
+    "corp_kakao": {
+      "agent_id": "corp_kakao",
+      "episodic": [],
+      "semantic": [
+        {
+          "id": "seed_corp_kakao_0",
+          "summary": "AI 윤리 위원회 설치, 자체 윤리 가이드라인 운영",
+          "topics": [
+            "AI 규제",
+            "기술 정책"
+          ],
+          "dominant_sentiment": "중립",
+          "key_relationships": [],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        },
+        {
+          "id": "seed_corp_kakao_1",
+          "summary": "과학기술정보통신부와(과) AI 규제",
+          "topics": [
+            "AI 규제"
+          ],
+          "dominant_sentiment": "중립",
+          "key_relationships": [
+            {
+              "agent_id": "gov_msit",
+              "nature": "neutral"
+            }
+          ],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        }
+      ]
+    },
+    "corp_samsung": {
+      "agent_id": "corp_samsung",
+      "episodic": [],
+      "semantic": [
+        {
+          "id": "seed_corp_samsung_0",
+          "summary": "AI 칩 개발, 하드웨어 안전성 강조",
+          "topics": [
+            "AI 규제",
+            "기술 정책"
+          ],
+          "dominant_sentiment": "중립",
+          "key_relationships": [],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        },
+        {
+          "id": "seed_corp_samsung_1",
+          "summary": "과학기술정보통신부와(과) AI 규제",
+          "topics": [
+            "AI 규제"
+          ],
+          "dominant_sentiment": "중립",
+          "key_relationships": [
+            {
+              "agent_id": "gov_msit",
+              "nature": "neutral"
+            }
+          ],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        }
+      ]
+    },
+    "res_snu": {
+      "agent_id": "res_snu",
+      "episodic": [],
+      "semantic": [
+        {
+          "id": "seed_res_snu_0",
+          "summary": "AI 안전성 연구",
+          "topics": [
+            "AI 규제",
+            "기술 정책"
+          ],
+          "dominant_sentiment": "중립",
+          "key_relationships": [],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        },
+        {
+          "id": "seed_res_snu_1",
+          "summary": "정민수와(과) 서울대 소속",
+          "topics": [],
+          "dominant_sentiment": "중립",
+          "key_relationships": [
+            {
+              "agent_id": "researcher_jung",
+              "nature": "neutral"
+            }
+          ],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        }
+      ]
+    },
+    "res_kaist": {
+      "agent_id": "res_kaist",
+      "episodic": [],
+      "semantic": [
+        {
+          "id": "seed_res_kaist_0",
+          "summary": "AI 위험성 연구",
+          "topics": [
+            "AI 규제",
+            "기술 정책"
+          ],
+          "dominant_sentiment": "중립",
+          "key_relationships": [],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        },
+        {
+          "id": "seed_res_kaist_1",
+          "summary": "한소영와(과) KAIST 소속",
+          "topics": [],
+          "dominant_sentiment": "중립",
+          "key_relationships": [
+            {
+              "agent_id": "researcher_han",
+              "nature": "neutral"
+            }
+          ],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        }
+      ]
+    },
+    "researcher_jung": {
+      "agent_id": "researcher_jung",
+      "episodic": [],
+      "semantic": [
+        {
+          "id": "seed_researcher_jung_0",
+          "summary": "AI 위험성 과장 입장",
+          "topics": [
+            "AI 규제",
+            "기술 정책"
+          ],
+          "dominant_sentiment": "중립",
+          "key_relationships": [],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        },
+        {
+          "id": "seed_researcher_jung_1",
+          "summary": "서울대 AI 연구원와(과) 서울대 소속",
+          "topics": [],
+          "dominant_sentiment": "중립",
+          "key_relationships": [
+            {
+              "agent_id": "res_snu",
+              "nature": "neutral"
+            }
+          ],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        }
+      ]
+    },
+    "researcher_han": {
+      "agent_id": "researcher_han",
+      "episodic": [],
+      "semantic": [
+        {
+          "id": "seed_researcher_han_0",
+          "summary": "선제적 규제 지지",
+          "topics": [
+            "AI 규제",
+            "기술 정책"
+          ],
+          "dominant_sentiment": "중립",
+          "key_relationships": [],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        },
+        {
+          "id": "seed_researcher_han_1",
+          "summary": "KAIST AI 대학원와(과) KAIST 소속",
+          "topics": [],
+          "dominant_sentiment": "중립",
+          "key_relationships": [
+            {
+              "agent_id": "res_kaist",
+              "nature": "neutral"
+            }
+          ],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        }
+      ]
+    },
+    "cso_fair_ai": {
+      "agent_id": "cso_fair_ai",
+      "episodic": [],
+      "semantic": [
+        {
+          "id": "seed_cso_fair_ai_0",
+          "summary": "AI 의사결정 설명가능성 의무화 주장",
+          "topics": [
+            "AI 규제",
+            "기술 정책"
+          ],
+          "dominant_sentiment": "중립",
+          "key_relationships": [],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        },
+        {
+          "id": "seed_cso_fair_ai_1",
+          "summary": "과학기술정보통신부와(과) 설명가능성 의무화",
+          "topics": [
+            "AI 규제"
+          ],
+          "dominant_sentiment": "갈등",
+          "key_relationships": [
+            {
+              "agent_id": "gov_msit",
+              "nature": "conflict"
+            }
+          ],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        }
+      ]
+    },
+    "media_chosun": {
+      "agent_id": "media_chosun",
+      "episodic": [],
+      "semantic": [
+        {
+          "id": "seed_media_chosun_0",
+          "summary": "AI 산업 육성 강조 보도",
+          "topics": [
+            "AI 규제",
+            "기술 정책"
+          ],
+          "dominant_sentiment": "중립",
+          "key_relationships": [],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        },
+        {
+          "id": "seed_media_chosun_1",
+          "summary": "박정민와(과) 조선일보 소속",
+          "topics": [],
+          "dominant_sentiment": "협력",
+          "key_relationships": [
+            {
+              "agent_id": "journalist_park_jm",
+              "nature": "agreement"
+            }
+          ],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        }
+      ]
+    },
+    "journalist_park_jm": {
+      "agent_id": "journalist_park_jm",
+      "episodic": [],
+      "semantic": [
+        {
+          "id": "seed_journalist_park_jm_0",
+          "summary": "AI 산업 육성 필요성 강조",
+          "topics": [
+            "AI 규제",
+            "기술 정책"
+          ],
+          "dominant_sentiment": "중립",
+          "key_relationships": [],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        },
+        {
+          "id": "seed_journalist_park_jm_1",
+          "summary": "조선일보와(과) 조선일보 소속",
+          "topics": [],
+          "dominant_sentiment": "협력",
+          "key_relationships": [
+            {
+              "agent_id": "media_chosun",
+              "nature": "agreement"
+            }
+          ],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        }
+      ]
+    },
+    "researcher_lee_js": {
+      "agent_id": "researcher_lee_js",
+      "episodic": [],
+      "semantic": [
+        {
+          "id": "seed_researcher_lee_js_0",
+          "summary": "과도한 규제 우려",
+          "topics": [
+            "AI 규제",
+            "기술 정책"
+          ],
+          "dominant_sentiment": "중립",
+          "key_relationships": [],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        },
+        {
+          "id": "seed_researcher_lee_js_1",
+          "summary": "네이버와(과) 네이버 AI 랩 소장",
+          "topics": [],
+          "dominant_sentiment": "중립",
+          "key_relationships": [
+            {
+              "agent_id": "corp_naver",
+              "nature": "neutral"
+            }
+          ],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        }
+      ]
+    },
+    "activist_choi": {
+      "agent_id": "activist_choi",
+      "episodic": [],
+      "semantic": [
+        {
+          "id": "seed_activist_choi_0",
+          "summary": "알고리즘 투명성 요구",
+          "topics": [
+            "AI 규제",
+            "기술 정책"
+          ],
+          "dominant_sentiment": "중립",
+          "key_relationships": [],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        },
+        {
+          "id": "seed_activist_choi_1",
+          "summary": "참여연대와(과) 참여연대 활동가",
+          "topics": [],
+          "dominant_sentiment": "중립",
+          "key_relationships": [
+            {
+              "agent_id": "cso_pam",
+              "nature": "neutral"
+            }
+          ],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        }
+      ]
+    },
+    "media_techwatch": {
+      "agent_id": "media_techwatch",
+      "episodic": [],
+      "semantic": [
+        {
+          "id": "seed_media_techwatch_0",
+          "summary": "기술적 관점 중립 보도",
+          "topics": [
+            "AI 규제",
+            "기술 정책"
+          ],
+          "dominant_sentiment": "중립",
+          "key_relationships": [],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        },
+        {
+          "id": "seed_media_techwatch_1",
+          "summary": "이하늘와(과) 테크워치 소속",
+          "topics": [],
+          "dominant_sentiment": "협력",
+          "key_relationships": [
+            {
+              "agent_id": "journalist_lee",
+              "nature": "agreement"
+            }
+          ],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        }
+      ]
+    },
+    "journalist_lee": {
+      "agent_id": "journalist_lee",
+      "episodic": [],
+      "semantic": [
+        {
+          "id": "seed_journalist_lee_0",
+          "summary": "기술적 관점 중립 보도",
+          "topics": [
+            "AI 규제",
+            "기술 정책"
+          ],
+          "dominant_sentiment": "중립",
+          "key_relationships": [],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        },
+        {
+          "id": "seed_journalist_lee_1",
+          "summary": "테크워치와(과) 테크워치 소속",
+          "topics": [],
+          "dominant_sentiment": "협력",
+          "key_relationships": [
+            {
+              "agent_id": "media_techwatch",
+              "nature": "agreement"
+            }
+          ],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        }
+      ]
+    },
+    "res_etri": {
+      "agent_id": "res_etri",
+      "episodic": [],
+      "semantic": [
+        {
+          "id": "seed_res_etri_0",
+          "summary": "AI 신뢰성 평가 프레임워크 개발",
+          "topics": [
+            "AI 규제",
+            "기술 정책"
+          ],
+          "dominant_sentiment": "중립",
+          "key_relationships": [],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        }
+      ]
+    },
+    "cso_digital": {
+      "agent_id": "cso_digital",
+      "episodic": [],
+      "semantic": [
+        {
+          "id": "seed_cso_digital_0",
+          "summary": "규제 최소화 옹호",
+          "topics": [
+            "AI 규제",
+            "기술 정책"
+          ],
+          "dominant_sentiment": "중립",
+          "key_relationships": [],
+          "simulation_count": 0,
+          "last_relevant_sim": 0
+        }
+      ]
+    },
+    "agent_0024": {
+      "agent_id": "agent_0024",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0025": {
+      "agent_id": "agent_0025",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0026": {
+      "agent_id": "agent_0026",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0027": {
+      "agent_id": "agent_0027",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0028": {
+      "agent_id": "agent_0028",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0029": {
+      "agent_id": "agent_0029",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0030": {
+      "agent_id": "agent_0030",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0031": {
+      "agent_id": "agent_0031",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0032": {
+      "agent_id": "agent_0032",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0033": {
+      "agent_id": "agent_0033",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0034": {
+      "agent_id": "agent_0034",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0035": {
+      "agent_id": "agent_0035",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0036": {
+      "agent_id": "agent_0036",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0037": {
+      "agent_id": "agent_0037",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0038": {
+      "agent_id": "agent_0038",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0039": {
+      "agent_id": "agent_0039",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0040": {
+      "agent_id": "agent_0040",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0041": {
+      "agent_id": "agent_0041",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0042": {
+      "agent_id": "agent_0042",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0043": {
+      "agent_id": "agent_0043",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0044": {
+      "agent_id": "agent_0044",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0045": {
+      "agent_id": "agent_0045",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0046": {
+      "agent_id": "agent_0046",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0047": {
+      "agent_id": "agent_0047",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0048": {
+      "agent_id": "agent_0048",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0049": {
+      "agent_id": "agent_0049",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0050": {
+      "agent_id": "agent_0050",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0051": {
+      "agent_id": "agent_0051",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0052": {
+      "agent_id": "agent_0052",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0053": {
+      "agent_id": "agent_0053",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0054": {
+      "agent_id": "agent_0054",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0055": {
+      "agent_id": "agent_0055",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0056": {
+      "agent_id": "agent_0056",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0057": {
+      "agent_id": "agent_0057",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0058": {
+      "agent_id": "agent_0058",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0059": {
+      "agent_id": "agent_0059",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0060": {
+      "agent_id": "agent_0060",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0061": {
+      "agent_id": "agent_0061",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0062": {
+      "agent_id": "agent_0062",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0063": {
+      "agent_id": "agent_0063",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0064": {
+      "agent_id": "agent_0064",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0065": {
+      "agent_id": "agent_0065",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0066": {
+      "agent_id": "agent_0066",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0067": {
+      "agent_id": "agent_0067",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0068": {
+      "agent_id": "agent_0068",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0069": {
+      "agent_id": "agent_0069",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0070": {
+      "agent_id": "agent_0070",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0071": {
+      "agent_id": "agent_0071",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0072": {
+      "agent_id": "agent_0072",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0073": {
+      "agent_id": "agent_0073",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0074": {
+      "agent_id": "agent_0074",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0075": {
+      "agent_id": "agent_0075",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0076": {
+      "agent_id": "agent_0076",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0077": {
+      "agent_id": "agent_0077",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0078": {
+      "agent_id": "agent_0078",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0079": {
+      "agent_id": "agent_0079",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0080": {
+      "agent_id": "agent_0080",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0081": {
+      "agent_id": "agent_0081",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0082": {
+      "agent_id": "agent_0082",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0083": {
+      "agent_id": "agent_0083",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0084": {
+      "agent_id": "agent_0084",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0085": {
+      "agent_id": "agent_0085",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0086": {
+      "agent_id": "agent_0086",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0087": {
+      "agent_id": "agent_0087",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0088": {
+      "agent_id": "agent_0088",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0089": {
+      "agent_id": "agent_0089",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0090": {
+      "agent_id": "agent_0090",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0091": {
+      "agent_id": "agent_0091",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0092": {
+      "agent_id": "agent_0092",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0093": {
+      "agent_id": "agent_0093",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0094": {
+      "agent_id": "agent_0094",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0095": {
+      "agent_id": "agent_0095",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0096": {
+      "agent_id": "agent_0096",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0097": {
+      "agent_id": "agent_0097",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0098": {
+      "agent_id": "agent_0098",
+      "episodic": [],
+      "semantic": []
+    },
+    "agent_0099": {
+      "agent_id": "agent_0099",
+      "episodic": [],
+      "semantic": []
+    }
+  }
+}

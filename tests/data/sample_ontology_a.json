@@ -1,0 +1,6425 @@
+{
+  "version": 1,
+  "seed": 42,
+  "agent_count": 100,
+  "preset": "quick",
+  "source_document": "/Users/younkyumjin/Documents/Github/LiteMiro/tests/data/sample_document.txt",
+  "simulation_requirement": "한국 AI 규제 정책을 둘러싼 이해관계자 간 소셜 미디어 토론 시뮬레이션",
+  "generated_at": "2026-05-25T04:36:58.220407Z",
+  "ontology": {
+    "entity_types": [
+      {
+        "name": "GovernmentAgency",
+        "description": "정부 부처 또는 공공 기관",
+        "attributes": [
+          "name",
+          "jurisdiction",
+          "role"
+        ]
+      },
+      {
+        "name": "Politician",
+        "description": "정치인 또는 고위 공직자",
+        "attributes": [
+          "name",
+          "position",
+          "party"
+        ]
+      },
+      {
+        "name": "TechCompany",
+        "description": "기술 기업",
+        "attributes": [
+          "name",
+          "sector",
+          "products"
+        ]
+      },
+      {
+        "name": "ResearchInstitution",
+        "description": "학술 또는 연구 기관",
+        "attributes": [
+          "name",
+          "field"
+        ]
+      },
+      {
+        "name": "CivilSocietyOrg",
+        "description": "시민 사회 단체",
+        "attributes": [
+          "name",
+          "mission",
+          "stance"
+        ]
+      },
+      {
+        "name": "MediaOrganization",
+        "description": "언론 매체",
+        "attributes": [
+          "name",
+          "type",
+          "orientation"
+        ]
+      },
+      {
+        "name": "Journalist",
+        "description": "기자",
+        "attributes": [
+          "name",
+          "affiliation",
+          "beat"
+        ]
+      },
+      {
+        "name": "Researcher",
+        "description": "연구자",
+        "attributes": [
+          "name",
+          "institution",
+          "specialty"
+        ]
+      },
+      {
+        "name": "Activist",
+        "description": "시민 활동가",
+        "attributes": [
+          "name",
+          "organization",
+          "focus"
+        ]
+      },
+      {
+        "name": "IndustryAlliance",
+        "description": "산업 연합",
+        "attributes": [
+          "name",
+          "members"
+        ]
+      }
+    ],
+    "edge_types": [
+      {
+        "name": "LEADS",
+        "source": "Politician",
+        "target": "GovernmentAgency",
+        "description": "기관장"
+      },
+      {
+        "name": "WORKS_FOR",
+        "source": "Journalist",
+        "target": "MediaOrganization",
+        "description": "소속"
+      },
+      {
+        "name": "AFFILIATED_WITH",
+        "source": "Researcher",
+        "target": "ResearchInstitution",
+        "description": "소속 연구기관"
+      },
+      {
+        "name": "OPPOSES",
+        "source": "CivilSocietyOrg",
+        "target": "GovernmentAgency",
+        "description": "정책 반대"
+      },
+      {
+        "name": "SUPPORTS",
+        "source": "TechCompany",
+        "target": "IndustryAlliance",
+        "description": "지지"
+      },
+      {
+        "name": "REGULATES",
+        "source": "GovernmentAgency",
+        "target": "TechCompany",
+        "description": "규제"
+      },
+      {
+        "name": "REPORTS_ON",
+        "source": "Journalist",
+        "target": "GovernmentAgency",
+        "description": "보도"
+      },
+      {
+        "name": "ADVOCATES",
+        "source": "Activist",
+        "target": "CivilSocietyOrg",
+        "description": "활동"
+      }
+    ]
+  },
+  "agents": {
+    "corp_naver": {
+      "agent_id": "corp_naver",
+      "name": "네이버",
+      "entity_type": "TechCompany",
+      "origin": "extracted",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "extracted",
+        "layer": "TechCompany",
+        "entity_type": "TechCompany",
+        "name": "네이버",
+        "source_entity_id": "corp_naver",
+        "attributes": {
+          "sector": "AI",
+          "products": "HyperCLOVA"
+        }
+      },
+      "ideology": 0.2,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.3,
+        "reply_rate": 0.2,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.3
+      },
+      "initial_following": [
+        "agent_0031",
+        "agent_0050",
+        "agent_0069",
+        "agent_0070",
+        "agent_0071",
+        "agent_0079",
+        "agent_0080",
+        "agent_0089",
+        "agent_0090",
+        "agent_0099"
+      ]
+    },
+    "gov_msit": {
+      "agent_id": "gov_msit",
+      "name": "과학기술정보통신부",
+      "entity_type": "GovernmentAgency",
+      "origin": "extracted",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "extracted",
+        "layer": "GovernmentAgency",
+        "entity_type": "GovernmentAgency",
+        "name": "과학기술정보통신부",
+        "source_entity_id": "gov_msit",
+        "attributes": {
+          "jurisdiction": "AI 규제"
+        }
+      },
+      "ideology": 0.35,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.4,
+        "reply_rate": 0.3,
+        "repost_rate": 0.2,
+        "controversy_affinity": 0.4
+      },
+      "initial_following": [
+        "journalist_kim_ys",
+        "agent_0028",
+        "agent_0029",
+        "agent_0031",
+        "agent_0039",
+        "agent_0041",
+        "agent_0043",
+        "agent_0059",
+        "agent_0061",
+        "agent_0062",
+        "agent_0069",
+        "agent_0072",
+        "agent_0073",
+        "agent_0080",
+        "agent_0083",
+        "agent_0088",
+        "agent_0091",
+        "agent_0098"
+      ]
+    },
+    "journalist_kim_ys": {
+      "agent_id": "journalist_kim_ys",
+      "name": "김영수",
+      "entity_type": "Journalist",
+      "origin": "extracted",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "extracted",
+        "layer": "Journalist",
+        "entity_type": "Journalist",
+        "name": "김영수",
+        "source_entity_id": "journalist_kim_ys",
+        "attributes": {
+          "affiliation": "한겨레신문",
+          "beat": "AI 정책"
+        }
+      },
+      "ideology": 0.4,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.5,
+        "reply_rate": 0.4,
+        "repost_rate": 0.3,
+        "controversy_affinity": 0.5
+      },
+      "initial_following": [
+        "media_hankyoreh",
+        "gov_msit",
+        "agent_0032",
+        "agent_0033",
+        "agent_0034",
+        "agent_0039",
+        "agent_0043",
+        "agent_0052",
+        "agent_0053",
+        "agent_0058",
+        "agent_0063",
+        "agent_0065",
+        "agent_0068",
+        "agent_0073",
+        "agent_0074",
+        "agent_0079",
+        "agent_0081",
+        "agent_0082",
+        "agent_0092",
+        "agent_0094"
+      ]
+    },
+    "cso_pam": {
+      "agent_id": "cso_pam",
+      "name": "참여연대",
+      "entity_type": "CivilSocietyOrg",
+      "origin": "extracted",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "extracted",
+        "layer": "CivilSocietyOrg",
+        "entity_type": "CivilSocietyOrg",
+        "name": "참여연대",
+        "source_entity_id": "cso_pam",
+        "attributes": {
+          "mission": "디지털 권리"
+        }
+      },
+      "ideology": 0.5,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.6,
+        "reply_rate": 0.5,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.6
+      },
+      "initial_following": [
+        "agent_0024",
+        "agent_0025",
+        "agent_0026",
+        "agent_0027",
+        "agent_0031",
+        "agent_0033",
+        "agent_0038",
+        "agent_0041",
+        "agent_0043",
+        "agent_0044",
+        "agent_0045",
+        "agent_0046",
+        "agent_0048",
+        "agent_0057",
+        "agent_0061",
+        "agent_0066",
+        "agent_0068",
+        "agent_0074",
+        "agent_0081",
+        "agent_0085",
+        "agent_0087",
+        "agent_0088",
+        "agent_0092",
+        "agent_0096",
+        "agent_0097"
+      ]
+    },
+    "alliance_kai": {
+      "agent_id": "alliance_kai",
+      "name": "KAI Alliance",
+      "entity_type": "IndustryAlliance",
+      "origin": "extracted",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "extracted",
+        "layer": "IndustryAlliance",
+        "entity_type": "IndustryAlliance",
+        "name": "KAI Alliance",
+        "source_entity_id": "alliance_kai"
+      },
+      "ideology": 0.55,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.7,
+        "reply_rate": 0.2,
+        "repost_rate": 0.2,
+        "controversy_affinity": 0.7
+      },
+      "initial_following": [
+        "agent_0024",
+        "agent_0032",
+        "agent_0036",
+        "agent_0042",
+        "agent_0053",
+        "agent_0056",
+        "agent_0064",
+        "agent_0065",
+        "agent_0067",
+        "agent_0074",
+        "agent_0075",
+        "agent_0087",
+        "agent_0093"
+      ]
+    },
+    "media_hankyoreh": {
+      "agent_id": "media_hankyoreh",
+      "name": "한겨레신문",
+      "entity_type": "MediaOrganization",
+      "origin": "extracted",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "extracted",
+        "layer": "MediaOrganization",
+        "entity_type": "MediaOrganization",
+        "name": "한겨레신문",
+        "source_entity_id": "media_hankyoreh",
+        "attributes": {
+          "type": "신문",
+          "orientation": "진보"
+        }
+      },
+      "ideology": 0.6,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.3,
+        "reply_rate": 0.3,
+        "repost_rate": 0.3,
+        "controversy_affinity": 0.3
+      },
+      "initial_following": [
+        "journalist_kim_ys",
+        "agent_0032",
+        "agent_0033",
+        "agent_0038",
+        "agent_0044",
+        "agent_0054",
+        "agent_0057",
+        "agent_0058",
+        "agent_0073",
+        "agent_0075",
+        "agent_0078",
+        "agent_0083",
+        "agent_0085",
+        "agent_0096"
+      ]
+    },
+    "gov_pipc": {
+      "agent_id": "gov_pipc",
+      "name": "개인정보보호위원회",
+      "entity_type": "GovernmentAgency",
+      "origin": "extracted",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "extracted",
+        "layer": "GovernmentAgency",
+        "entity_type": "GovernmentAgency",
+        "name": "개인정보보호위원회",
+        "source_entity_id": "gov_pipc",
+        "attributes": {
+          "jurisdiction": "개인정보"
+        }
+      },
+      "ideology": 0.65,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.4,
+        "reply_rate": 0.4,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.4
+      },
+      "initial_following": [
+        "agent_0024",
+        "agent_0037",
+        "agent_0045",
+        "agent_0047",
+        "agent_0063",
+        "agent_0064",
+        "agent_0066",
+        "agent_0073",
+        "agent_0085",
+        "agent_0097"
+      ]
+    },
+    "pol_kim": {
+      "agent_id": "pol_kim",
+      "name": "김태호",
+      "entity_type": "Politician",
+      "origin": "extracted",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "extracted",
+        "layer": "Politician",
+        "entity_type": "Politician",
+        "name": "김태호",
+        "source_entity_id": "pol_kim",
+        "attributes": {
+          "position": "장관"
+        }
+      },
+      "ideology": 0.7,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.5,
+        "reply_rate": 0.5,
+        "repost_rate": 0.2,
+        "controversy_affinity": 0.5
+      },
+      "initial_following": [
+        "agent_0025",
+        "agent_0034",
+        "agent_0035",
+        "agent_0037",
+        "agent_0043",
+        "agent_0045",
+        "agent_0054",
+        "agent_0067",
+        "agent_0077",
+        "agent_0084",
+        "agent_0086",
+        "agent_0094",
+        "agent_0095",
+        "agent_0097"
+      ]
+    },
+    "pol_park": {
+      "agent_id": "pol_park",
+      "name": "박영선",
+      "entity_type": "Politician",
+      "origin": "extracted",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "extracted",
+        "layer": "Politician",
+        "entity_type": "Politician",
+        "name": "박영선",
+        "source_entity_id": "pol_park",
+        "attributes": {
+          "position": "위원장"
+        }
+      },
+      "ideology": 0.45,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.6,
+        "reply_rate": 0.2,
+        "repost_rate": 0.3,
+        "controversy_affinity": 0.6
+      },
+      "initial_following": [
+        "agent_0031",
+        "agent_0049",
+        "agent_0059",
+        "agent_0064",
+        "agent_0072",
+        "agent_0079",
+        "agent_0091",
+        "agent_0094"
+      ]
+    },
+    "corp_kakao": {
+      "agent_id": "corp_kakao",
+      "name": "카카오",
+      "entity_type": "TechCompany",
+      "origin": "extracted",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "extracted",
+        "layer": "TechCompany",
+        "entity_type": "TechCompany",
+        "name": "카카오",
+        "source_entity_id": "corp_kakao",
+        "attributes": {
+          "sector": "AI"
+        }
+      },
+      "ideology": 0.3,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.7,
+        "reply_rate": 0.3,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.7
+      },
+      "initial_following": [
+        "agent_0028",
+        "agent_0031",
+        "agent_0038",
+        "agent_0041",
+        "agent_0050",
+        "agent_0070",
+        "agent_0071",
+        "agent_0078",
+        "agent_0098"
+      ]
+    },
+    "corp_samsung": {
+      "agent_id": "corp_samsung",
+      "name": "삼성전자",
+      "entity_type": "TechCompany",
+      "origin": "extracted",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "extracted",
+        "layer": "TechCompany",
+        "entity_type": "TechCompany",
+        "name": "삼성전자",
+        "source_entity_id": "corp_samsung",
+        "attributes": {
+          "sector": "반도체"
+        }
+      },
+      "ideology": 0.2,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.3,
+        "reply_rate": 0.2,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.3
+      },
+      "initial_following": [
+        "agent_0030",
+        "agent_0050",
+        "agent_0081",
+        "agent_0091",
+        "agent_0099"
+      ]
+    },
+    "res_snu": {
+      "agent_id": "res_snu",
+      "name": "서울대 AI 연구원",
+      "entity_type": "ResearchInstitution",
+      "origin": "extracted",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "extracted",
+        "layer": "ResearchInstitution",
+        "entity_type": "ResearchInstitution",
+        "name": "서울대 AI 연구원",
+        "source_entity_id": "res_snu",
+        "attributes": {
+          "field": "AI"
+        }
+      },
+      "ideology": 0.35,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.4,
+        "reply_rate": 0.3,
+        "repost_rate": 0.2,
+        "controversy_affinity": 0.4
+      },
+      "initial_following": [
+        "agent_0030",
+        "agent_0043",
+        "agent_0048",
+        "agent_0050",
+        "agent_0052",
+        "agent_0058",
+        "agent_0068",
+        "agent_0069",
+        "agent_0071",
+        "agent_0081",
+        "agent_0083",
+        "agent_0089",
+        "agent_0090",
+        "agent_0093"
+      ]
+    },
+    "res_kaist": {
+      "agent_id": "res_kaist",
+      "name": "KAIST AI 대학원",
+      "entity_type": "ResearchInstitution",
+      "origin": "extracted",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "extracted",
+        "layer": "ResearchInstitution",
+        "entity_type": "ResearchInstitution",
+        "name": "KAIST AI 대학원",
+        "source_entity_id": "res_kaist",
+        "attributes": {
+          "field": "AI"
+        }
+      },
+      "ideology": 0.4,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.5,
+        "reply_rate": 0.4,
+        "repost_rate": 0.3,
+        "controversy_affinity": 0.5
+      },
+      "initial_following": [
+        "agent_0035",
+        "agent_0039",
+        "agent_0042",
+        "agent_0043",
+        "agent_0044",
+        "agent_0048",
+        "agent_0051",
+        "agent_0055",
+        "agent_0058",
+        "agent_0059",
+        "agent_0062",
+        "agent_0071",
+        "agent_0075",
+        "agent_0082",
+        "agent_0083",
+        "agent_0088",
+        "agent_0089",
+        "agent_0094",
+        "agent_0098"
+      ]
+    },
+    "researcher_jung": {
+      "agent_id": "researcher_jung",
+      "name": "정민수",
+      "entity_type": "Researcher",
+      "origin": "extracted",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "extracted",
+        "layer": "Researcher",
+        "entity_type": "Researcher",
+        "name": "정민수",
+        "source_entity_id": "researcher_jung",
+        "attributes": {
+          "institution": "서울대"
+        }
+      },
+      "ideology": 0.5,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.6,
+        "reply_rate": 0.5,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.6
+      },
+      "initial_following": [
+        "agent_0025",
+        "agent_0026",
+        "agent_0031",
+        "agent_0033",
+        "agent_0036",
+        "agent_0041",
+        "agent_0046",
+        "agent_0051",
+        "agent_0052",
+        "agent_0053",
+        "agent_0056",
+        "agent_0057",
+        "agent_0062",
+        "agent_0064",
+        "agent_0073",
+        "agent_0075",
+        "agent_0082",
+        "agent_0086",
+        "agent_0094"
+      ]
+    },
+    "researcher_han": {
+      "agent_id": "researcher_han",
+      "name": "한소영",
+      "entity_type": "Researcher",
+      "origin": "extracted",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "extracted",
+        "layer": "Researcher",
+        "entity_type": "Researcher",
+        "name": "한소영",
+        "source_entity_id": "researcher_han",
+        "attributes": {
+          "institution": "KAIST"
+        }
+      },
+      "ideology": 0.55,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.7,
+        "reply_rate": 0.2,
+        "repost_rate": 0.2,
+        "controversy_affinity": 0.7
+      },
+      "initial_following": [
+        "agent_0024",
+        "agent_0028",
+        "agent_0032",
+        "agent_0036",
+        "agent_0043",
+        "agent_0044",
+        "agent_0052",
+        "agent_0063",
+        "agent_0064",
+        "agent_0075",
+        "agent_0078",
+        "agent_0082",
+        "agent_0087",
+        "agent_0093",
+        "agent_0094",
+        "agent_0095",
+        "agent_0096",
+        "agent_0097",
+        "agent_0098"
+      ]
+    },
+    "cso_fair_ai": {
+      "agent_id": "cso_fair_ai",
+      "name": "공정한AI연대",
+      "entity_type": "CivilSocietyOrg",
+      "origin": "extracted",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "extracted",
+        "layer": "CivilSocietyOrg",
+        "entity_type": "CivilSocietyOrg",
+        "name": "공정한AI연대",
+        "source_entity_id": "cso_fair_ai",
+        "attributes": {
+          "mission": "AI 공정성"
+        }
+      },
+      "ideology": 0.6,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.3,
+        "reply_rate": 0.3,
+        "repost_rate": 0.3,
+        "controversy_affinity": 0.3
+      },
+      "initial_following": [
+        "agent_0034",
+        "agent_0035",
+        "agent_0037",
+        "agent_0047",
+        "agent_0057",
+        "agent_0058",
+        "agent_0062",
+        "agent_0063",
+        "agent_0067",
+        "agent_0068",
+        "agent_0072",
+        "agent_0083",
+        "agent_0085",
+        "agent_0087",
+        "agent_0097",
+        "agent_0098"
+      ]
+    },
+    "media_chosun": {
+      "agent_id": "media_chosun",
+      "name": "조선일보",
+      "entity_type": "MediaOrganization",
+      "origin": "extracted",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "extracted",
+        "layer": "MediaOrganization",
+        "entity_type": "MediaOrganization",
+        "name": "조선일보",
+        "source_entity_id": "media_chosun",
+        "attributes": {
+          "type": "신문",
+          "orientation": "보수"
+        }
+      },
+      "ideology": 0.65,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.4,
+        "reply_rate": 0.4,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.4
+      },
+      "initial_following": [
+        "journalist_park_jm",
+        "agent_0044",
+        "agent_0046",
+        "agent_0054",
+        "agent_0064",
+        "agent_0073",
+        "agent_0075",
+        "agent_0076",
+        "agent_0077",
+        "agent_0083",
+        "agent_0093",
+        "agent_0094"
+      ]
+    },
+    "journalist_park_jm": {
+      "agent_id": "journalist_park_jm",
+      "name": "박정민",
+      "entity_type": "Journalist",
+      "origin": "extracted",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "extracted",
+        "layer": "Journalist",
+        "entity_type": "Journalist",
+        "name": "박정민",
+        "source_entity_id": "journalist_park_jm",
+        "attributes": {
+          "affiliation": "조선일보",
+          "beat": "AI 산업"
+        }
+      },
+      "ideology": 0.7,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.5,
+        "reply_rate": 0.5,
+        "repost_rate": 0.2,
+        "controversy_affinity": 0.5
+      },
+      "initial_following": [
+        "media_chosun",
+        "agent_0047",
+        "agent_0063",
+        "agent_0066",
+        "agent_0067",
+        "agent_0084"
+      ]
+    },
+    "researcher_lee_js": {
+      "agent_id": "researcher_lee_js",
+      "name": "이준석",
+      "entity_type": "Researcher",
+      "origin": "extracted",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "extracted",
+        "layer": "Researcher",
+        "entity_type": "Researcher",
+        "name": "이준석",
+        "source_entity_id": "researcher_lee_js",
+        "attributes": {
+          "institution": "네이버 AI 랩"
+        }
+      },
+      "ideology": 0.45,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.6,
+        "reply_rate": 0.2,
+        "repost_rate": 0.3,
+        "controversy_affinity": 0.6
+      },
+      "initial_following": [
+        "agent_0032",
+        "agent_0038",
+        "agent_0041",
+        "agent_0044",
+        "agent_0045",
+        "agent_0048",
+        "agent_0049",
+        "agent_0051",
+        "agent_0061",
+        "agent_0063",
+        "agent_0064",
+        "agent_0065",
+        "agent_0071",
+        "agent_0084",
+        "agent_0088",
+        "agent_0093",
+        "agent_0098"
+      ]
+    },
+    "activist_choi": {
+      "agent_id": "activist_choi",
+      "name": "최수현",
+      "entity_type": "Activist",
+      "origin": "extracted",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "extracted",
+        "layer": "Activist",
+        "entity_type": "Activist",
+        "name": "최수현",
+        "source_entity_id": "activist_choi",
+        "attributes": {
+          "organization": "참여연대"
+        }
+      },
+      "ideology": 0.3,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.7,
+        "reply_rate": 0.3,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.7
+      },
+      "initial_following": [
+        "agent_0028",
+        "agent_0041",
+        "agent_0060",
+        "agent_0062",
+        "agent_0089",
+        "agent_0091"
+      ]
+    },
+    "media_techwatch": {
+      "agent_id": "media_techwatch",
+      "name": "테크워치",
+      "entity_type": "MediaOrganization",
+      "origin": "extracted",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "extracted",
+        "layer": "MediaOrganization",
+        "entity_type": "MediaOrganization",
+        "name": "테크워치",
+        "source_entity_id": "media_techwatch",
+        "attributes": {
+          "type": "IT 전문 매체"
+        }
+      },
+      "ideology": 0.2,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.3,
+        "reply_rate": 0.2,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.3
+      },
+      "initial_following": [
+        "journalist_lee",
+        "agent_0031",
+        "agent_0049",
+        "agent_0059",
+        "agent_0060",
+        "agent_0069",
+        "agent_0071",
+        "agent_0079",
+        "agent_0080"
+      ]
+    },
+    "journalist_lee": {
+      "agent_id": "journalist_lee",
+      "name": "이하늘",
+      "entity_type": "Journalist",
+      "origin": "extracted",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "extracted",
+        "layer": "Journalist",
+        "entity_type": "Journalist",
+        "name": "이하늘",
+        "source_entity_id": "journalist_lee",
+        "attributes": {
+          "affiliation": "테크워치",
+          "beat": "기술"
+        }
+      },
+      "ideology": 0.35,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.4,
+        "reply_rate": 0.3,
+        "repost_rate": 0.2,
+        "controversy_affinity": 0.4
+      },
+      "initial_following": [
+        "media_techwatch",
+        "agent_0031",
+        "agent_0032",
+        "agent_0041",
+        "agent_0042",
+        "agent_0048",
+        "agent_0058",
+        "agent_0061",
+        "agent_0069",
+        "agent_0070",
+        "agent_0071",
+        "agent_0080",
+        "agent_0082",
+        "agent_0088",
+        "agent_0093",
+        "agent_0099"
+      ]
+    },
+    "res_etri": {
+      "agent_id": "res_etri",
+      "name": "ETRI",
+      "entity_type": "ResearchInstitution",
+      "origin": "extracted",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "extracted",
+        "layer": "ResearchInstitution",
+        "entity_type": "ResearchInstitution",
+        "name": "ETRI",
+        "source_entity_id": "res_etri",
+        "attributes": {
+          "field": "AI 신뢰성"
+        }
+      },
+      "ideology": 0.4,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.5,
+        "reply_rate": 0.4,
+        "repost_rate": 0.3,
+        "controversy_affinity": 0.5
+      },
+      "initial_following": [
+        "agent_0025",
+        "agent_0029",
+        "agent_0032",
+        "agent_0038",
+        "agent_0042",
+        "agent_0043",
+        "agent_0045",
+        "agent_0048",
+        "agent_0049",
+        "agent_0051",
+        "agent_0053",
+        "agent_0054",
+        "agent_0063",
+        "agent_0071",
+        "agent_0094",
+        "agent_0098",
+        "agent_0099"
+      ]
+    },
+    "cso_digital": {
+      "agent_id": "cso_digital",
+      "name": "디지털자유연대",
+      "entity_type": "CivilSocietyOrg",
+      "origin": "extracted",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "extracted",
+        "layer": "CivilSocietyOrg",
+        "entity_type": "CivilSocietyOrg",
+        "name": "디지털자유연대",
+        "source_entity_id": "cso_digital",
+        "attributes": {
+          "mission": "기술 자유주의"
+        }
+      },
+      "ideology": 0.5,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.6,
+        "reply_rate": 0.5,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.6
+      },
+      "initial_following": [
+        "agent_0024",
+        "agent_0033",
+        "agent_0035",
+        "agent_0038",
+        "agent_0043",
+        "agent_0045",
+        "agent_0047",
+        "agent_0051",
+        "agent_0063",
+        "agent_0065",
+        "agent_0067",
+        "agent_0073",
+        "agent_0075",
+        "agent_0076",
+        "agent_0082",
+        "agent_0083",
+        "agent_0084",
+        "agent_0088",
+        "agent_0094",
+        "agent_0096"
+      ]
+    },
+    "agent_0024": {
+      "agent_id": "agent_0024",
+      "name": "시민_agent_0024",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0024"
+      },
+      "ideology": 0.55,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.7,
+        "reply_rate": 0.2,
+        "repost_rate": 0.2,
+        "controversy_affinity": 0.7
+      },
+      "initial_following": [
+        "media_hankyoreh",
+        "gov_pipc",
+        "pol_park",
+        "corp_samsung",
+        "researcher_jung",
+        "cso_fair_ai",
+        "agent_0025",
+        "agent_0026",
+        "agent_0027",
+        "agent_0039",
+        "agent_0042",
+        "agent_0046",
+        "agent_0053",
+        "agent_0062",
+        "agent_0063",
+        "agent_0068",
+        "agent_0070",
+        "agent_0077",
+        "agent_0080",
+        "agent_0084",
+        "agent_0087",
+        "agent_0091",
+        "agent_0092",
+        "agent_0094",
+        "agent_0097",
+        "agent_0099",
+        "agent_0034",
+        "agent_0035",
+        "agent_0037",
+        "agent_0052",
+        "agent_0055",
+        "agent_0064",
+        "agent_0073",
+        "agent_0083",
+        "agent_0085",
+        "agent_0095"
+      ]
+    },
+    "agent_0025": {
+      "agent_id": "agent_0025",
+      "name": "시민_agent_0025",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0025"
+      },
+      "ideology": 0.6,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.3,
+        "reply_rate": 0.3,
+        "repost_rate": 0.3,
+        "controversy_affinity": 0.3
+      },
+      "initial_following": [
+        "agent_0024",
+        "alliance_kai",
+        "res_snu",
+        "researcher_jung",
+        "media_chosun",
+        "activist_choi",
+        "agent_0029",
+        "agent_0037",
+        "agent_0039",
+        "agent_0045",
+        "agent_0046",
+        "agent_0049",
+        "agent_0053",
+        "agent_0056",
+        "agent_0059",
+        "agent_0063",
+        "agent_0064",
+        "agent_0065",
+        "agent_0070",
+        "agent_0072",
+        "agent_0074",
+        "agent_0076",
+        "agent_0080",
+        "agent_0081",
+        "agent_0085",
+        "agent_0088",
+        "agent_0096",
+        "agent_0097",
+        "agent_0028",
+        "agent_0032",
+        "agent_0033",
+        "agent_0034",
+        "agent_0036",
+        "agent_0038",
+        "agent_0042",
+        "agent_0043",
+        "agent_0047",
+        "agent_0052",
+        "agent_0054",
+        "agent_0055",
+        "agent_0066",
+        "agent_0067",
+        "agent_0075",
+        "agent_0078",
+        "agent_0083",
+        "agent_0084",
+        "agent_0087",
+        "agent_0092",
+        "agent_0093"
+      ]
+    },
+    "agent_0026": {
+      "agent_id": "agent_0026",
+      "name": "시민_agent_0026",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0026"
+      },
+      "ideology": 0.65,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.4,
+        "reply_rate": 0.4,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.4
+      },
+      "initial_following": [
+        "agent_0024",
+        "cso_pam",
+        "alliance_kai",
+        "gov_pipc",
+        "corp_samsung",
+        "res_kaist",
+        "researcher_han",
+        "media_techwatch",
+        "agent_0025",
+        "agent_0034",
+        "agent_0038",
+        "agent_0044",
+        "agent_0046",
+        "agent_0053",
+        "agent_0054",
+        "agent_0057",
+        "agent_0061",
+        "agent_0066",
+        "agent_0083",
+        "agent_0084",
+        "agent_0086",
+        "agent_0088",
+        "agent_0033",
+        "agent_0035",
+        "agent_0043",
+        "agent_0047",
+        "agent_0064",
+        "agent_0073",
+        "agent_0074",
+        "agent_0077",
+        "agent_0094",
+        "agent_0095",
+        "agent_0097"
+      ]
+    },
+    "agent_0027": {
+      "agent_id": "agent_0027",
+      "name": "시민_agent_0027",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0027"
+      },
+      "ideology": 0.7,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.5,
+        "reply_rate": 0.5,
+        "repost_rate": 0.2,
+        "controversy_affinity": 0.5
+      },
+      "initial_following": [
+        "agent_0024",
+        "alliance_kai",
+        "media_hankyoreh",
+        "pol_kim",
+        "pol_park",
+        "corp_samsung",
+        "researcher_jung",
+        "researcher_han",
+        "cso_fair_ai",
+        "media_chosun",
+        "journalist_lee",
+        "res_etri",
+        "agent_0028",
+        "agent_0029",
+        "agent_0030",
+        "agent_0031",
+        "agent_0035",
+        "agent_0038",
+        "agent_0039",
+        "agent_0044",
+        "agent_0055",
+        "agent_0066",
+        "agent_0067",
+        "agent_0070",
+        "agent_0072",
+        "agent_0073",
+        "agent_0076",
+        "agent_0077",
+        "agent_0084",
+        "agent_0092",
+        "agent_0093",
+        "agent_0095",
+        "agent_0099",
+        "agent_0036",
+        "agent_0053",
+        "agent_0056",
+        "agent_0063",
+        "agent_0065",
+        "agent_0086",
+        "agent_0096"
+      ]
+    },
+    "agent_0028": {
+      "agent_id": "agent_0028",
+      "name": "시민_agent_0028",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0028"
+      },
+      "ideology": 0.45,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.6,
+        "reply_rate": 0.2,
+        "repost_rate": 0.3,
+        "controversy_affinity": 0.6
+      },
+      "initial_following": [
+        "corp_naver",
+        "gov_msit",
+        "journalist_kim_ys",
+        "cso_pam",
+        "media_hankyoreh",
+        "corp_samsung",
+        "researcher_jung",
+        "researcher_han",
+        "journalist_park_jm",
+        "agent_0029",
+        "agent_0030",
+        "agent_0031",
+        "agent_0033",
+        "agent_0042",
+        "agent_0045",
+        "agent_0049",
+        "agent_0052",
+        "agent_0056",
+        "agent_0062",
+        "agent_0074",
+        "agent_0080",
+        "agent_0082",
+        "agent_0084",
+        "agent_0086",
+        "agent_0095",
+        "agent_0099",
+        "agent_0039",
+        "agent_0041",
+        "agent_0043",
+        "agent_0044",
+        "agent_0053",
+        "agent_0055",
+        "agent_0061",
+        "agent_0065",
+        "agent_0073",
+        "agent_0079",
+        "agent_0091",
+        "agent_0094"
+      ]
+    },
+    "agent_0029": {
+      "agent_id": "agent_0029",
+      "name": "시민_agent_0029",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0029"
+      },
+      "ideology": 0.3,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.7,
+        "reply_rate": 0.3,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.7
+      },
+      "initial_following": [
+        "agent_0028",
+        "pol_kim",
+        "corp_kakao",
+        "corp_samsung",
+        "media_chosun",
+        "agent_0033",
+        "agent_0034",
+        "agent_0039",
+        "agent_0042",
+        "agent_0045",
+        "agent_0049",
+        "agent_0054",
+        "agent_0058",
+        "agent_0061",
+        "agent_0062",
+        "agent_0068",
+        "agent_0086",
+        "agent_0089",
+        "agent_0092",
+        "agent_0097",
+        "agent_0031",
+        "agent_0040",
+        "agent_0041",
+        "agent_0048",
+        "agent_0050",
+        "agent_0051",
+        "agent_0060",
+        "agent_0078",
+        "agent_0080",
+        "agent_0088",
+        "agent_0090",
+        "agent_0099"
+      ]
+    },
+    "agent_0030": {
+      "agent_id": "agent_0030",
+      "name": "시민_agent_0030",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0030"
+      },
+      "ideology": 0.2,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.3,
+        "reply_rate": 0.2,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.3
+      },
+      "initial_following": [
+        "alliance_kai",
+        "res_snu",
+        "media_chosun",
+        "media_techwatch",
+        "res_etri",
+        "agent_0024",
+        "agent_0031",
+        "agent_0032",
+        "agent_0036",
+        "agent_0040",
+        "agent_0044",
+        "agent_0045",
+        "agent_0050",
+        "agent_0051",
+        "agent_0053",
+        "agent_0059",
+        "agent_0060",
+        "agent_0061",
+        "agent_0063",
+        "agent_0065",
+        "agent_0066",
+        "agent_0070",
+        "agent_0075",
+        "agent_0078",
+        "agent_0087",
+        "agent_0088",
+        "agent_0090",
+        "agent_0096",
+        "agent_0041",
+        "agent_0071",
+        "agent_0081"
+      ]
+    },
+    "agent_0031": {
+      "agent_id": "agent_0031",
+      "name": "시민_agent_0031",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0031"
+      },
+      "ideology": 0.35,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.4,
+        "reply_rate": 0.3,
+        "repost_rate": 0.2,
+        "controversy_affinity": 0.4
+      },
+      "initial_following": [
+        "pol_kim",
+        "corp_samsung",
+        "res_etri",
+        "agent_0032",
+        "agent_0035",
+        "agent_0044",
+        "agent_0045",
+        "agent_0046",
+        "agent_0055",
+        "agent_0058",
+        "agent_0059",
+        "agent_0060",
+        "agent_0061",
+        "agent_0062",
+        "agent_0066",
+        "agent_0068",
+        "agent_0072",
+        "agent_0077",
+        "agent_0082",
+        "agent_0083",
+        "agent_0089",
+        "agent_0049",
+        "agent_0050",
+        "agent_0051",
+        "agent_0052",
+        "agent_0070",
+        "agent_0081",
+        "agent_0088",
+        "agent_0091"
+      ]
+    },
+    "agent_0032": {
+      "agent_id": "agent_0032",
+      "name": "시민_agent_0032",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0032"
+      },
+      "ideology": 0.4,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.5,
+        "reply_rate": 0.4,
+        "repost_rate": 0.3,
+        "controversy_affinity": 0.5
+      },
+      "initial_following": [
+        "agent_0028",
+        "agent_0031",
+        "corp_naver",
+        "journalist_kim_ys",
+        "researcher_han",
+        "cso_fair_ai",
+        "activist_choi",
+        "agent_0026",
+        "agent_0033",
+        "agent_0045",
+        "agent_0048",
+        "agent_0052",
+        "agent_0057",
+        "agent_0061",
+        "agent_0068",
+        "agent_0072",
+        "agent_0074",
+        "agent_0082",
+        "agent_0085",
+        "agent_0089",
+        "agent_0091",
+        "agent_0093",
+        "agent_0096",
+        "agent_0038",
+        "agent_0043",
+        "agent_0049",
+        "agent_0051",
+        "agent_0053",
+        "agent_0054",
+        "agent_0058",
+        "agent_0064",
+        "agent_0078",
+        "agent_0079",
+        "agent_0084",
+        "agent_0095"
+      ]
+    },
+    "agent_0033": {
+      "agent_id": "agent_0033",
+      "name": "시민_agent_0033",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0033"
+      },
+      "ideology": 0.5,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.6,
+        "reply_rate": 0.5,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.6
+      },
+      "initial_following": [
+        "agent_0024",
+        "agent_0025",
+        "agent_0026",
+        "agent_0027",
+        "gov_msit",
+        "alliance_kai",
+        "pol_kim",
+        "pol_park",
+        "researcher_han",
+        "researcher_lee_js",
+        "media_techwatch",
+        "agent_0031",
+        "agent_0042",
+        "agent_0048",
+        "agent_0051",
+        "agent_0057",
+        "agent_0066",
+        "agent_0073",
+        "agent_0078",
+        "agent_0084",
+        "agent_0093",
+        "agent_0043",
+        "agent_0047",
+        "agent_0058",
+        "agent_0094",
+        "agent_0095"
+      ]
+    },
+    "agent_0034": {
+      "agent_id": "agent_0034",
+      "name": "시민_agent_0034",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0034"
+      },
+      "ideology": 0.55,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.7,
+        "reply_rate": 0.2,
+        "repost_rate": 0.2,
+        "controversy_affinity": 0.7
+      },
+      "initial_following": [
+        "agent_0024",
+        "agent_0033",
+        "corp_naver",
+        "gov_msit",
+        "journalist_kim_ys",
+        "gov_pipc",
+        "corp_samsung",
+        "res_kaist",
+        "media_chosun",
+        "res_etri",
+        "agent_0025",
+        "agent_0027",
+        "agent_0032",
+        "agent_0036",
+        "agent_0037",
+        "agent_0040",
+        "agent_0057",
+        "agent_0058",
+        "agent_0066",
+        "agent_0068",
+        "agent_0075",
+        "agent_0090",
+        "agent_0092",
+        "agent_0093",
+        "agent_0098",
+        "agent_0043",
+        "agent_0044",
+        "agent_0046",
+        "agent_0047",
+        "agent_0056",
+        "agent_0063",
+        "agent_0065",
+        "agent_0072",
+        "agent_0094",
+        "agent_0095"
+      ]
+    },
+    "agent_0035": {
+      "agent_id": "agent_0035",
+      "name": "시민_agent_0035",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0035"
+      },
+      "ideology": 0.6,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.3,
+        "reply_rate": 0.3,
+        "repost_rate": 0.3,
+        "controversy_affinity": 0.3
+      },
+      "initial_following": [
+        "agent_0025",
+        "agent_0034",
+        "cso_pam",
+        "pol_park",
+        "res_kaist",
+        "media_chosun",
+        "agent_0028",
+        "agent_0031",
+        "agent_0033",
+        "agent_0058",
+        "agent_0059",
+        "agent_0062",
+        "agent_0067",
+        "agent_0068",
+        "agent_0072",
+        "agent_0076",
+        "agent_0081",
+        "agent_0084",
+        "agent_0092",
+        "agent_0098",
+        "agent_0046",
+        "agent_0052",
+        "agent_0054",
+        "agent_0056",
+        "agent_0066",
+        "agent_0073",
+        "agent_0074",
+        "agent_0075",
+        "agent_0078",
+        "agent_0082",
+        "agent_0083",
+        "agent_0088"
+      ]
+    },
+    "agent_0036": {
+      "agent_id": "agent_0036",
+      "name": "시민_agent_0036",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0036"
+      },
+      "ideology": 0.65,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.4,
+        "reply_rate": 0.4,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.4
+      },
+      "initial_following": [
+        "agent_0025",
+        "agent_0027",
+        "agent_0034",
+        "corp_naver",
+        "corp_kakao",
+        "res_snu",
+        "agent_0028",
+        "agent_0029",
+        "agent_0035",
+        "agent_0042",
+        "agent_0043",
+        "agent_0044",
+        "agent_0047",
+        "agent_0049",
+        "agent_0056",
+        "agent_0057",
+        "agent_0058",
+        "agent_0067",
+        "agent_0076",
+        "agent_0079",
+        "agent_0081",
+        "agent_0089",
+        "agent_0092",
+        "agent_0094",
+        "agent_0095",
+        "agent_0045",
+        "agent_0055",
+        "agent_0066",
+        "agent_0085",
+        "agent_0087",
+        "agent_0093"
+      ]
+    },
+    "agent_0037": {
+      "agent_id": "agent_0037",
+      "name": "시민_agent_0037",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0037"
+      },
+      "ideology": 0.7,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.5,
+        "reply_rate": 0.5,
+        "repost_rate": 0.2,
+        "controversy_affinity": 0.5
+      },
+      "initial_following": [
+        "agent_0036",
+        "journalist_kim_ys",
+        "pol_kim",
+        "res_snu",
+        "researcher_lee_js",
+        "media_techwatch",
+        "agent_0025",
+        "agent_0031",
+        "agent_0038",
+        "agent_0042",
+        "agent_0045",
+        "agent_0046",
+        "agent_0058",
+        "agent_0059",
+        "agent_0060",
+        "agent_0066",
+        "agent_0068",
+        "agent_0069",
+        "agent_0073",
+        "agent_0077",
+        "agent_0086",
+        "agent_0092",
+        "agent_0093",
+        "agent_0097",
+        "agent_0043",
+        "agent_0047",
+        "agent_0053",
+        "agent_0063",
+        "agent_0064",
+        "agent_0076",
+        "agent_0083",
+        "agent_0084",
+        "agent_0085",
+        "agent_0096"
+      ]
+    },
+    "agent_0038": {
+      "agent_id": "agent_0038",
+      "name": "시민_agent_0038",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0038"
+      },
+      "ideology": 0.45,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.6,
+        "reply_rate": 0.2,
+        "repost_rate": 0.3,
+        "controversy_affinity": 0.6
+      },
+      "initial_following": [
+        "agent_0024",
+        "agent_0025",
+        "agent_0031",
+        "agent_0034",
+        "agent_0035",
+        "corp_naver",
+        "gov_msit",
+        "alliance_kai",
+        "gov_pipc",
+        "pol_kim",
+        "res_snu",
+        "researcher_jung",
+        "researcher_han",
+        "journalist_park_jm",
+        "media_techwatch",
+        "cso_digital",
+        "agent_0065",
+        "agent_0076",
+        "agent_0077",
+        "agent_0079",
+        "agent_0080",
+        "agent_0082",
+        "agent_0086",
+        "agent_0089",
+        "agent_0091",
+        "agent_0093",
+        "agent_0094",
+        "agent_0097",
+        "agent_0039",
+        "agent_0043",
+        "agent_0045",
+        "agent_0051",
+        "agent_0058",
+        "agent_0061",
+        "agent_0069",
+        "agent_0081",
+        "agent_0099"
+      ]
+    },
+    "agent_0039": {
+      "agent_id": "agent_0039",
+      "name": "시민_agent_0039",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0039"
+      },
+      "ideology": 0.3,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.7,
+        "reply_rate": 0.3,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.7
+      },
+      "initial_following": [
+        "agent_0031",
+        "gov_msit",
+        "researcher_han",
+        "cso_fair_ai",
+        "media_chosun",
+        "researcher_lee_js",
+        "media_techwatch",
+        "journalist_lee",
+        "agent_0026",
+        "agent_0030",
+        "agent_0036",
+        "agent_0037",
+        "agent_0040",
+        "agent_0041",
+        "agent_0044",
+        "agent_0045",
+        "agent_0049",
+        "agent_0051",
+        "agent_0059",
+        "agent_0062",
+        "agent_0065",
+        "agent_0070",
+        "agent_0072",
+        "agent_0077",
+        "agent_0082",
+        "agent_0086",
+        "agent_0088",
+        "agent_0095",
+        "agent_0099",
+        "agent_0048",
+        "agent_0058",
+        "agent_0078",
+        "agent_0079"
+      ]
+    },
+    "agent_0040": {
+      "agent_id": "agent_0040",
+      "name": "시민_agent_0040",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0040"
+      },
+      "ideology": 0.2,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.3,
+        "reply_rate": 0.2,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.3
+      },
+      "initial_following": [
+        "agent_0031",
+        "alliance_kai",
+        "media_hankyoreh",
+        "pol_park",
+        "corp_samsung",
+        "res_snu",
+        "res_kaist",
+        "researcher_han",
+        "media_techwatch",
+        "agent_0025",
+        "agent_0027",
+        "agent_0032",
+        "agent_0033",
+        "agent_0036",
+        "agent_0039",
+        "agent_0043",
+        "agent_0045",
+        "agent_0052",
+        "agent_0058",
+        "agent_0059",
+        "agent_0069",
+        "agent_0078",
+        "agent_0083",
+        "agent_0084",
+        "agent_0086",
+        "agent_0087",
+        "agent_0049",
+        "agent_0050",
+        "agent_0070",
+        "agent_0081"
+      ]
+    },
+    "agent_0041": {
+      "agent_id": "agent_0041",
+      "name": "시민_agent_0041",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0041"
+      },
+      "ideology": 0.35,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.4,
+        "reply_rate": 0.3,
+        "repost_rate": 0.2,
+        "controversy_affinity": 0.4
+      },
+      "initial_following": [
+        "agent_0040",
+        "alliance_kai",
+        "res_snu",
+        "researcher_han",
+        "media_techwatch",
+        "agent_0026",
+        "agent_0032",
+        "agent_0039",
+        "agent_0045",
+        "agent_0050",
+        "agent_0054",
+        "agent_0058",
+        "agent_0059",
+        "agent_0067",
+        "agent_0069",
+        "agent_0073",
+        "agent_0075",
+        "agent_0079",
+        "agent_0082",
+        "agent_0083",
+        "agent_0085",
+        "agent_0086",
+        "agent_0091",
+        "agent_0096",
+        "agent_0043",
+        "agent_0049",
+        "agent_0051",
+        "agent_0061",
+        "agent_0070",
+        "agent_0071",
+        "agent_0072",
+        "agent_0078",
+        "agent_0080",
+        "agent_0088"
+      ]
+    },
+    "agent_0042": {
+      "agent_id": "agent_0042",
+      "name": "시민_agent_0042",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0042"
+      },
+      "ideology": 0.4,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.5,
+        "reply_rate": 0.4,
+        "repost_rate": 0.3,
+        "controversy_affinity": 0.5
+      },
+      "initial_following": [
+        "agent_0028",
+        "agent_0035",
+        "agent_0038",
+        "agent_0041",
+        "gov_msit",
+        "cso_pam",
+        "media_hankyoreh",
+        "pol_kim",
+        "res_snu",
+        "res_kaist",
+        "researcher_han",
+        "media_chosun",
+        "researcher_lee_js",
+        "media_techwatch",
+        "res_etri",
+        "cso_digital",
+        "agent_0024",
+        "agent_0025",
+        "agent_0029",
+        "agent_0039",
+        "agent_0045",
+        "agent_0053",
+        "agent_0059",
+        "agent_0063",
+        "agent_0066",
+        "agent_0075",
+        "agent_0076",
+        "agent_0077",
+        "agent_0080",
+        "agent_0083",
+        "agent_0084",
+        "agent_0090",
+        "agent_0094",
+        "agent_0095",
+        "agent_0096",
+        "agent_0098",
+        "agent_0043",
+        "agent_0044",
+        "agent_0048",
+        "agent_0051",
+        "agent_0052",
+        "agent_0055",
+        "agent_0065",
+        "agent_0068",
+        "agent_0072",
+        "agent_0079",
+        "agent_0081",
+        "agent_0088"
+      ]
+    },
+    "agent_0043": {
+      "agent_id": "agent_0043",
+      "name": "시민_agent_0043",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0043"
+      },
+      "ideology": 0.5,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.6,
+        "reply_rate": 0.5,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.6
+      },
+      "initial_following": [
+        "agent_0036",
+        "gov_msit",
+        "journalist_kim_ys",
+        "cso_pam",
+        "res_snu",
+        "researcher_han",
+        "journalist_park_jm",
+        "activist_choi",
+        "journalist_lee",
+        "res_etri",
+        "cso_digital",
+        "agent_0026",
+        "agent_0027",
+        "agent_0031",
+        "agent_0033",
+        "agent_0034",
+        "agent_0044",
+        "agent_0046",
+        "agent_0054",
+        "agent_0058",
+        "agent_0059",
+        "agent_0062",
+        "agent_0067",
+        "agent_0074",
+        "agent_0077",
+        "agent_0082",
+        "agent_0083",
+        "agent_0086",
+        "agent_0088",
+        "agent_0092",
+        "agent_0093",
+        "agent_0095",
+        "agent_0097",
+        "agent_0045",
+        "agent_0053",
+        "agent_0061",
+        "agent_0068",
+        "agent_0071",
+        "agent_0078",
+        "agent_0081",
+        "agent_0087"
+      ]
+    },
+    "agent_0044": {
+      "agent_id": "agent_0044",
+      "name": "시민_agent_0044",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0044"
+      },
+      "ideology": 0.55,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.7,
+        "reply_rate": 0.2,
+        "repost_rate": 0.2,
+        "controversy_affinity": 0.7
+      },
+      "initial_following": [
+        "agent_0028",
+        "agent_0032",
+        "agent_0033",
+        "agent_0043",
+        "journalist_kim_ys",
+        "media_hankyoreh",
+        "pol_kim",
+        "researcher_jung",
+        "media_techwatch",
+        "agent_0024",
+        "agent_0025",
+        "agent_0037",
+        "agent_0042",
+        "agent_0046",
+        "agent_0048",
+        "agent_0055",
+        "agent_0058",
+        "agent_0065",
+        "agent_0066",
+        "agent_0068",
+        "agent_0070",
+        "agent_0074",
+        "agent_0082",
+        "agent_0083",
+        "agent_0090",
+        "agent_0098",
+        "agent_0099",
+        "agent_0047",
+        "agent_0054",
+        "agent_0062",
+        "agent_0072",
+        "agent_0084",
+        "agent_0085",
+        "agent_0088",
+        "agent_0094",
+        "agent_0095"
+      ]
+    },
+    "agent_0045": {
+      "agent_id": "agent_0045",
+      "name": "시민_agent_0045",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0045"
+      },
+      "ideology": 0.6,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.3,
+        "reply_rate": 0.3,
+        "repost_rate": 0.3,
+        "controversy_affinity": 0.3
+      },
+      "initial_following": [
+        "agent_0027",
+        "agent_0034",
+        "agent_0035",
+        "agent_0036",
+        "agent_0037",
+        "journalist_kim_ys",
+        "media_hankyoreh",
+        "pol_park",
+        "researcher_han",
+        "media_chosun",
+        "journalist_park_jm",
+        "journalist_lee",
+        "agent_0033",
+        "agent_0038",
+        "agent_0042",
+        "agent_0046",
+        "agent_0049",
+        "agent_0052",
+        "agent_0053",
+        "agent_0054",
+        "agent_0055",
+        "agent_0056",
+        "agent_0060",
+        "agent_0065",
+        "agent_0066",
+        "agent_0072",
+        "agent_0073",
+        "agent_0074",
+        "agent_0078",
+        "agent_0081",
+        "agent_0084",
+        "agent_0091",
+        "agent_0096",
+        "agent_0097",
+        "agent_0099",
+        "agent_0062",
+        "agent_0067",
+        "agent_0068",
+        "agent_0088",
+        "agent_0093",
+        "agent_0094"
+      ]
+    },
+    "agent_0046": {
+      "agent_id": "agent_0046",
+      "name": "시민_agent_0046",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0046"
+      },
+      "ideology": 0.65,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.4,
+        "reply_rate": 0.4,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.4
+      },
+      "initial_following": [
+        "agent_0024",
+        "agent_0026",
+        "agent_0035",
+        "agent_0037",
+        "cso_pam",
+        "media_hankyoreh",
+        "pol_park",
+        "res_snu",
+        "researcher_han",
+        "activist_choi",
+        "agent_0025",
+        "agent_0031",
+        "agent_0032",
+        "agent_0033",
+        "agent_0039",
+        "agent_0048",
+        "agent_0055",
+        "agent_0064",
+        "agent_0066",
+        "agent_0077",
+        "agent_0086",
+        "agent_0087",
+        "agent_0088",
+        "agent_0093",
+        "agent_0094",
+        "agent_0095",
+        "agent_0053",
+        "agent_0076"
+      ]
+    },
+    "agent_0047": {
+      "agent_id": "agent_0047",
+      "name": "시민_agent_0047",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0047"
+      },
+      "ideology": 0.7,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.5,
+        "reply_rate": 0.5,
+        "repost_rate": 0.2,
+        "controversy_affinity": 0.5
+      },
+      "initial_following": [
+        "agent_0024",
+        "agent_0025",
+        "agent_0027",
+        "agent_0034",
+        "agent_0036",
+        "agent_0044",
+        "gov_pipc",
+        "media_chosun",
+        "journalist_park_jm",
+        "res_etri",
+        "agent_0037",
+        "agent_0059",
+        "agent_0062",
+        "agent_0064",
+        "agent_0067",
+        "agent_0075",
+        "agent_0082",
+        "agent_0090",
+        "agent_0095",
+        "agent_0053",
+        "agent_0054",
+        "agent_0063",
+        "agent_0074",
+        "agent_0083",
+        "agent_0093"
+      ]
+    },
+    "agent_0048": {
+      "agent_id": "agent_0048",
+      "name": "시민_agent_0048",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0048"
+      },
+      "ideology": 0.45,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.6,
+        "reply_rate": 0.2,
+        "repost_rate": 0.3,
+        "controversy_affinity": 0.6
+      },
+      "initial_following": [
+        "agent_0029",
+        "agent_0031",
+        "agent_0032",
+        "agent_0034",
+        "agent_0038",
+        "agent_0042",
+        "agent_0045",
+        "alliance_kai",
+        "res_snu",
+        "researcher_jung",
+        "researcher_lee_js",
+        "activist_choi",
+        "agent_0033",
+        "agent_0037",
+        "agent_0041",
+        "agent_0043",
+        "agent_0044",
+        "agent_0052",
+        "agent_0059",
+        "agent_0061",
+        "agent_0067",
+        "agent_0068",
+        "agent_0071",
+        "agent_0085",
+        "agent_0088",
+        "agent_0093",
+        "agent_0095",
+        "agent_0096",
+        "agent_0098",
+        "agent_0099",
+        "agent_0051",
+        "agent_0062",
+        "agent_0069",
+        "agent_0072",
+        "agent_0079",
+        "agent_0081",
+        "agent_0083",
+        "agent_0091",
+        "agent_0092"
+      ]
+    },
+    "agent_0049": {
+      "agent_id": "agent_0049",
+      "name": "시민_agent_0049",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0049"
+      },
+      "ideology": 0.3,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.7,
+        "reply_rate": 0.3,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.7
+      },
+      "initial_following": [
+        "agent_0028",
+        "agent_0032",
+        "agent_0040",
+        "agent_0041",
+        "agent_0042",
+        "corp_naver",
+        "journalist_kim_ys",
+        "media_hankyoreh",
+        "res_snu",
+        "res_kaist",
+        "researcher_lee_js",
+        "journalist_lee",
+        "agent_0025",
+        "agent_0027",
+        "agent_0039",
+        "agent_0043",
+        "agent_0047",
+        "agent_0048",
+        "agent_0061",
+        "agent_0069",
+        "agent_0072",
+        "agent_0073",
+        "agent_0074",
+        "agent_0075",
+        "agent_0078",
+        "agent_0079",
+        "agent_0089",
+        "agent_0091",
+        "agent_0092",
+        "agent_0093",
+        "agent_0094",
+        "agent_0058",
+        "agent_0062",
+        "agent_0070",
+        "agent_0071",
+        "agent_0080",
+        "agent_0081",
+        "agent_0088",
+        "agent_0099"
+      ]
+    },
+    "agent_0050": {
+      "agent_id": "agent_0050",
+      "name": "시민_agent_0050",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0050"
+      },
+      "ideology": 0.2,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.3,
+        "reply_rate": 0.2,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.3
+      },
+      "initial_following": [
+        "agent_0029",
+        "agent_0031",
+        "corp_naver",
+        "gov_msit",
+        "pol_kim",
+        "res_snu",
+        "agent_0024",
+        "agent_0025",
+        "agent_0026",
+        "agent_0034",
+        "agent_0037",
+        "agent_0044",
+        "agent_0049",
+        "agent_0051",
+        "agent_0058",
+        "agent_0068",
+        "agent_0072",
+        "agent_0077",
+        "agent_0090",
+        "agent_0092",
+        "agent_0097",
+        "agent_0099",
+        "agent_0059",
+        "agent_0070"
+      ]
+    },
+    "agent_0051": {
+      "agent_id": "agent_0051",
+      "name": "시민_agent_0051",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0051"
+      },
+      "ideology": 0.35,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.4,
+        "reply_rate": 0.3,
+        "repost_rate": 0.2,
+        "controversy_affinity": 0.4
+      },
+      "initial_following": [
+        "agent_0028",
+        "agent_0029",
+        "agent_0030",
+        "agent_0031",
+        "agent_0040",
+        "agent_0049",
+        "agent_0050",
+        "corp_naver",
+        "pol_park",
+        "researcher_jung",
+        "media_chosun",
+        "agent_0024",
+        "agent_0038",
+        "agent_0041",
+        "agent_0042",
+        "agent_0044",
+        "agent_0047",
+        "agent_0048",
+        "agent_0052",
+        "agent_0053",
+        "agent_0054",
+        "agent_0070",
+        "agent_0071",
+        "agent_0077",
+        "agent_0079",
+        "agent_0082",
+        "agent_0092",
+        "agent_0096",
+        "agent_0097",
+        "agent_0098",
+        "agent_0099",
+        "agent_0062",
+        "agent_0088",
+        "agent_0089"
+      ]
+    },
+    "agent_0052": {
+      "agent_id": "agent_0052",
+      "name": "시민_agent_0052",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0052"
+      },
+      "ideology": 0.4,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.5,
+        "reply_rate": 0.4,
+        "repost_rate": 0.3,
+        "controversy_affinity": 0.5
+      },
+      "initial_following": [
+        "agent_0024",
+        "agent_0025",
+        "agent_0029",
+        "agent_0031",
+        "agent_0033",
+        "agent_0035",
+        "agent_0038",
+        "agent_0039",
+        "agent_0045",
+        "agent_0049",
+        "journalist_kim_ys",
+        "corp_kakao",
+        "corp_samsung",
+        "journalist_park_jm",
+        "cso_digital",
+        "agent_0028",
+        "agent_0030",
+        "agent_0036",
+        "agent_0037",
+        "agent_0040",
+        "agent_0043",
+        "agent_0046",
+        "agent_0051",
+        "agent_0053",
+        "agent_0055",
+        "agent_0058",
+        "agent_0059",
+        "agent_0061",
+        "agent_0063",
+        "agent_0084",
+        "agent_0085",
+        "agent_0090",
+        "agent_0091",
+        "agent_0093",
+        "agent_0097",
+        "agent_0099",
+        "agent_0068",
+        "agent_0072",
+        "agent_0073",
+        "agent_0078",
+        "agent_0082",
+        "agent_0094",
+        "agent_0095",
+        "agent_0098"
+      ]
+    },
+    "agent_0053": {
+      "agent_id": "agent_0053",
+      "name": "시민_agent_0053",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0053"
+      },
+      "ideology": 0.5,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.6,
+        "reply_rate": 0.5,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.6
+      },
+      "initial_following": [
+        "agent_0024",
+        "agent_0025",
+        "agent_0026",
+        "agent_0032",
+        "agent_0035",
+        "agent_0037",
+        "agent_0046",
+        "agent_0048",
+        "agent_0052",
+        "cso_pam",
+        "res_kaist",
+        "journalist_lee",
+        "agent_0042",
+        "agent_0055",
+        "agent_0056",
+        "agent_0057",
+        "agent_0059",
+        "agent_0062",
+        "agent_0064",
+        "agent_0066",
+        "agent_0069",
+        "agent_0073",
+        "agent_0077",
+        "agent_0080",
+        "agent_0083",
+        "agent_0084",
+        "agent_0085",
+        "agent_0089",
+        "agent_0090",
+        "agent_0091",
+        "agent_0098",
+        "agent_0058",
+        "agent_0074",
+        "agent_0086",
+        "agent_0087",
+        "agent_0092"
+      ]
+    },
+    "agent_0054": {
+      "agent_id": "agent_0054",
+      "name": "시민_agent_0054",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0054"
+      },
+      "ideology": 0.55,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.7,
+        "reply_rate": 0.2,
+        "repost_rate": 0.2,
+        "controversy_affinity": 0.7
+      },
+      "initial_following": [
+        "agent_0032",
+        "agent_0035",
+        "agent_0038",
+        "agent_0047",
+        "agent_0053",
+        "corp_naver",
+        "cso_pam",
+        "media_hankyoreh",
+        "cso_fair_ai",
+        "media_chosun",
+        "researcher_lee_js",
+        "res_etri",
+        "cso_digital",
+        "agent_0026",
+        "agent_0030",
+        "agent_0043",
+        "agent_0044",
+        "agent_0046",
+        "agent_0056",
+        "agent_0058",
+        "agent_0062",
+        "agent_0084",
+        "agent_0085",
+        "agent_0087",
+        "agent_0089",
+        "agent_0092",
+        "agent_0097",
+        "agent_0065",
+        "agent_0067",
+        "agent_0095",
+        "agent_0098"
+      ]
+    },
+    "agent_0055": {
+      "agent_id": "agent_0055",
+      "name": "시민_agent_0055",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0055"
+      },
+      "ideology": 0.6,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.3,
+        "reply_rate": 0.3,
+        "repost_rate": 0.3,
+        "controversy_affinity": 0.3
+      },
+      "initial_following": [
+        "agent_0024",
+        "agent_0026",
+        "agent_0028",
+        "agent_0033",
+        "agent_0042",
+        "agent_0045",
+        "agent_0054",
+        "gov_pipc",
+        "pol_kim",
+        "res_kaist",
+        "researcher_jung",
+        "researcher_han",
+        "media_chosun",
+        "journalist_park_jm",
+        "activist_choi",
+        "agent_0030",
+        "agent_0034",
+        "agent_0036",
+        "agent_0038",
+        "agent_0041",
+        "agent_0057",
+        "agent_0059",
+        "agent_0060",
+        "agent_0062",
+        "agent_0066",
+        "agent_0067",
+        "agent_0070",
+        "agent_0074",
+        "agent_0089",
+        "agent_0096",
+        "agent_0068",
+        "agent_0076",
+        "agent_0093",
+        "agent_0097"
+      ]
+    },
+    "agent_0056": {
+      "agent_id": "agent_0056",
+      "name": "시민_agent_0056",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0056"
+      },
+      "ideology": 0.65,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.4,
+        "reply_rate": 0.4,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.4
+      },
+      "initial_following": [
+        "agent_0037",
+        "agent_0044",
+        "agent_0045",
+        "agent_0054",
+        "gov_msit",
+        "gov_pipc",
+        "corp_kakao",
+        "media_chosun",
+        "researcher_lee_js",
+        "media_techwatch",
+        "agent_0026",
+        "agent_0028",
+        "agent_0030",
+        "agent_0033",
+        "agent_0036",
+        "agent_0039",
+        "agent_0042",
+        "agent_0043",
+        "agent_0069",
+        "agent_0072",
+        "agent_0073",
+        "agent_0093",
+        "agent_0094",
+        "agent_0065",
+        "agent_0074",
+        "agent_0077",
+        "agent_0087",
+        "agent_0097"
+      ]
+    },
+    "agent_0057": {
+      "agent_id": "agent_0057",
+      "name": "시민_agent_0057",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0057"
+      },
+      "ideology": 0.7,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.5,
+        "reply_rate": 0.5,
+        "repost_rate": 0.2,
+        "controversy_affinity": 0.5
+      },
+      "initial_following": [
+        "agent_0033",
+        "agent_0047",
+        "agent_0054",
+        "journalist_kim_ys",
+        "cso_pam",
+        "researcher_jung",
+        "cso_fair_ai",
+        "journalist_park_jm",
+        "agent_0027",
+        "agent_0030",
+        "agent_0034",
+        "agent_0042",
+        "agent_0045",
+        "agent_0055",
+        "agent_0060",
+        "agent_0062",
+        "agent_0074",
+        "agent_0077",
+        "agent_0078",
+        "agent_0079",
+        "agent_0083",
+        "agent_0085",
+        "agent_0086",
+        "agent_0087",
+        "agent_0088",
+        "agent_0090",
+        "agent_0093",
+        "agent_0096",
+        "agent_0065",
+        "agent_0073",
+        "agent_0075",
+        "agent_0076",
+        "agent_0097"
+      ]
+    },
+    "agent_0058": {
+      "agent_id": "agent_0058",
+      "name": "시민_agent_0058",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0058"
+      },
+      "ideology": 0.45,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.6,
+        "reply_rate": 0.2,
+        "repost_rate": 0.3,
+        "controversy_affinity": 0.6
+      },
+      "initial_following": [
+        "agent_0024",
+        "agent_0035",
+        "agent_0045",
+        "agent_0052",
+        "agent_0053",
+        "gov_msit",
+        "media_hankyoreh",
+        "journalist_lee",
+        "agent_0025",
+        "agent_0027",
+        "agent_0030",
+        "agent_0031",
+        "agent_0032",
+        "agent_0033",
+        "agent_0034",
+        "agent_0050",
+        "agent_0056",
+        "agent_0059",
+        "agent_0063",
+        "agent_0064",
+        "agent_0075",
+        "agent_0082",
+        "agent_0086",
+        "agent_0088",
+        "agent_0091",
+        "agent_0093",
+        "agent_0095",
+        "agent_0065",
+        "agent_0071",
+        "agent_0072",
+        "agent_0073",
+        "agent_0079",
+        "agent_0084",
+        "agent_0089"
+      ]
+    },
+    "agent_0059": {
+      "agent_id": "agent_0059",
+      "name": "시민_agent_0059",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0059"
+      },
+      "ideology": 0.3,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.7,
+        "reply_rate": 0.3,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.7
+      },
+      "initial_following": [
+        "agent_0028",
+        "agent_0031",
+        "agent_0032",
+        "agent_0040",
+        "agent_0051",
+        "agent_0052",
+        "corp_naver",
+        "gov_msit",
+        "gov_pipc",
+        "corp_kakao",
+        "res_snu",
+        "res_kaist",
+        "researcher_jung",
+        "journalist_park_jm",
+        "activist_choi",
+        "agent_0027",
+        "agent_0035",
+        "agent_0036",
+        "agent_0039",
+        "agent_0041",
+        "agent_0050",
+        "agent_0054",
+        "agent_0056",
+        "agent_0058",
+        "agent_0061",
+        "agent_0063",
+        "agent_0068",
+        "agent_0069",
+        "agent_0070",
+        "agent_0075",
+        "agent_0078",
+        "agent_0083",
+        "agent_0095",
+        "agent_0097",
+        "agent_0098",
+        "agent_0060",
+        "agent_0072",
+        "agent_0080",
+        "agent_0082",
+        "agent_0089",
+        "agent_0090"
+      ]
+    },
+    "agent_0060": {
+      "agent_id": "agent_0060",
+      "name": "시민_agent_0060",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0060"
+      },
+      "ideology": 0.2,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.3,
+        "reply_rate": 0.2,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.3
+      },
+      "initial_following": [
+        "alliance_kai",
+        "pol_kim",
+        "res_snu",
+        "researcher_lee_js",
+        "res_etri",
+        "agent_0031",
+        "agent_0033",
+        "agent_0039",
+        "agent_0046",
+        "agent_0049",
+        "agent_0050",
+        "agent_0053",
+        "agent_0056",
+        "agent_0063",
+        "agent_0065",
+        "agent_0069",
+        "agent_0079",
+        "agent_0081",
+        "agent_0091",
+        "agent_0094",
+        "agent_0061"
+      ]
+    },
+    "agent_0061": {
+      "agent_id": "agent_0061",
+      "name": "시민_agent_0061",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0061"
+      },
+      "ideology": 0.35,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.4,
+        "reply_rate": 0.3,
+        "repost_rate": 0.2,
+        "controversy_affinity": 0.4
+      },
+      "initial_following": [
+        "agent_0030",
+        "agent_0041",
+        "agent_0051",
+        "corp_naver",
+        "alliance_kai",
+        "researcher_jung",
+        "researcher_han",
+        "media_techwatch",
+        "agent_0024",
+        "agent_0026",
+        "agent_0028",
+        "agent_0029",
+        "agent_0036",
+        "agent_0049",
+        "agent_0052",
+        "agent_0057",
+        "agent_0065",
+        "agent_0073",
+        "agent_0077",
+        "agent_0079",
+        "agent_0081",
+        "agent_0088",
+        "agent_0090",
+        "agent_0093",
+        "agent_0062",
+        "agent_0069",
+        "agent_0082",
+        "agent_0091",
+        "agent_0099"
+      ]
+    },
+    "agent_0062": {
+      "agent_id": "agent_0062",
+      "name": "시민_agent_0062",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0062"
+      },
+      "ideology": 0.4,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.5,
+        "reply_rate": 0.4,
+        "repost_rate": 0.3,
+        "controversy_affinity": 0.5
+      },
+      "initial_following": [
+        "agent_0034",
+        "agent_0038",
+        "agent_0039",
+        "agent_0042",
+        "agent_0045",
+        "agent_0052",
+        "agent_0058",
+        "agent_0059",
+        "gov_msit",
+        "journalist_kim_ys",
+        "cso_pam",
+        "pol_park",
+        "corp_samsung",
+        "res_snu",
+        "researcher_jung",
+        "activist_choi",
+        "agent_0026",
+        "agent_0030",
+        "agent_0031",
+        "agent_0032",
+        "agent_0036",
+        "agent_0047",
+        "agent_0048",
+        "agent_0049",
+        "agent_0053",
+        "agent_0055",
+        "agent_0057",
+        "agent_0066",
+        "agent_0071",
+        "agent_0072",
+        "agent_0075",
+        "agent_0082",
+        "agent_0084",
+        "agent_0087",
+        "agent_0089",
+        "agent_0094",
+        "agent_0096",
+        "agent_0063",
+        "agent_0064",
+        "agent_0065",
+        "agent_0073",
+        "agent_0074",
+        "agent_0078",
+        "agent_0081",
+        "agent_0091",
+        "agent_0095"
+      ]
+    },
+    "agent_0063": {
+      "agent_id": "agent_0063",
+      "name": "시민_agent_0063",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0063"
+      },
+      "ideology": 0.5,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.6,
+        "reply_rate": 0.5,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.6
+      },
+      "initial_following": [
+        "agent_0025",
+        "agent_0026",
+        "agent_0041",
+        "agent_0042",
+        "agent_0053",
+        "agent_0062",
+        "corp_naver",
+        "gov_msit",
+        "alliance_kai",
+        "pol_park",
+        "media_chosun",
+        "researcher_lee_js",
+        "activist_choi",
+        "agent_0024",
+        "agent_0031",
+        "agent_0039",
+        "agent_0048",
+        "agent_0051",
+        "agent_0055",
+        "agent_0057",
+        "agent_0076",
+        "agent_0080",
+        "agent_0083",
+        "agent_0089",
+        "agent_0090",
+        "agent_0099",
+        "agent_0066",
+        "agent_0074",
+        "agent_0078",
+        "agent_0087",
+        "agent_0093",
+        "agent_0095"
+      ]
+    },
+    "agent_0064": {
+      "agent_id": "agent_0064",
+      "name": "시민_agent_0064",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0064"
+      },
+      "ideology": 0.55,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.7,
+        "reply_rate": 0.2,
+        "repost_rate": 0.2,
+        "controversy_affinity": 0.7
+      },
+      "initial_following": [
+        "agent_0026",
+        "agent_0027",
+        "agent_0035",
+        "agent_0037",
+        "agent_0042",
+        "agent_0047",
+        "agent_0048",
+        "agent_0052",
+        "agent_0057",
+        "corp_naver",
+        "alliance_kai",
+        "pol_park",
+        "researcher_han",
+        "cso_fair_ai",
+        "media_techwatch",
+        "agent_0033",
+        "agent_0036",
+        "agent_0053",
+        "agent_0056",
+        "agent_0061",
+        "agent_0063",
+        "agent_0078",
+        "agent_0082",
+        "agent_0084",
+        "agent_0066",
+        "agent_0072",
+        "agent_0075",
+        "agent_0076",
+        "agent_0077",
+        "agent_0083"
+      ]
+    },
+    "agent_0065": {
+      "agent_id": "agent_0065",
+      "name": "시민_agent_0065",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0065"
+      },
+      "ideology": 0.6,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.3,
+        "reply_rate": 0.3,
+        "repost_rate": 0.3,
+        "controversy_affinity": 0.3
+      },
+      "initial_following": [
+        "agent_0024",
+        "agent_0028",
+        "agent_0033",
+        "agent_0037",
+        "agent_0042",
+        "agent_0043",
+        "agent_0044",
+        "agent_0048",
+        "agent_0054",
+        "agent_0058",
+        "gov_msit",
+        "alliance_kai",
+        "gov_pipc",
+        "corp_kakao",
+        "res_snu",
+        "researcher_jung",
+        "researcher_han",
+        "media_chosun",
+        "researcher_lee_js",
+        "agent_0035",
+        "agent_0045",
+        "agent_0057",
+        "agent_0067",
+        "agent_0069",
+        "agent_0083",
+        "agent_0086",
+        "agent_0092",
+        "agent_0094",
+        "agent_0098",
+        "agent_0099",
+        "agent_0073",
+        "agent_0085",
+        "agent_0087",
+        "agent_0095",
+        "agent_0096"
+      ]
+    },
+    "agent_0066": {
+      "agent_id": "agent_0066",
+      "name": "시민_agent_0066",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0066"
+      },
+      "ideology": 0.65,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.4,
+        "reply_rate": 0.4,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.4
+      },
+      "initial_following": [
+        "agent_0024",
+        "agent_0025",
+        "agent_0026",
+        "agent_0044",
+        "agent_0054",
+        "agent_0055",
+        "agent_0056",
+        "agent_0057",
+        "media_chosun",
+        "activist_choi",
+        "cso_digital",
+        "agent_0028",
+        "agent_0029",
+        "agent_0030",
+        "agent_0031",
+        "agent_0033",
+        "agent_0035",
+        "agent_0038",
+        "agent_0040",
+        "agent_0045",
+        "agent_0047",
+        "agent_0050",
+        "agent_0052",
+        "agent_0053",
+        "agent_0063",
+        "agent_0064",
+        "agent_0067",
+        "agent_0072",
+        "agent_0075",
+        "agent_0082",
+        "agent_0083",
+        "agent_0087",
+        "agent_0074",
+        "agent_0084"
+      ]
+    },
+    "agent_0067": {
+      "agent_id": "agent_0067",
+      "name": "시민_agent_0067",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0067"
+      },
+      "ideology": 0.7,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.5,
+        "reply_rate": 0.5,
+        "repost_rate": 0.2,
+        "controversy_affinity": 0.5
+      },
+      "initial_following": [
+        "agent_0025",
+        "agent_0034",
+        "agent_0045",
+        "agent_0063",
+        "agent_0064",
+        "agent_0065",
+        "gov_msit",
+        "cso_pam",
+        "alliance_kai",
+        "journalist_park_jm",
+        "activist_choi",
+        "cso_digital",
+        "agent_0024",
+        "agent_0027",
+        "agent_0030",
+        "agent_0035",
+        "agent_0042",
+        "agent_0043",
+        "agent_0046",
+        "agent_0048",
+        "agent_0053",
+        "agent_0057",
+        "agent_0060",
+        "agent_0073",
+        "agent_0074",
+        "agent_0077",
+        "agent_0082",
+        "agent_0085",
+        "agent_0089",
+        "agent_0094",
+        "agent_0098",
+        "agent_0075",
+        "agent_0076",
+        "agent_0095"
+      ]
+    },
+    "agent_0068": {
+      "agent_id": "agent_0068",
+      "name": "시민_agent_0068",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0068"
+      },
+      "ideology": 0.45,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.6,
+        "reply_rate": 0.2,
+        "repost_rate": 0.3,
+        "controversy_affinity": 0.6
+      },
+      "initial_following": [
+        "agent_0031",
+        "agent_0033",
+        "agent_0035",
+        "agent_0049",
+        "agent_0058",
+        "agent_0061",
+        "agent_0062",
+        "agent_0065",
+        "corp_naver",
+        "alliance_kai",
+        "gov_pipc",
+        "pol_kim",
+        "corp_kakao",
+        "res_kaist",
+        "researcher_han",
+        "cso_fair_ai",
+        "cso_digital",
+        "agent_0032",
+        "agent_0042",
+        "agent_0045",
+        "agent_0051",
+        "agent_0052",
+        "agent_0057",
+        "agent_0059",
+        "agent_0074",
+        "agent_0082",
+        "agent_0083",
+        "agent_0088",
+        "agent_0089",
+        "agent_0091",
+        "agent_0099",
+        "agent_0071",
+        "agent_0084",
+        "agent_0092",
+        "agent_0093",
+        "agent_0098"
+      ]
+    },
+    "agent_0069": {
+      "agent_id": "agent_0069",
+      "name": "시민_agent_0069",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0069"
+      },
+      "ideology": 0.3,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.7,
+        "reply_rate": 0.3,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.7
+      },
+      "initial_following": [
+        "agent_0029",
+        "agent_0030",
+        "agent_0038",
+        "agent_0039",
+        "agent_0040",
+        "agent_0042",
+        "agent_0060",
+        "agent_0062",
+        "corp_naver",
+        "gov_msit",
+        "journalist_kim_ys",
+        "alliance_kai",
+        "pol_kim",
+        "pol_park",
+        "res_kaist",
+        "journalist_park_jm",
+        "researcher_lee_js",
+        "agent_0028",
+        "agent_0034",
+        "agent_0044",
+        "agent_0049",
+        "agent_0050",
+        "agent_0071",
+        "agent_0077",
+        "agent_0079",
+        "agent_0081",
+        "agent_0082",
+        "agent_0084",
+        "agent_0088",
+        "agent_0091",
+        "agent_0072",
+        "agent_0080",
+        "agent_0092",
+        "agent_0098"
+      ]
+    },
+    "agent_0070": {
+      "agent_id": "agent_0070",
+      "name": "시민_agent_0070",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0070"
+      },
+      "ideology": 0.2,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.3,
+        "reply_rate": 0.2,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.3
+      },
+      "initial_following": [
+        "agent_0061",
+        "agent_0069",
+        "corp_naver",
+        "gov_msit",
+        "media_hankyoreh",
+        "researcher_jung",
+        "journalist_lee",
+        "agent_0024",
+        "agent_0025",
+        "agent_0026",
+        "agent_0028",
+        "agent_0031",
+        "agent_0034",
+        "agent_0040",
+        "agent_0050",
+        "agent_0052",
+        "agent_0053",
+        "agent_0058",
+        "agent_0060",
+        "agent_0065",
+        "agent_0074",
+        "agent_0075",
+        "agent_0077",
+        "agent_0079",
+        "agent_0085",
+        "agent_0091",
+        "agent_0094",
+        "agent_0097"
+      ]
+    },
+    "agent_0071": {
+      "agent_id": "agent_0071",
+      "name": "시민_agent_0071",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0071"
+      },
+      "ideology": 0.35,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.4,
+        "reply_rate": 0.3,
+        "repost_rate": 0.2,
+        "controversy_affinity": 0.4
+      },
+      "initial_following": [
+        "agent_0029",
+        "agent_0032",
+        "agent_0033",
+        "agent_0040",
+        "agent_0052",
+        "agent_0062",
+        "gov_msit",
+        "res_snu",
+        "res_kaist",
+        "researcher_jung",
+        "activist_choi",
+        "journalist_lee",
+        "res_etri",
+        "agent_0024",
+        "agent_0025",
+        "agent_0026",
+        "agent_0027",
+        "agent_0030",
+        "agent_0034",
+        "agent_0042",
+        "agent_0048",
+        "agent_0056",
+        "agent_0069",
+        "agent_0076",
+        "agent_0077",
+        "agent_0087",
+        "agent_0091",
+        "agent_0092",
+        "agent_0079",
+        "agent_0080",
+        "agent_0090",
+        "agent_0098",
+        "agent_0099"
+      ]
+    },
+    "agent_0072": {
+      "agent_id": "agent_0072",
+      "name": "시민_agent_0072",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0072"
+      },
+      "ideology": 0.4,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.5,
+        "reply_rate": 0.4,
+        "repost_rate": 0.3,
+        "controversy_affinity": 0.5
+      },
+      "initial_following": [
+        "agent_0025",
+        "agent_0031",
+        "agent_0041",
+        "agent_0052",
+        "agent_0059",
+        "agent_0062",
+        "gov_msit",
+        "pol_kim",
+        "researcher_han",
+        "activist_choi",
+        "media_techwatch",
+        "agent_0028",
+        "agent_0034",
+        "agent_0037",
+        "agent_0038",
+        "agent_0039",
+        "agent_0043",
+        "agent_0044",
+        "agent_0048",
+        "agent_0050",
+        "agent_0058",
+        "agent_0068",
+        "agent_0074",
+        "agent_0078",
+        "agent_0079",
+        "agent_0084",
+        "agent_0089",
+        "agent_0093",
+        "agent_0096",
+        "agent_0098",
+        "agent_0099",
+        "agent_0081",
+        "agent_0091",
+        "agent_0095"
+      ]
+    },
+    "agent_0073": {
+      "agent_id": "agent_0073",
+      "name": "시민_agent_0073",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0073"
+      },
+      "ideology": 0.5,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.6,
+        "reply_rate": 0.5,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.6
+      },
+      "initial_following": [
+        "agent_0024",
+        "agent_0034",
+        "agent_0041",
+        "agent_0047",
+        "agent_0051",
+        "agent_0052",
+        "agent_0053",
+        "agent_0055",
+        "agent_0067",
+        "gov_msit",
+        "journalist_kim_ys",
+        "alliance_kai",
+        "pol_kim",
+        "pol_park",
+        "researcher_han",
+        "journalist_park_jm",
+        "activist_choi",
+        "journalist_lee",
+        "cso_digital",
+        "agent_0026",
+        "agent_0028",
+        "agent_0030",
+        "agent_0033",
+        "agent_0035",
+        "agent_0040",
+        "agent_0056",
+        "agent_0057",
+        "agent_0058",
+        "agent_0066",
+        "agent_0075",
+        "agent_0076",
+        "agent_0078",
+        "agent_0082",
+        "agent_0084",
+        "agent_0085",
+        "agent_0087",
+        "agent_0088",
+        "agent_0090",
+        "agent_0094",
+        "agent_0097",
+        "agent_0098",
+        "agent_0077",
+        "agent_0083"
+      ]
+    },
+    "agent_0074": {
+      "agent_id": "agent_0074",
+      "name": "시민_agent_0074",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0074"
+      },
+      "ideology": 0.55,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.7,
+        "reply_rate": 0.2,
+        "repost_rate": 0.2,
+        "controversy_affinity": 0.7
+      },
+      "initial_following": [
+        "agent_0024",
+        "agent_0035",
+        "agent_0044",
+        "agent_0048",
+        "agent_0052",
+        "agent_0053",
+        "agent_0054",
+        "agent_0057",
+        "agent_0062",
+        "agent_0066",
+        "journalist_kim_ys",
+        "alliance_kai",
+        "res_kaist",
+        "researcher_han",
+        "cso_fair_ai",
+        "res_etri",
+        "agent_0025",
+        "agent_0034",
+        "agent_0041",
+        "agent_0047",
+        "agent_0051",
+        "agent_0056",
+        "agent_0069",
+        "agent_0071",
+        "agent_0081",
+        "agent_0083",
+        "agent_0087",
+        "agent_0099",
+        "agent_0077",
+        "agent_0078",
+        "agent_0084",
+        "agent_0086",
+        "agent_0088",
+        "agent_0093"
+      ]
+    },
+    "agent_0075": {
+      "agent_id": "agent_0075",
+      "name": "시민_agent_0075",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0075"
+      },
+      "ideology": 0.6,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.3,
+        "reply_rate": 0.3,
+        "repost_rate": 0.3,
+        "controversy_affinity": 0.3
+      },
+      "initial_following": [
+        "agent_0027",
+        "agent_0032",
+        "agent_0033",
+        "agent_0036",
+        "agent_0047",
+        "agent_0048",
+        "agent_0052",
+        "agent_0063",
+        "agent_0065",
+        "agent_0066",
+        "agent_0067",
+        "media_hankyoreh",
+        "pol_park",
+        "cso_fair_ai",
+        "researcher_lee_js",
+        "res_etri",
+        "agent_0024",
+        "agent_0035",
+        "agent_0038",
+        "agent_0042",
+        "agent_0050",
+        "agent_0054",
+        "agent_0077",
+        "agent_0078",
+        "agent_0080",
+        "agent_0085",
+        "agent_0086",
+        "agent_0087",
+        "agent_0095",
+        "agent_0096",
+        "agent_0082",
+        "agent_0084",
+        "agent_0092",
+        "agent_0094",
+        "agent_0097"
+      ]
+    },
+    "agent_0076": {
+      "agent_id": "agent_0076",
+      "name": "시민_agent_0076",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0076"
+      },
+      "ideology": 0.65,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.4,
+        "reply_rate": 0.4,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.4
+      },
+      "initial_following": [
+        "agent_0025",
+        "agent_0035",
+        "agent_0036",
+        "agent_0045",
+        "agent_0053",
+        "agent_0073",
+        "gov_msit",
+        "res_kaist",
+        "researcher_jung",
+        "cso_fair_ai",
+        "researcher_lee_js",
+        "cso_digital",
+        "agent_0026",
+        "agent_0033",
+        "agent_0038",
+        "agent_0040",
+        "agent_0043",
+        "agent_0056",
+        "agent_0057",
+        "agent_0065",
+        "agent_0067",
+        "agent_0071",
+        "agent_0074",
+        "agent_0078",
+        "agent_0081",
+        "agent_0083",
+        "agent_0084",
+        "agent_0085",
+        "agent_0087",
+        "agent_0089",
+        "agent_0093",
+        "agent_0094",
+        "agent_0077",
+        "agent_0086",
+        "agent_0095"
+      ]
+    },
+    "agent_0077": {
+      "agent_id": "agent_0077",
+      "name": "시민_agent_0077",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0077"
+      },
+      "ideology": 0.7,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.5,
+        "reply_rate": 0.5,
+        "repost_rate": 0.2,
+        "controversy_affinity": 0.5
+      },
+      "initial_following": [
+        "agent_0026",
+        "agent_0034",
+        "agent_0037",
+        "agent_0043",
+        "agent_0044",
+        "agent_0047",
+        "agent_0063",
+        "agent_0065",
+        "agent_0067",
+        "agent_0073",
+        "gov_msit",
+        "pol_kim",
+        "corp_kakao",
+        "corp_samsung",
+        "researcher_jung",
+        "cso_fair_ai",
+        "agent_0028",
+        "agent_0029",
+        "agent_0053",
+        "agent_0060",
+        "agent_0079",
+        "agent_0080",
+        "agent_0082",
+        "agent_0088",
+        "agent_0093",
+        "agent_0094",
+        "agent_0096",
+        "agent_0084",
+        "agent_0085",
+        "agent_0097"
+      ]
+    },
+    "agent_0078": {
+      "agent_id": "agent_0078",
+      "name": "시민_agent_0078",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0078"
+      },
+      "ideology": 0.45,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.6,
+        "reply_rate": 0.2,
+        "repost_rate": 0.3,
+        "controversy_affinity": 0.6
+      },
+      "initial_following": [
+        "agent_0024",
+        "agent_0031",
+        "agent_0032",
+        "agent_0039",
+        "agent_0041",
+        "agent_0049",
+        "agent_0051",
+        "agent_0054",
+        "agent_0061",
+        "agent_0063",
+        "agent_0064",
+        "agent_0073",
+        "gov_pipc",
+        "pol_kim",
+        "pol_park",
+        "researcher_jung",
+        "cso_fair_ai",
+        "activist_choi",
+        "media_techwatch",
+        "cso_digital",
+        "agent_0025",
+        "agent_0026",
+        "agent_0030",
+        "agent_0040",
+        "agent_0043",
+        "agent_0046",
+        "agent_0055",
+        "agent_0058",
+        "agent_0065",
+        "agent_0071",
+        "agent_0075",
+        "agent_0082",
+        "agent_0085",
+        "agent_0093",
+        "agent_0094",
+        "agent_0095",
+        "agent_0099",
+        "agent_0081",
+        "agent_0083",
+        "agent_0089",
+        "agent_0098"
+      ]
+    },
+    "agent_0079": {
+      "agent_id": "agent_0079",
+      "name": "시민_agent_0079",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0079"
+      },
+      "ideology": 0.3,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.7,
+        "reply_rate": 0.3,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.7
+      },
+      "initial_following": [
+        "agent_0049",
+        "agent_0051",
+        "agent_0052",
+        "agent_0062",
+        "corp_samsung",
+        "res_snu",
+        "cso_fair_ai",
+        "journalist_lee",
+        "cso_digital",
+        "agent_0028",
+        "agent_0029",
+        "agent_0030",
+        "agent_0032",
+        "agent_0033",
+        "agent_0036",
+        "agent_0037",
+        "agent_0038",
+        "agent_0046",
+        "agent_0048",
+        "agent_0057",
+        "agent_0059",
+        "agent_0064",
+        "agent_0066",
+        "agent_0068",
+        "agent_0069",
+        "agent_0072",
+        "agent_0073",
+        "agent_0077",
+        "agent_0081",
+        "agent_0083",
+        "agent_0088",
+        "agent_0091"
+      ]
+    },
+    "agent_0080": {
+      "agent_id": "agent_0080",
+      "name": "시민_agent_0080",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0080"
+      },
+      "ideology": 0.2,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.3,
+        "reply_rate": 0.2,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.3
+      },
+      "initial_following": [
+        "agent_0050",
+        "agent_0059",
+        "agent_0070",
+        "corp_naver",
+        "corp_samsung",
+        "media_techwatch",
+        "agent_0025",
+        "agent_0030",
+        "agent_0034",
+        "agent_0035",
+        "agent_0039",
+        "agent_0044",
+        "agent_0046",
+        "agent_0047",
+        "agent_0058",
+        "agent_0061",
+        "agent_0075",
+        "agent_0083",
+        "agent_0086",
+        "agent_0087",
+        "agent_0088",
+        "agent_0090",
+        "agent_0097",
+        "agent_0091"
+      ]
+    },
+    "agent_0081": {
+      "agent_id": "agent_0081",
+      "name": "시민_agent_0081",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0081"
+      },
+      "ideology": 0.35,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.4,
+        "reply_rate": 0.3,
+        "repost_rate": 0.2,
+        "controversy_affinity": 0.4
+      },
+      "initial_following": [
+        "agent_0030",
+        "agent_0050",
+        "agent_0052",
+        "agent_0053",
+        "agent_0062",
+        "agent_0063",
+        "agent_0069",
+        "agent_0072",
+        "agent_0073",
+        "gov_msit",
+        "media_hankyoreh",
+        "corp_kakao",
+        "cso_fair_ai",
+        "researcher_lee_js",
+        "journalist_lee",
+        "agent_0032",
+        "agent_0034",
+        "agent_0039",
+        "agent_0041",
+        "agent_0042",
+        "agent_0048",
+        "agent_0064",
+        "agent_0067",
+        "agent_0070",
+        "agent_0078",
+        "agent_0079",
+        "agent_0082",
+        "agent_0087",
+        "agent_0091",
+        "agent_0092",
+        "agent_0097",
+        "agent_0093"
+      ]
+    },
+    "agent_0082": {
+      "agent_id": "agent_0082",
+      "name": "시민_agent_0082",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0082"
+      },
+      "ideology": 0.4,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.5,
+        "reply_rate": 0.4,
+        "repost_rate": 0.3,
+        "controversy_affinity": 0.5
+      },
+      "initial_following": [
+        "agent_0024",
+        "agent_0028",
+        "agent_0032",
+        "agent_0035",
+        "agent_0041",
+        "agent_0043",
+        "agent_0045",
+        "agent_0052",
+        "agent_0053",
+        "agent_0061",
+        "agent_0062",
+        "agent_0065",
+        "media_hankyoreh",
+        "pol_kim",
+        "journalist_park_jm",
+        "activist_choi",
+        "journalist_lee",
+        "agent_0027",
+        "agent_0037",
+        "agent_0049",
+        "agent_0051",
+        "agent_0054",
+        "agent_0055",
+        "agent_0066",
+        "agent_0067",
+        "agent_0072",
+        "agent_0073",
+        "agent_0078",
+        "agent_0080",
+        "agent_0085",
+        "agent_0088",
+        "agent_0090",
+        "agent_0092"
+      ]
+    },
+    "agent_0083": {
+      "agent_id": "agent_0083",
+      "name": "시민_agent_0083",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0083"
+      },
+      "ideology": 0.5,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.6,
+        "reply_rate": 0.5,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.6
+      },
+      "initial_following": [
+        "agent_0026",
+        "agent_0027",
+        "agent_0032",
+        "agent_0033",
+        "agent_0034",
+        "agent_0035",
+        "agent_0037",
+        "agent_0044",
+        "agent_0045",
+        "agent_0046",
+        "agent_0055",
+        "agent_0057",
+        "agent_0058",
+        "agent_0062",
+        "agent_0071",
+        "agent_0076",
+        "agent_0077",
+        "alliance_kai",
+        "gov_pipc",
+        "pol_kim",
+        "res_snu",
+        "media_chosun",
+        "researcher_lee_js",
+        "res_etri",
+        "agent_0024",
+        "agent_0028",
+        "agent_0036",
+        "agent_0048",
+        "agent_0051",
+        "agent_0054",
+        "agent_0056",
+        "agent_0059",
+        "agent_0065",
+        "agent_0067",
+        "agent_0074",
+        "agent_0082",
+        "agent_0084",
+        "agent_0086",
+        "agent_0094",
+        "agent_0095",
+        "agent_0098",
+        "agent_0087",
+        "agent_0088"
+      ]
+    },
+    "agent_0084": {
+      "agent_id": "agent_0084",
+      "name": "시민_agent_0084",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0084"
+      },
+      "ideology": 0.55,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.7,
+        "reply_rate": 0.2,
+        "repost_rate": 0.2,
+        "controversy_affinity": 0.7
+      },
+      "initial_following": [
+        "agent_0025",
+        "agent_0026",
+        "agent_0033",
+        "agent_0035",
+        "agent_0036",
+        "agent_0043",
+        "agent_0048",
+        "agent_0062",
+        "agent_0064",
+        "agent_0068",
+        "agent_0072",
+        "agent_0073",
+        "agent_0075",
+        "agent_0077",
+        "agent_0078",
+        "agent_0083",
+        "cso_pam",
+        "alliance_kai",
+        "media_hankyoreh",
+        "pol_kim",
+        "pol_park",
+        "corp_kakao",
+        "researcher_han",
+        "researcher_lee_js",
+        "activist_choi",
+        "cso_digital",
+        "agent_0027",
+        "agent_0034",
+        "agent_0037",
+        "agent_0038",
+        "agent_0041",
+        "agent_0044",
+        "agent_0046",
+        "agent_0047",
+        "agent_0050",
+        "agent_0052",
+        "agent_0054",
+        "agent_0059",
+        "agent_0060",
+        "agent_0063",
+        "agent_0065",
+        "agent_0067",
+        "agent_0071",
+        "agent_0076",
+        "agent_0079",
+        "agent_0081",
+        "agent_0086",
+        "agent_0090",
+        "agent_0091",
+        "agent_0092",
+        "agent_0095",
+        "agent_0087"
+      ]
+    },
+    "agent_0085": {
+      "agent_id": "agent_0085",
+      "name": "시민_agent_0085",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0085"
+      },
+      "ideology": 0.6,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.3,
+        "reply_rate": 0.3,
+        "repost_rate": 0.3,
+        "controversy_affinity": 0.3
+      },
+      "initial_following": [
+        "agent_0024",
+        "agent_0025",
+        "agent_0033",
+        "agent_0042",
+        "agent_0046",
+        "agent_0048",
+        "agent_0055",
+        "agent_0056",
+        "agent_0057",
+        "agent_0058",
+        "agent_0068",
+        "agent_0073",
+        "agent_0074",
+        "agent_0077",
+        "agent_0078",
+        "journalist_kim_ys",
+        "corp_kakao",
+        "activist_choi",
+        "agent_0027",
+        "agent_0032",
+        "agent_0034",
+        "agent_0036",
+        "agent_0040",
+        "agent_0041",
+        "agent_0043",
+        "agent_0044",
+        "agent_0054",
+        "agent_0060",
+        "agent_0071",
+        "agent_0075",
+        "agent_0080",
+        "agent_0083",
+        "agent_0086",
+        "agent_0087",
+        "agent_0093",
+        "agent_0095",
+        "agent_0096",
+        "agent_0097",
+        "agent_0099",
+        "agent_0088"
+      ]
+    },
+    "agent_0086": {
+      "agent_id": "agent_0086",
+      "name": "시민_agent_0086",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0086"
+      },
+      "ideology": 0.65,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.4,
+        "reply_rate": 0.4,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.4
+      },
+      "initial_following": [
+        "agent_0026",
+        "agent_0047",
+        "agent_0053",
+        "agent_0056",
+        "agent_0063",
+        "agent_0075",
+        "agent_0077",
+        "agent_0084",
+        "agent_0085",
+        "corp_naver",
+        "corp_samsung",
+        "journalist_park_jm",
+        "activist_choi",
+        "res_etri",
+        "agent_0025",
+        "agent_0034",
+        "agent_0051",
+        "agent_0054",
+        "agent_0059",
+        "agent_0064",
+        "agent_0065",
+        "agent_0072",
+        "agent_0073",
+        "agent_0074",
+        "agent_0094",
+        "agent_0096",
+        "agent_0097",
+        "agent_0093"
+      ]
+    },
+    "agent_0087": {
+      "agent_id": "agent_0087",
+      "name": "시민_agent_0087",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0087"
+      },
+      "ideology": 0.7,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.5,
+        "reply_rate": 0.5,
+        "repost_rate": 0.2,
+        "controversy_affinity": 0.5
+      },
+      "initial_following": [
+        "agent_0034",
+        "agent_0047",
+        "agent_0053",
+        "agent_0057",
+        "gov_pipc",
+        "corp_samsung",
+        "res_kaist",
+        "researcher_han",
+        "journalist_park_jm",
+        "cso_digital",
+        "agent_0028",
+        "agent_0032",
+        "agent_0033",
+        "agent_0037",
+        "agent_0046",
+        "agent_0049",
+        "agent_0051",
+        "agent_0058",
+        "agent_0059",
+        "agent_0060",
+        "agent_0061",
+        "agent_0064",
+        "agent_0066",
+        "agent_0074",
+        "agent_0077",
+        "agent_0082",
+        "agent_0086",
+        "agent_0091",
+        "agent_0093",
+        "agent_0095",
+        "agent_0098",
+        "agent_0096",
+        "agent_0097"
+      ]
+    },
+    "agent_0088": {
+      "agent_id": "agent_0088",
+      "name": "시민_agent_0088",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0088"
+      },
+      "ideology": 0.45,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.6,
+        "reply_rate": 0.2,
+        "repost_rate": 0.3,
+        "controversy_affinity": 0.6
+      },
+      "initial_following": [
+        "agent_0029",
+        "agent_0031",
+        "agent_0032",
+        "agent_0033",
+        "agent_0035",
+        "agent_0044",
+        "agent_0055",
+        "agent_0061",
+        "agent_0062",
+        "agent_0075",
+        "agent_0085",
+        "corp_naver",
+        "res_kaist",
+        "journalist_lee",
+        "cso_digital",
+        "agent_0036",
+        "agent_0038",
+        "agent_0040",
+        "agent_0045",
+        "agent_0051",
+        "agent_0066",
+        "agent_0067",
+        "agent_0069",
+        "agent_0077",
+        "agent_0078",
+        "agent_0079",
+        "agent_0089",
+        "agent_0093",
+        "agent_0092"
+      ]
+    },
+    "agent_0089": {
+      "agent_id": "agent_0089",
+      "name": "시민_agent_0089",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0089"
+      },
+      "ideology": 0.3,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.7,
+        "reply_rate": 0.3,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.7
+      },
+      "initial_following": [
+        "agent_0028",
+        "agent_0030",
+        "agent_0031",
+        "agent_0041",
+        "agent_0048",
+        "agent_0049",
+        "agent_0050",
+        "agent_0051",
+        "agent_0052",
+        "agent_0059",
+        "agent_0060",
+        "agent_0068",
+        "agent_0069",
+        "agent_0081",
+        "agent_0088",
+        "cso_pam",
+        "pol_kim",
+        "res_kaist",
+        "media_chosun",
+        "journalist_park_jm",
+        "agent_0024",
+        "agent_0029",
+        "agent_0034",
+        "agent_0035",
+        "agent_0044",
+        "agent_0058",
+        "agent_0061",
+        "agent_0065",
+        "agent_0071",
+        "agent_0072",
+        "agent_0078",
+        "agent_0083",
+        "agent_0085",
+        "agent_0090",
+        "agent_0091",
+        "agent_0098",
+        "agent_0099"
+      ]
+    },
+    "agent_0090": {
+      "agent_id": "agent_0090",
+      "name": "시민_agent_0090",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0090"
+      },
+      "ideology": 0.2,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.3,
+        "reply_rate": 0.2,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.3
+      },
+      "initial_following": [
+        "agent_0039",
+        "agent_0041",
+        "agent_0050",
+        "agent_0071",
+        "agent_0080",
+        "agent_0081",
+        "gov_msit",
+        "media_hankyoreh",
+        "corp_kakao",
+        "res_kaist",
+        "cso_fair_ai",
+        "journalist_lee",
+        "agent_0029",
+        "agent_0031",
+        "agent_0034",
+        "agent_0037",
+        "agent_0047",
+        "agent_0049",
+        "agent_0059",
+        "agent_0063",
+        "agent_0066",
+        "agent_0072",
+        "agent_0079",
+        "agent_0082",
+        "agent_0085",
+        "agent_0089",
+        "agent_0091",
+        "agent_0093",
+        "agent_0096",
+        "agent_0097"
+      ]
+    },
+    "agent_0091": {
+      "agent_id": "agent_0091",
+      "name": "시민_agent_0091",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0091"
+      },
+      "ideology": 0.35,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.4,
+        "reply_rate": 0.3,
+        "repost_rate": 0.2,
+        "controversy_affinity": 0.4
+      },
+      "initial_following": [
+        "agent_0028",
+        "agent_0031",
+        "agent_0038",
+        "agent_0040",
+        "agent_0041",
+        "agent_0049",
+        "agent_0050",
+        "agent_0059",
+        "agent_0069",
+        "agent_0071",
+        "agent_0078",
+        "agent_0079",
+        "agent_0080",
+        "corp_naver",
+        "cso_pam",
+        "pol_kim",
+        "pol_park",
+        "corp_kakao",
+        "res_snu",
+        "cso_fair_ai",
+        "activist_choi",
+        "journalist_lee",
+        "agent_0025",
+        "agent_0026",
+        "agent_0029",
+        "agent_0034",
+        "agent_0044",
+        "agent_0045",
+        "agent_0051",
+        "agent_0052",
+        "agent_0058",
+        "agent_0072",
+        "agent_0074",
+        "agent_0082",
+        "agent_0089",
+        "agent_0092",
+        "agent_0098"
+      ]
+    },
+    "agent_0092": {
+      "agent_id": "agent_0092",
+      "name": "시민_agent_0092",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0092"
+      },
+      "ideology": 0.4,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.5,
+        "reply_rate": 0.4,
+        "repost_rate": 0.3,
+        "controversy_affinity": 0.5
+      },
+      "initial_following": [
+        "agent_0025",
+        "agent_0032",
+        "agent_0042",
+        "agent_0044",
+        "agent_0045",
+        "agent_0049",
+        "agent_0051",
+        "agent_0053",
+        "agent_0058",
+        "agent_0062",
+        "agent_0063",
+        "agent_0065",
+        "agent_0071",
+        "agent_0074",
+        "agent_0075",
+        "agent_0079",
+        "agent_0083",
+        "agent_0088",
+        "agent_0091",
+        "gov_msit",
+        "alliance_kai",
+        "gov_pipc",
+        "corp_samsung",
+        "cso_digital",
+        "agent_0029",
+        "agent_0030",
+        "agent_0033",
+        "agent_0034",
+        "agent_0038",
+        "agent_0039",
+        "agent_0046",
+        "agent_0047",
+        "agent_0050",
+        "agent_0052",
+        "agent_0055",
+        "agent_0056",
+        "agent_0064",
+        "agent_0066",
+        "agent_0068",
+        "agent_0072",
+        "agent_0076",
+        "agent_0078",
+        "agent_0081",
+        "agent_0082",
+        "agent_0085",
+        "agent_0086",
+        "agent_0087",
+        "agent_0089",
+        "agent_0093"
+      ]
+    },
+    "agent_0093": {
+      "agent_id": "agent_0093",
+      "name": "시민_agent_0093",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0093"
+      },
+      "ideology": 0.5,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.6,
+        "reply_rate": 0.5,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.6
+      },
+      "initial_following": [
+        "agent_0024",
+        "agent_0027",
+        "agent_0032",
+        "agent_0034",
+        "agent_0035",
+        "agent_0041",
+        "agent_0048",
+        "agent_0053",
+        "agent_0054",
+        "agent_0061",
+        "agent_0062",
+        "agent_0064",
+        "agent_0072",
+        "agent_0077",
+        "agent_0078",
+        "agent_0082",
+        "agent_0086",
+        "agent_0087",
+        "agent_0092",
+        "journalist_kim_ys",
+        "pol_kim",
+        "pol_park",
+        "corp_kakao",
+        "corp_samsung",
+        "res_kaist",
+        "res_etri",
+        "agent_0038",
+        "agent_0043",
+        "agent_0044",
+        "agent_0046",
+        "agent_0047",
+        "agent_0056",
+        "agent_0057",
+        "agent_0069",
+        "agent_0073",
+        "agent_0076",
+        "agent_0079",
+        "agent_0096",
+        "agent_0098",
+        "agent_0095",
+        "agent_0097"
+      ]
+    },
+    "agent_0094": {
+      "agent_id": "agent_0094",
+      "name": "시민_agent_0094",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0094"
+      },
+      "ideology": 0.55,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.7,
+        "reply_rate": 0.2,
+        "repost_rate": 0.2,
+        "controversy_affinity": 0.7
+      },
+      "initial_following": [
+        "agent_0024",
+        "agent_0034",
+        "agent_0035",
+        "agent_0044",
+        "agent_0048",
+        "agent_0052",
+        "agent_0053",
+        "agent_0054",
+        "agent_0056",
+        "agent_0064",
+        "agent_0065",
+        "agent_0068",
+        "agent_0074",
+        "agent_0078",
+        "agent_0083",
+        "agent_0085",
+        "agent_0092",
+        "gov_msit",
+        "journalist_kim_ys",
+        "media_hankyoreh",
+        "gov_pipc",
+        "researcher_han",
+        "researcher_lee_js",
+        "agent_0042",
+        "agent_0047",
+        "agent_0050",
+        "agent_0063",
+        "agent_0066",
+        "agent_0069",
+        "agent_0071",
+        "agent_0081",
+        "agent_0082",
+        "agent_0087",
+        "agent_0096",
+        "agent_0097",
+        "agent_0098"
+      ]
+    },
+    "agent_0095": {
+      "agent_id": "agent_0095",
+      "name": "시민_agent_0095",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0095"
+      },
+      "ideology": 0.6,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.3,
+        "reply_rate": 0.3,
+        "repost_rate": 0.3,
+        "controversy_affinity": 0.3
+      },
+      "initial_following": [
+        "agent_0024",
+        "agent_0027",
+        "agent_0038",
+        "agent_0052",
+        "agent_0066",
+        "agent_0068",
+        "agent_0074",
+        "agent_0082",
+        "agent_0083",
+        "agent_0086",
+        "agent_0087",
+        "alliance_kai",
+        "corp_kakao",
+        "media_chosun",
+        "researcher_lee_js",
+        "agent_0028",
+        "agent_0044",
+        "agent_0045",
+        "agent_0047",
+        "agent_0051",
+        "agent_0054",
+        "agent_0055",
+        "agent_0067",
+        "agent_0069",
+        "agent_0080",
+        "agent_0085",
+        "agent_0093",
+        "agent_0096",
+        "agent_0097"
+      ]
+    },
+    "agent_0096": {
+      "agent_id": "agent_0096",
+      "name": "시민_agent_0096",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0096"
+      },
+      "ideology": 0.65,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.4,
+        "reply_rate": 0.4,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.4
+      },
+      "initial_following": [
+        "agent_0026",
+        "agent_0035",
+        "agent_0043",
+        "agent_0053",
+        "agent_0057",
+        "agent_0064",
+        "agent_0065",
+        "agent_0075",
+        "agent_0077",
+        "agent_0084",
+        "agent_0085",
+        "agent_0094",
+        "gov_msit",
+        "cso_pam",
+        "pol_kim",
+        "corp_kakao",
+        "corp_samsung",
+        "res_kaist",
+        "researcher_han",
+        "activist_choi",
+        "media_techwatch",
+        "journalist_lee",
+        "res_etri",
+        "agent_0031",
+        "agent_0034",
+        "agent_0036",
+        "agent_0037",
+        "agent_0045",
+        "agent_0050",
+        "agent_0055",
+        "agent_0062",
+        "agent_0068",
+        "agent_0078",
+        "agent_0086",
+        "agent_0097",
+        "agent_0099"
+      ]
+    },
+    "agent_0097": {
+      "agent_id": "agent_0097",
+      "name": "시민_agent_0097",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0097"
+      },
+      "ideology": 0.7,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.5,
+        "reply_rate": 0.5,
+        "repost_rate": 0.2,
+        "controversy_affinity": 0.5
+      },
+      "initial_following": [
+        "agent_0024",
+        "agent_0033",
+        "agent_0044",
+        "agent_0047",
+        "agent_0054",
+        "agent_0055",
+        "agent_0056",
+        "agent_0057",
+        "agent_0083",
+        "agent_0086",
+        "alliance_kai",
+        "pol_kim",
+        "pol_park",
+        "corp_kakao",
+        "researcher_jung",
+        "researcher_han",
+        "journalist_lee",
+        "agent_0025",
+        "agent_0026",
+        "agent_0029",
+        "agent_0034",
+        "agent_0051",
+        "agent_0067",
+        "agent_0069",
+        "agent_0070",
+        "agent_0076",
+        "agent_0081",
+        "agent_0090",
+        "agent_0091",
+        "agent_0098"
+      ]
+    },
+    "agent_0098": {
+      "agent_id": "agent_0098",
+      "name": "시민_agent_0098",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0098"
+      },
+      "ideology": 0.45,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "격식체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.6,
+        "reply_rate": 0.2,
+        "repost_rate": 0.3,
+        "controversy_affinity": 0.6
+      },
+      "initial_following": [
+        "agent_0024",
+        "agent_0025",
+        "agent_0029",
+        "agent_0032",
+        "agent_0034",
+        "agent_0035",
+        "agent_0039",
+        "agent_0062",
+        "agent_0079",
+        "agent_0082",
+        "agent_0094",
+        "journalist_kim_ys",
+        "cso_pam",
+        "researcher_han",
+        "media_chosun",
+        "res_etri",
+        "agent_0026",
+        "agent_0027",
+        "agent_0033",
+        "agent_0037",
+        "agent_0038",
+        "agent_0040",
+        "agent_0043",
+        "agent_0046",
+        "agent_0052",
+        "agent_0054",
+        "agent_0056",
+        "agent_0058",
+        "agent_0063",
+        "agent_0068",
+        "agent_0069",
+        "agent_0070",
+        "agent_0086",
+        "agent_0089",
+        "agent_0091",
+        "agent_0092"
+      ]
+    },
+    "agent_0099": {
+      "agent_id": "agent_0099",
+      "name": "시민_agent_0099",
+      "entity_type": "citizen",
+      "origin": "derived",
+      "derived_from": null,
+      "skeleton": {
+        "origin": "derived",
+        "layer": "derived",
+        "entity_type": "citizen",
+        "name": "시민_agent_0099"
+      },
+      "ideology": 0.3,
+      "topics": [
+        "AI 규제",
+        "기술 정책"
+      ],
+      "sensitive_topics": [
+        "개인정보"
+      ],
+      "personality": "분석적이고 논리적인 성향",
+      "speech_style": "구어체",
+      "background": "AI 규제 관련 이해관계자",
+      "behavior_tendency": {
+        "post_rate": 0.7,
+        "reply_rate": 0.3,
+        "repost_rate": 0.1,
+        "controversy_affinity": 0.7
+      },
+      "initial_following": [
+        "agent_0028",
+        "agent_0031",
+        "agent_0038",
+        "agent_0041",
+        "agent_0048",
+        "agent_0051",
+        "agent_0058",
+        "agent_0059",
+        "agent_0068",
+        "agent_0069",
+        "agent_0081",
+        "agent_0089",
+        "agent_0092",
+        "agent_0098",
+        "gov_msit",
+        "cso_pam",
+        "pol_park",
+        "corp_samsung",
+        "researcher_jung",
+        "activist_choi",
+        "agent_0032",
+        "agent_0035",
+        "agent_0037",
+        "agent_0043",
+        "agent_0044",
+        "agent_0046",
+        "agent_0049",
+        "agent_0057",
+        "agent_0061",
+        "agent_0070",
+        "agent_0071",
+        "agent_0075",
+        "agent_0076",
+        "agent_0078",
+        "agent_0080"
+      ]
+    }
+  }
+}
