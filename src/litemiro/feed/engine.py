@@ -30,10 +30,20 @@ where K is the candidate-pool size.
 The ``SocialGraphLike`` dependency is supplied at construction time.
 The Protocol in ``litemiro.interfaces`` deliberately omits this — it's
 an implementation detail of B's wiring, not part of the public surface.
+
+Post-MVP — when ``topic_hierarchy`` (child→parent) is provided at
+construction time, posts whose topic's parent matches an agent interest
+also enter the candidate pool and the ranking score is boosted by the
+match kind (direct > parent > cosine). Weights are opt-in: with
+``topic_hierarchy=None`` the engine keeps the W2-default behaviour
+(pure ``hot_score`` ranking, no parent expansion) — so the three
+``*_match_weight`` parameters are honoured only when a hierarchy is
+provided, and passing them without one is a silent no-op. Issue #18.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from litemiro._vector import cosine
@@ -50,14 +60,31 @@ class FeedEngine:
         social: SocialGraphLike,
         embedder: EmbedderLike | None = None,
         similarity_threshold: float = 0.4,
+        topic_hierarchy: Mapping[str, str] | None = None,
+        direct_match_weight: float = 1.0,
+        parent_match_weight: float = 0.5,
+        cosine_match_weight: float = 0.25,
     ) -> None:
         if not 0.0 <= similarity_threshold <= 1.0:
             raise ValueError(
                 f"similarity_threshold must be in [0.0, 1.0], got {similarity_threshold}"
             )
+        for name, weight in (
+            ("direct_match_weight", direct_match_weight),
+            ("parent_match_weight", parent_match_weight),
+            ("cosine_match_weight", cosine_match_weight),
+        ):
+            if weight < 0:
+                raise ValueError(f"{name} must be non-negative, got {weight}")
         self._social = social
         self._embedder = embedder
         self._similarity_threshold = similarity_threshold
+        self._topic_hierarchy: dict[str, str] | None = (
+            dict(topic_hierarchy) if topic_hierarchy is not None else None
+        )
+        self._direct_match_weight = direct_match_weight
+        self._parent_match_weight = parent_match_weight
+        self._cosine_match_weight = cosine_match_weight
         self._posts: dict[str, Post] = {}
         self._topic_index: dict[str, set[str]] = {}
         self._topic_embeddings: dict[str, tuple[float, ...]] = {}
@@ -103,6 +130,33 @@ class FeedEngine:
             )
         self._posts[post.post_id] = post
 
+    def _parent_match_ids(self, interests: frozenset[str]) -> set[str]:
+        if self._topic_hierarchy is None or not interests:
+            return set()
+        out: set[str] = set()
+        for topic, ids in self._topic_index.items():
+            if topic in interests:
+                continue
+            parent = self._topic_hierarchy.get(topic)
+            if parent is not None and parent in interests:
+                out |= ids
+        return out
+
+    def _cosine_match_ids(self, interests: frozenset[str]) -> set[str]:
+        if self._embedder is None or not interests:
+            return set()
+        interest_vectors = tuple(self._embedder.embed(i) for i in interests)
+        out: set[str] = set()
+        for topic, ids in self._topic_index.items():
+            if topic in interests:
+                continue
+            topic_vec = self._topic_embeddings.get(topic)
+            if topic_vec is None:
+                continue
+            if any(cosine(iv, topic_vec) >= self._similarity_threshold for iv in interest_vectors):
+                out |= ids
+        return out
+
     def build_feed(self, *, agent: Agent, current_round: int, limit: int = 20) -> tuple[Post, ...]:
         if limit < 0:
             raise ValueError(f"limit must be non-negative, got {limit}")
@@ -110,31 +164,39 @@ class FeedEngine:
             return ()
 
         following = self._social.following(agent.agent_id)
+        interests = frozenset(agent.interests)
 
-        candidate_ids: set[str] = set()
-        for topic in agent.interests:
-            candidate_ids |= self._topic_index.get(topic, set())
-        if self._embedder is not None and agent.interests:
-            interest_vectors = tuple(self._embedder.embed(i) for i in agent.interests)
-            interests = frozenset(agent.interests)
-            for topic, ids in self._topic_index.items():
-                if topic in interests:
-                    continue
-                topic_vec = self._topic_embeddings.get(topic)
-                if topic_vec is None:
-                    continue
-                if any(
-                    cosine(iv, topic_vec) >= self._similarity_threshold for iv in interest_vectors
-                ):
-                    candidate_ids |= ids
+        direct_ids: set[str] = set()
+        for topic in interests:
+            direct_ids |= self._topic_index.get(topic, set())
+
+        parent_ids = self._parent_match_ids(interests)
+        cosine_ids = self._cosine_match_ids(interests)
+
+        candidate_ids = direct_ids | parent_ids | cosine_ids
         for post_id, post in self._posts.items():
             if post.author_id in following:
                 candidate_ids.add(post_id)
+
+        use_hierarchy_boost = self._topic_hierarchy is not None
+
+        def _boost(pid: str) -> float:
+            if not use_hierarchy_boost:
+                return 0.0
+            if pid in direct_ids:
+                return self._direct_match_weight
+            if pid in parent_ids:
+                return self._parent_match_weight
+            if pid in cosine_ids:
+                return self._cosine_match_weight
+            return 0.0
 
         candidates = [
             self._posts[pid]
             for pid in candidate_ids
             if self._posts[pid].author_id != agent.agent_id
         ]
-        candidates.sort(key=lambda p: (-p.hot_score(current_round), p.post_id))
+        candidates.sort(
+            key=lambda p: (-(p.hot_score(current_round) + _boost(p.post_id)), p.post_id)
+        )
         return tuple(candidates[:limit])

@@ -311,6 +311,159 @@ class TestSemanticMatching:
             FeedEngine(social=social, embedder=embedder, similarity_threshold=1.5)
 
 
+class TestTopicHierarchy:
+    """Post-MVP — Issue #18 topic_hierarchy ranking boost.
+
+    When ``topic_hierarchy`` (child→parent) is injected, posts whose
+    topic's parent matches an agent interest enter the candidate pool
+    (a third path next to direct/cosine), and per-post ranking score is
+    boosted by match kind: direct > parent > cosine. When the hierarchy
+    is omitted the engine keeps its W2 default behaviour bit-for-bit.
+    """
+
+    def test_no_hierarchy_keeps_default_ranking(self, social: SocialGraph) -> None:
+        feed = FeedEngine(social=social)
+        feed.index_post(_post("p1", "stranger", topics=("ai",), likes=1))
+        feed.index_post(_post("p2", "stranger", topics=("ai",), likes=5))
+        result = feed.build_feed(agent=_agent("me", interests=("ai",)), current_round=1)
+        assert [p.post_id for p in result] == ["p2", "p1"]
+
+    def test_hierarchy_equivalent_to_none_when_no_parent_matches(self, social: SocialGraph) -> None:
+        without = FeedEngine(social=social)
+        without.index_post(_post("p1", "stranger", topics=("ai",), likes=2))
+        without.index_post(_post("p2", "stranger", topics=("ai",), likes=1))
+        baseline = without.build_feed(agent=_agent("me", interests=("ai",)), current_round=1)
+
+        with_hier = FeedEngine(social=social, topic_hierarchy={"ml": "tech", "robotics": "tech"})
+        with_hier.index_post(_post("p1", "stranger", topics=("ai",), likes=2))
+        with_hier.index_post(_post("p2", "stranger", topics=("ai",), likes=1))
+        # Interests don't intersect the hierarchy at all → identical
+        # ordering AND identical scores.
+        boosted = with_hier.build_feed(agent=_agent("me", interests=("ai",)), current_round=1)
+        assert [p.post_id for p in baseline] == [p.post_id for p in boosted]
+
+    def test_parent_topic_enters_candidate_pool(self, social: SocialGraph) -> None:
+        feed = FeedEngine(social=social, topic_hierarchy={"ml": "tech"})
+        feed.index_post(_post("p1", "stranger", topics=("ml",)))
+        # "tech" is the agent's interest; "ml" is a child of "tech".
+        result = feed.build_feed(agent=_agent("me", interests=("tech",)), current_round=1)
+        assert [p.post_id for p in result] == ["p1"]
+
+    def test_parent_path_requires_hierarchy(self, social: SocialGraph) -> None:
+        feed = FeedEngine(social=social)  # no hierarchy
+        feed.index_post(_post("p1", "stranger", topics=("ml",)))
+        result = feed.build_feed(agent=_agent("me", interests=("tech",)), current_round=1)
+        assert result == ()
+
+    def test_direct_beats_parent_in_ranking(self, social: SocialGraph) -> None:
+        feed = FeedEngine(social=social, topic_hierarchy={"ml": "tech"})
+        feed.index_post(_post("p_direct", "alice", topics=("tech",), likes=0))
+        feed.index_post(_post("p_parent", "bob", topics=("ml",), likes=0))
+        # Both age=1 hot_score=0. Direct match weight (1.0) > parent (0.5).
+        result = feed.build_feed(agent=_agent("me", interests=("tech",)), current_round=1)
+        assert [p.post_id for p in result] == ["p_direct", "p_parent"]
+
+    def test_parent_beats_cosine_in_ranking(self, social: SocialGraph) -> None:
+        embedder = _FakeEmbedder({"tech": (1.0, 0.0), "ml": (1.0, 0.0), "x": (0.9, 0.44)})
+        feed = FeedEngine(
+            social=social,
+            embedder=embedder,
+            similarity_threshold=0.5,
+            topic_hierarchy={"ml": "tech"},
+        )
+        feed.index_post(_post("p_parent", "alice", topics=("ml",), likes=0))
+        feed.index_post(_post("p_cosine", "bob", topics=("x",), likes=0))
+        # Parent (ml→tech) boost 0.5 > cosine boost 0.25, both at hot_score=0.
+        result = feed.build_feed(agent=_agent("me", interests=("tech",)), current_round=1)
+        assert [p.post_id for p in result] == ["p_parent", "p_cosine"]
+
+    def test_zero_weights_yields_no_boost(self, social: SocialGraph) -> None:
+        feed = FeedEngine(
+            social=social,
+            topic_hierarchy={"ml": "tech"},
+            direct_match_weight=0.0,
+            parent_match_weight=0.0,
+            cosine_match_weight=0.0,
+        )
+        feed.index_post(_post("p_parent", "alice", topics=("ml",), likes=1))
+        feed.index_post(_post("p_direct", "bob", topics=("tech",), likes=2))
+        # Pure hot_score: p_direct (2) > p_parent (1). Boost contributions
+        # cancel to zero so ranking matches the no-hierarchy baseline.
+        result = feed.build_feed(agent=_agent("me", interests=("tech",)), current_round=1)
+        assert [p.post_id for p in result] == ["p_direct", "p_parent"]
+
+    def test_large_parent_weight_overrides_hot_score(self, social: SocialGraph) -> None:
+        feed = FeedEngine(
+            social=social,
+            topic_hierarchy={"ml": "tech"},
+            direct_match_weight=0.0,
+            parent_match_weight=10.0,
+        )
+        feed.index_post(_post("p_parent", "alice", topics=("ml",), likes=0))
+        feed.index_post(_post("p_direct", "bob", topics=("tech",), likes=5))
+        # Direct's hot_score (5/2^1.5 ≈ 1.77) loses to parent boost 10.0.
+        result = feed.build_feed(agent=_agent("me", interests=("tech",)), current_round=1)
+        assert [p.post_id for p in result] == ["p_parent", "p_direct"]
+
+    def test_unrelated_parent_does_not_match(self, social: SocialGraph) -> None:
+        feed = FeedEngine(social=social, topic_hierarchy={"ml": "tech"})
+        feed.index_post(_post("p1", "stranger", topics=("ml",)))
+        # "politics" interest has no relation to "tech".
+        result = feed.build_feed(agent=_agent("me", interests=("politics",)), current_round=1)
+        assert result == ()
+
+    def test_self_authored_still_excluded_under_hierarchy(self, social: SocialGraph) -> None:
+        feed = FeedEngine(social=social, topic_hierarchy={"ml": "tech"})
+        feed.index_post(_post("p1", "me", topics=("ml",)))
+        result = feed.build_feed(agent=_agent("me", interests=("tech",)), current_round=1)
+        assert result == ()
+
+    def test_direct_match_takes_precedence_over_parent_when_post_has_both(
+        self, social: SocialGraph
+    ) -> None:
+        feed = FeedEngine(
+            social=social,
+            topic_hierarchy={"ml": "tech"},
+            direct_match_weight=1.0,
+            parent_match_weight=0.5,
+        )
+        # post has both "tech" (direct) and "ml" (parent→tech). Direct
+        # wins → boost = 1.0, not 0.5.
+        feed.index_post(_post("p_both", "alice", topics=("tech", "ml"), likes=0))
+        feed.index_post(_post("p_parent_only", "bob", topics=("ml",), likes=0))
+        result = feed.build_feed(agent=_agent("me", interests=("tech",)), current_round=1)
+        assert [p.post_id for p in result] == ["p_both", "p_parent_only"]
+
+    def test_negative_weight_rejected(self, social: SocialGraph) -> None:
+        with pytest.raises(ValueError, match="direct_match_weight"):
+            FeedEngine(social=social, direct_match_weight=-0.1)
+        with pytest.raises(ValueError, match="parent_match_weight"):
+            FeedEngine(social=social, parent_match_weight=-0.1)
+        with pytest.raises(ValueError, match="cosine_match_weight"):
+            FeedEngine(social=social, cosine_match_weight=-0.1)
+
+    def test_hierarchy_is_copied_not_aliased(self, social: SocialGraph) -> None:
+        # Mutating the caller's mapping after construction must not
+        # silently change FeedEngine's expansion behaviour.
+        h = {"ml": "tech"}
+        feed = FeedEngine(social=social, topic_hierarchy=h)
+        h["robotics"] = "tech"  # post-construction mutation
+        feed.index_post(_post("p1", "stranger", topics=("robotics",)))
+        result = feed.build_feed(agent=_agent("me", interests=("tech",)), current_round=1)
+        # robotics→tech was added AFTER construction, so it must NOT
+        # have been picked up.
+        assert result == ()
+
+    def test_determinism_with_hierarchy(self, social: SocialGraph) -> None:
+        feed = FeedEngine(social=social, topic_hierarchy={"ml": "tech", "nlp": "tech"})
+        for i, topic in enumerate(("ml", "tech", "nlp", "tech")):
+            feed.index_post(_post(f"p{i}", "stranger", topics=(topic,)))
+        agent = _agent("me", interests=("tech",))
+        first = feed.build_feed(agent=agent, current_round=1)
+        for _ in range(3):
+            assert feed.build_feed(agent=agent, current_round=1) == first
+
+
 def test_protocol_is_satisfied(feed: FeedEngine) -> None:
     assert isinstance(feed, FeedEngineLike)
 
