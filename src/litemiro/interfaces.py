@@ -7,6 +7,7 @@ surfaces, and document the contract that A/C implementations must keep.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from litemiro.models import ActionContext, ActionResult, Agent, LLMResponse, Post, RoundEvent
@@ -97,6 +98,7 @@ class StateStoreLike(Protocol):
     def add_post(self, post: Post) -> None: ...
     def replace_post(self, post: Post) -> None: ...
     def get_random_seed(self, agent_id: str) -> int: ...
+    async def save_checkpoint(self, round_num: int) -> Path: ...
 
 
 @runtime_checkable

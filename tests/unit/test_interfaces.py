@@ -9,6 +9,7 @@ in-memory fake satisfying the documented signature also satisfies
 from __future__ import annotations
 
 from collections.abc import Mapping
+from pathlib import Path
 
 from litemiro.interfaces import (
     ActionSelectorLike,
@@ -87,6 +88,9 @@ class _StubStore:
 
     def get_random_seed(self, agent_id: str) -> int:
         return 0
+
+    async def save_checkpoint(self, round_num: int) -> Path:
+        return Path(f"checkpoint_{round_num}.json")
 
 
 class _StubLogger:
