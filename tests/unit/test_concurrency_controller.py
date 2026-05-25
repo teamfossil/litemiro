@@ -171,10 +171,14 @@ class TestLoadValidation:
     sinking real OpenRouter budget into the e2e load probe.
     """
 
-    async def test_default_config_100_items_in_flight_under_limit(self) -> None:
-        # Mirrors test_max_in_flight_does_not_exceed_limit at the
-        # production scale. cooldown=0 so the gate releases predictably
-        # within a single event-loop pump.
+    async def test_default_config_first_batch_in_flight_under_limit_at_100_scale(
+        self,
+    ) -> None:
+        # cooldown=0 so batches 2..5 don't insert real asyncio.sleep(0.5) calls.
+        # Scope note: with a single Event, only batch 1 reaches the sem ceiling
+        # (the gate stays set for the rest), so this pins the limit on the
+        # first 20 of 100 items rather than steady-state across all 5 batches.
+        # A per-batch re-armable gate is tracked as a follow-up.
         c = ConcurrencyController(cooldown_seconds=0.0)
         in_flight = 0
         max_in_flight = 0
@@ -192,6 +196,8 @@ class TestLoadValidation:
             return item
 
         async def release_gate() -> None:
+            # Generous yield budget so all 20 batch-1 tasks reach gate.wait()
+            # before set(); the actual minimum is ~20 but 500 costs nothing.
             for _ in range(500):
                 await asyncio.sleep(0)
             gate.set()
