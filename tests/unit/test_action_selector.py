@@ -1,6 +1,6 @@
 """TDD spec for ``litemiro.action.selector.ActionSelector``.
 
-Notion §3.3 / §3.4 only stipulate "ActionSelector → LLM → Action" and a
+Notion Section 3.3 / Section 3.4 only stipulate "ActionSelector → LLM → Action" and a
 prompt recipe of "persona + memory + feed + recent". B locks the
 contract here:
 
