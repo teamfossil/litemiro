@@ -245,9 +245,9 @@ store = StateStore(
 | `tests/e2e/test_phase1_to_phase2_smoke.py` | in-memory 픽스처로 Section 4 매핑 규칙 (top-N tie-breaker, self-follow drop, unused-field 보존 등) 단위 검증 |
 | `tests/e2e/test_phase1_to_phase2_json_smoke.py` | 실제 디스크 JSON (`tests/data/sample_ontology_*.json`) → Pydantic round-trip → 매핑 → `StateStore` 결정성 |
 
-공통 매핑 helper 는 `tests/e2e/_phase1_to_phase2_helpers.py` 에 분리해 둔다.
-`OntologyLoader` (Issue #13, owner=C) 머지 후 helper 모듈과 본 import 를
-삭제하고 호출부를 ``OntologyLoader`` 메서드로 교체한다.
+`OntologyLoader` (Issue #13) 머지 후 임시 helper 모듈
+(`tests/e2e/_phase1_to_phase2_helpers.py`) 은 삭제되었고 두 스모크의
+호출부는 ``OntologyLoader`` 메서드로 교체되었다 (Section 8.1, owner=A).
 
 ## 8. 후속 마일스톤 (post-MVP)
 
@@ -325,5 +325,5 @@ hard error 게이트) + **B** (관측 데이터 수집).
 - 컨텍스트 빌더 (라운드 예시): `src/litemiro/core/context_builder.py`
 - Sample fixture: `tests/data/sample_ontology_a.json`, `tests/data/sample_ontology_b.json`
 - E2E 스모크: `tests/e2e/test_phase1_to_phase2_smoke.py`,
-  `tests/e2e/test_phase1_to_phase2_json_smoke.py`,
-  `tests/e2e/_phase1_to_phase2_helpers.py`
+  `tests/e2e/test_phase1_to_phase2_json_smoke.py`
+- OntologyLoader: `src/litemiro/integration/ontology_loader.py`
