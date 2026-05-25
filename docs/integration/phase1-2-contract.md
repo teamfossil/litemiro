@@ -229,20 +229,25 @@ store = StateStore(
    ("페르소나 관심사 vs 메모리 경험 모순 검출") 반영. **빈 `semantic` 리스트는
    warning 면제** (cold start 케이스).
 
+### 6.1 Reference fixtures
+
+- `tests/data/sample_ontology_a.json` / `sample_ontology_b.json` — 3-agent
+  (Journalist/Academic/Citizen) quick 프리셋, self-follow 와 unknown follow,
+  cold-start (빈 semantic), 메모리 top-N tie-breaker 케이스를 모두 포함.
+- Loader 단위 테스트는 본 fixture 를 입력으로 Section 6 검증 5 항목을 모두 통과해야 한다.
+
 ## 7. E2E 스모크 테스트
 
-`tests/e2e/test_phase1_to_phase2_smoke.py` (신규, **owner: B**).
+두 파일로 분리해 lock-in 한다 (**owner: B**).
 
-```
-- fixture: 3-agent OntologyA + 3-agent OntologyB JSON (소규모)
-- OntologyLoader.load → build_agents → build_social_graph
-- StateStore 생성
-- AgentScheduler.select_active(round_num=0) 호출 → 결정적 결과
-- 동일 입력 2회 실행 → 결과 동일성 검증
-```
+| 파일 | 역할 |
+|---|---|
+| `tests/e2e/test_phase1_to_phase2_smoke.py` | in-memory 픽스처로 Section 4 매핑 규칙 (top-N tie-breaker, self-follow drop, unused-field 보존 등) 단위 검증 |
+| `tests/e2e/test_phase1_to_phase2_json_smoke.py` | 실제 디스크 JSON (`tests/data/sample_ontology_*.json`) → Pydantic round-trip → 매핑 → `StateStore` 결정성 |
 
-`OntologyLoader` 미구현 단계에서는 **inline helper**로 임시 매핑을 작성하여
-계약을 미리 lock-in. C 구현 완료 후 helper를 제거하고 진짜 Loader로 교체.
+공통 매핑 helper 는 `tests/e2e/_phase1_to_phase2_helpers.py` 에 분리해 둔다.
+`OntologyLoader` (Issue #13, owner=C) 머지 후 helper 모듈과 본 import 를
+삭제하고 호출부를 ``OntologyLoader`` 메서드로 교체한다.
 
 ## 8. 후속 마일스톤 (post-MVP)
 
@@ -253,6 +258,51 @@ store = StateStore(
 | `OntologyA.ontology.topic_hierarchy` → FeedEngine 가중치 | 토픽 다이버시티 실험 | B |
 | Episodic memory retrieval-on-demand | ActionSelector 컨텍스트 확장 | C |
 | `ideology` → SocialGraph homophily | 양극화 실험 | B |
+
+### 8.1 Loader 통합 E2E 시나리오 (Issue #13 머지 직후)
+
+본 PR 의 helper 기반 스모크가 lock-in 한 모든 케이스를 `OntologyLoader` 호출로
+재실행해 회귀 없음을 증명한다. **owner: A** (helper → Loader 치환 + 본 Section 7
+테스트 두 파일 갱신).
+
+```
+1. Loader.load(Path("tests/data/sample_ontology_a.json"),
+                Path("tests/data/sample_ontology_b.json"))
+   → 검증 통과 + `OntologyA`, `OntologyB` 반환
+2. Loader.build_agents(...)             → Section 4.1 매핑과 동일 결과
+3. Loader.build_social_graph(...)       → Section 4.3 매핑과 동일 결과
+4. StateStore(...) + AgentScheduler 결정성 (round 0/1 2 회 비교)
+5. validate_consistency() warning 카운트 == 0 (sample fixture 기준)
+```
+
+### 8.2 `quick` 프리셋 활성률 측정 스니펫
+
+`mean(post_rate)` 가 Section 3.1 의 `activation_rate` 권장 범위 (0.05~0.7) 안에 들고
+quick 프리셋 전체 평균이 합리적인지 (~0.3 전후) 점검한다. **owner: B**, Phase 1
+quick 실행이 처음으로 통과하는 시점에 1 회 실행해 결과를 issue 코멘트로 남긴다.
+
+```python
+from statistics import mean
+from pathlib import Path
+from litemiro.phase1.models import OntologyA
+
+a = OntologyA.model_validate_json(Path("ontology_a_persona.json").read_text("utf-8"))
+rates = [p.behavior_tendency.post_rate for p in a.agents.values()]
+print(f"n={len(rates)}  mean={mean(rates):.3f}  min={min(rates):.3f}  max={max(rates):.3f}")
+```
+
+### 8.3 페르소나–메모리 모순 hard-error 승격 기준
+
+Section 6.5 의 warning 을 hard error 로 올리는 조건:
+
+1. Phase 1 quick 프리셋 3 회 이상 실행하여 누적 warning 비율이 **5% 미만** 이고,
+2. 발생 사례가 모두 derived agent (`origin=derived`) 또는 빈 `topics` 등 의도적
+   cold start 로 설명 가능하면,
+3. extracted agent 의 모순은 hard error 로 승격하고 (`origin == EXTRACTED` 한정),
+   `OntologyLoader.load` 가 `ValueError` 로 거부.
+
+승격 결정은 ADR (`docs/decisions/`) 로 별도 기록한다. **owner: C** (Loader 측
+hard error 게이트) + **B** (관측 데이터 수집).
 
 ## 9. Owner 분담
 
@@ -273,3 +323,7 @@ store = StateStore(
 - AgentScheduler (소비자): `src/litemiro/core/agent_scheduler.py`
 - 스키마 로더: `src/litemiro/schemas/__init__.py`
 - 컨텍스트 빌더 (라운드 예시): `src/litemiro/core/context_builder.py`
+- Sample fixture: `tests/data/sample_ontology_a.json`, `tests/data/sample_ontology_b.json`
+- E2E 스모크: `tests/e2e/test_phase1_to_phase2_smoke.py`,
+  `tests/e2e/test_phase1_to_phase2_json_smoke.py`,
+  `tests/e2e/_phase1_to_phase2_helpers.py`
