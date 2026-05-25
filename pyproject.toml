@@ -79,6 +79,8 @@ addopts = [
   "--cov=litemiro",
   "--cov-report=term-missing",
   "--cov-fail-under=80",
+  "-m",
+  "not manual",
 ]
 testpaths = ["tests"]
 asyncio_mode = "auto"
@@ -86,6 +88,7 @@ markers = [
   "slow: marks tests as slow (deselect with -m 'not slow')",
   "integration: integration tests across components",
   "e2e: end-to-end simulation tests",
+  "manual: opt-in tests excluded from CI; run with -m manual",
 ]
 
 [tool.coverage.run]
