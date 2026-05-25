@@ -127,7 +127,10 @@ def ontology_b() -> OntologyB:
 def test_build_agents_maps_post_rate_to_activation_rate(
     ontology_a: OntologyA, ontology_b: OntologyB
 ) -> None:
-    agents = {a.agent_id: a for a in OntologyLoader.build_agents(ontology_a=ontology_a, ontology_b=ontology_b)}
+    agents = {
+        a.agent_id: a
+        for a in OntologyLoader.build_agents(ontology_a=ontology_a, ontology_b=ontology_b)
+    }
 
     assert agents["agent_001"].activation_rate == pytest.approx(0.7)
     assert agents["agent_002"].activation_rate == pytest.approx(0.4)
@@ -137,7 +140,10 @@ def test_build_agents_maps_post_rate_to_activation_rate(
 def test_build_agents_maps_topics_to_interests(
     ontology_a: OntologyA, ontology_b: OntologyB
 ) -> None:
-    agents = {a.agent_id: a for a in OntologyLoader.build_agents(ontology_a=ontology_a, ontology_b=ontology_b)}
+    agents = {
+        a.agent_id: a
+        for a in OntologyLoader.build_agents(ontology_a=ontology_a, ontology_b=ontology_b)
+    }
 
     assert agents["agent_001"].interests == ("정치", "경제")
     assert agents["agent_002"].interests == ("기술",)
@@ -148,7 +154,10 @@ def test_persona_traits_preserve_unused_fields(
     ontology_a: OntologyA, ontology_b: OntologyB
 ) -> None:
     """Section 4.1: model_dump 전체 보존 — 후속 단계가 참조할 미사용 필드 유지."""
-    agents = {a.agent_id: a for a in OntologyLoader.build_agents(ontology_a=ontology_a, ontology_b=ontology_b)}
+    agents = {
+        a.agent_id: a
+        for a in OntologyLoader.build_agents(ontology_a=ontology_a, ontology_b=ontology_b)
+    }
     traits = agents["agent_001"].persona_traits
 
     assert traits["behavior_tendency"]["reply_rate"] == pytest.approx(0.3)
@@ -158,7 +167,10 @@ def test_persona_traits_preserve_unused_fields(
 def test_memory_summary_orders_by_sim_count_then_recency(
     ontology_a: OntologyA, ontology_b: OntologyB
 ) -> None:
-    agents = {a.agent_id: a for a in OntologyLoader.build_agents(ontology_a=ontology_a, ontology_b=ontology_b)}
+    agents = {
+        a.agent_id: a
+        for a in OntologyLoader.build_agents(ontology_a=ontology_a, ontology_b=ontology_b)
+    }
 
     # contract Section 4.2: top-3 by (simulation_count desc, last_relevant_sim desc)
     # m4(9), m2(5,10), m3(5,2) — m1(1) dropped
@@ -168,14 +180,20 @@ def test_memory_summary_orders_by_sim_count_then_recency(
 def test_memory_summary_is_none_for_empty_semantic(
     ontology_a: OntologyA, ontology_b: OntologyB
 ) -> None:
-    agents = {a.agent_id: a for a in OntologyLoader.build_agents(ontology_a=ontology_a, ontology_b=ontology_b)}
+    agents = {
+        a.agent_id: a
+        for a in OntologyLoader.build_agents(ontology_a=ontology_a, ontology_b=ontology_b)
+    }
     assert agents["agent_003"].memory_summary is None
 
 
 def test_memory_summary_handles_under_n_entries(
     ontology_a: OntologyA, ontology_b: OntologyB
 ) -> None:
-    agents = {a.agent_id: a for a in OntologyLoader.build_agents(ontology_a=ontology_a, ontology_b=ontology_b)}
+    agents = {
+        a.agent_id: a
+        for a in OntologyLoader.build_agents(ontology_a=ontology_a, ontology_b=ontology_b)
+    }
     assert agents["agent_002"].memory_summary == "유일한 기억"
 
 
@@ -260,5 +278,8 @@ def test_scheduler_is_deterministic_across_runs(
 
 def test_build_agents_order_is_stable(ontology_a: OntologyA, ontology_b: OntologyB) -> None:
     """contract Section 5: agent_id 사전순 보장."""
-    ids = tuple(a.agent_id for a in OntologyLoader.build_agents(ontology_a=ontology_a, ontology_b=ontology_b))
+    ids = tuple(
+        a.agent_id
+        for a in OntologyLoader.build_agents(ontology_a=ontology_a, ontology_b=ontology_b)
+    )
     assert ids == ("agent_001", "agent_002", "agent_003")

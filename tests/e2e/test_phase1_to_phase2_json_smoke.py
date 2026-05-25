@@ -79,7 +79,10 @@ def test_json_extra_fields_are_rejected() -> None:
 
 
 def test_build_agents_from_json(ontology_a: OntologyA, ontology_b: OntologyB) -> None:
-    agents = {a.agent_id: a for a in OntologyLoader.build_agents(ontology_a=ontology_a, ontology_b=ontology_b)}
+    agents = {
+        a.agent_id: a
+        for a in OntologyLoader.build_agents(ontology_a=ontology_a, ontology_b=ontology_b)
+    }
 
     assert set(agents) == {"agent_001", "agent_002", "agent_003"}
     assert agents["agent_001"].activation_rate == pytest.approx(0.7)
@@ -150,7 +153,5 @@ def test_validate_consistency_zero_warnings_on_sample_fixture(
     이 가드가 깨지면 sample fixture 자체가 의도와 어긋난 것이거나, Section 6.5
     검증 로직이 회귀한 것이다 — 둘 다 명시적으로 추적되어야 하므로 hard assert.
     """
-    warnings = OntologyLoader.validate_consistency(
-        ontology_a=ontology_a, ontology_b=ontology_b
-    )
+    warnings = OntologyLoader.validate_consistency(ontology_a=ontology_a, ontology_b=ontology_b)
     assert warnings == ()
