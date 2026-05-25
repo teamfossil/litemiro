@@ -351,7 +351,7 @@ async def test_recent_actions_deque_keeps_last_five() -> None:
     feed = FakeFeedEngine()
     social = FakeSocialGraph()
     selector = FakeActionSelector()
-    for i in range(7):
+    for _ in range(7):
         selector.queue_for("a", Action(type=ActionType.DO_NOTHING))
     logger = InMemoryEventLogger()
     budget = FakeTokenBudgetManager()
@@ -422,7 +422,7 @@ async def test_run_simulation_stops_on_early_exit() -> None:
 
     # round 0: budget 1500 >= 1000 OK → consume 0 (DO_NOTHING) → 잔여 1500
     # round 1: 동일
-    # ... 사실상 5 라운드 모두 통과. budget.has_budget 의 추정값은 1000 × 1.
+    # ... 사실상 5 라운드 모두 통과. budget.has_budget 의 추정값은 1000 * 1.
     # 본 테스트는 has_budget 게이트가 막히는 경계 케이스를 별도 확인.
     assert len(store.checkpoint_calls) == 5
 
