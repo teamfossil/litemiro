@@ -188,5 +188,175 @@ class TestSerialization:
         }
 
 
+class TestHomophilyAugmentation:
+    """Post-MVP — :meth:`add_homophily_edges` (Issue #19).
+
+    Distance metric is ``abs(ideo_a - ideo_b)`` since
+    ``AgentProfile.ideology`` is a normalized 0..1 scalar. The method
+    only **adds** edges — initial following from Phase 1 is preserved,
+    and already-followed targets are skipped so repeated calls are
+    idempotent.
+    """
+
+    def test_empty_ideologies_noop(self) -> None:
+        g = SocialGraph()
+        added = g.add_homophily_edges(ideologies={}, threshold=0.1, max_per_agent=5)
+        assert added == 0
+        assert g.to_dict() == {}
+
+    def test_zero_max_per_agent_noop(self) -> None:
+        g = SocialGraph()
+        added = g.add_homophily_edges(
+            ideologies={"a": 0.5, "b": 0.5}, threshold=1.0, max_per_agent=0
+        )
+        assert added == 0
+        assert g.to_dict() == {}
+
+    def test_single_agent_skips_self(self) -> None:
+        g = SocialGraph()
+        added = g.add_homophily_edges(ideologies={"a": 0.5}, threshold=0.0, max_per_agent=5)
+        assert added == 0
+        assert g.to_dict() == {}
+
+    def test_identical_ideology_adds_mutual(self) -> None:
+        g = SocialGraph()
+        added = g.add_homophily_edges(
+            ideologies={"a": 0.5, "b": 0.5}, threshold=0.0, max_per_agent=1
+        )
+        assert added == 2
+        assert g.to_dict() == {"a": ["b"], "b": ["a"]}
+
+    def test_threshold_filters_distant_agents(self) -> None:
+        g = SocialGraph()
+        added = g.add_homophily_edges(
+            ideologies={"a": 0.0, "b": 0.9}, threshold=0.1, max_per_agent=1
+        )
+        assert added == 0
+        assert g.to_dict() == {}
+
+    def test_threshold_inclusive(self) -> None:
+        # Distance exactly == threshold must be accepted.
+        g = SocialGraph()
+        added = g.add_homophily_edges(
+            ideologies={"a": 0.0, "b": 0.5}, threshold=0.5, max_per_agent=1
+        )
+        assert added == 2
+        assert g.to_dict() == {"a": ["b"], "b": ["a"]}
+
+    def test_max_per_agent_caps_each_follower(self) -> None:
+        # 4 agents share ideology=0.5 — each can pick at most 2 of the
+        # other 3 candidates. Tiebreak is alphabetical on follower_id.
+        g = SocialGraph()
+        added = g.add_homophily_edges(
+            ideologies={"a": 0.5, "b": 0.5, "c": 0.5, "d": 0.5},
+            threshold=0.0,
+            max_per_agent=2,
+        )
+        assert added == 8
+        snap = g.to_dict()
+        for follower in ("a", "b", "c", "d"):
+            assert len(snap[follower]) == 2
+
+    def test_initial_following_preserved(self) -> None:
+        # Pre-existing edges (e.g. Phase 1 initial_following) must survive
+        # the homophily pass untouched and unaffected by ideology data.
+        g = SocialGraph()
+        g.follow("a", "z")
+        g.follow("b", "z")
+        added = g.add_homophily_edges(
+            ideologies={"a": 0.5, "b": 0.5}, threshold=0.0, max_per_agent=1
+        )
+        assert added == 2
+        snap = g.to_dict()
+        assert "z" in snap["a"]
+        assert "z" in snap["b"]
+        assert snap["a"] == ["b", "z"]
+        assert snap["b"] == ["a", "z"]
+
+    def test_already_followed_targets_skipped(self) -> None:
+        # If "a" already follows "b", a homophily call must not double-
+        # count or raise — it simply skips the existing edge.
+        g = SocialGraph()
+        g.follow("a", "b")
+        added = g.add_homophily_edges(
+            ideologies={"a": 0.5, "b": 0.5}, threshold=0.0, max_per_agent=1
+        )
+        # "a"→"b" is pre-existing (skipped), "b"→"a" is new.
+        assert added == 1
+        assert g.to_dict() == {"a": ["b"], "b": ["a"]}
+
+    def test_repeated_call_is_idempotent(self) -> None:
+        g = SocialGraph()
+        first = g.add_homophily_edges(
+            ideologies={"a": 0.5, "b": 0.5, "c": 0.5},
+            threshold=0.0,
+            max_per_agent=5,
+        )
+        snap_after_first = g.to_dict()
+        second = g.add_homophily_edges(
+            ideologies={"a": 0.5, "b": 0.5, "c": 0.5},
+            threshold=0.0,
+            max_per_agent=5,
+        )
+        assert first == 6  # 3 agents * 2 others each
+        assert second == 0  # all edges already present
+        assert g.to_dict() == snap_after_first
+
+    def test_tiebreak_by_followee_id_ascending(self) -> None:
+        # All three candidates share distance 0 from "z"; with max=1 the
+        # method must pick the lexicographically smallest followee.
+        g = SocialGraph()
+        added = g.add_homophily_edges(
+            ideologies={"z": 0.5, "c": 0.5, "a": 0.5, "b": 0.5},
+            threshold=0.0,
+            max_per_agent=1,
+        )
+        # "z"→"a" (first alphabetically among c/a/b). And "a"/"b"/"c"
+        # likewise each pick their alphabetical first candidate.
+        snap = g.to_dict()
+        assert snap["z"] == ["a"]
+        assert added == 4
+
+    def test_closer_distance_preferred_over_farther(self) -> None:
+        # When max_per_agent=1, the nearer candidate wins regardless of id.
+        g = SocialGraph()
+        added = g.add_homophily_edges(
+            ideologies={"a": 0.0, "near": 0.05, "far": 0.4},
+            threshold=0.5,
+            max_per_agent=1,
+        )
+        assert added == 3  # a→near, near→a, far→near (closest to far)
+        snap = g.to_dict()
+        assert snap["a"] == ["near"]
+        assert snap["far"] == ["near"]
+
+    def test_determinism_across_calls(self) -> None:
+        ideologies = {"a": 0.1, "b": 0.2, "c": 0.3, "d": 0.4}
+        g1 = SocialGraph()
+        g1.add_homophily_edges(ideologies=ideologies, threshold=0.15, max_per_agent=2)
+        g2 = SocialGraph()
+        g2.add_homophily_edges(ideologies=ideologies, threshold=0.15, max_per_agent=2)
+        assert g1.to_dict() == g2.to_dict()
+
+    def test_threshold_out_of_range_rejected(self) -> None:
+        g = SocialGraph()
+        with pytest.raises(ValueError, match="threshold"):
+            g.add_homophily_edges(ideologies={"a": 0.5}, threshold=-0.1, max_per_agent=1)
+        with pytest.raises(ValueError, match="threshold"):
+            g.add_homophily_edges(ideologies={"a": 0.5}, threshold=1.5, max_per_agent=1)
+
+    def test_negative_max_per_agent_rejected(self) -> None:
+        g = SocialGraph()
+        with pytest.raises(ValueError, match="max_per_agent"):
+            g.add_homophily_edges(ideologies={"a": 0.5}, threshold=0.1, max_per_agent=-1)
+
+    def test_invalid_ideology_value_rejected(self) -> None:
+        g = SocialGraph()
+        with pytest.raises(ValueError, match="ideology"):
+            g.add_homophily_edges(ideologies={"a": 0.5, "b": 1.2}, threshold=0.1, max_per_agent=1)
+        with pytest.raises(ValueError, match="ideology"):
+            g.add_homophily_edges(ideologies={"a": -0.1}, threshold=0.1, max_per_agent=1)
+
+
 def test_protocol_is_satisfied() -> None:
     assert isinstance(SocialGraph(), SocialGraphLike)
