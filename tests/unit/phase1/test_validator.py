@@ -38,7 +38,7 @@ def _make_b(agent_ids: list[str]) -> OntologyB:
             aid: MemoryStore(
                 agent_id=aid,
                 semantic=[
-                    SemanticMemory(id=f"seed_{aid}_1", summary="test"),
+                    SemanticMemory(id=f"seed_{aid}_1", summary="test", topics=["AI"]),
                 ],
             )
             for aid in agent_ids
@@ -109,3 +109,34 @@ class TestOntologyValidator:
         }
         result = OntologyValidator().validate(_make_a(agents), _make_b(["a1", "a2", "a3"]))
         assert len(result.warnings) >= 1
+
+    def test_persona_memory_topic_mismatch_warning(self) -> None:
+        agents = {"a1": _make_profile("a1")}
+        b = OntologyB(
+            stores={
+                "a1": MemoryStore(
+                    agent_id="a1",
+                    semantic=[
+                        SemanticMemory(
+                            id="seed_a1_1",
+                            summary="sports update",
+                            topics=["sports"],
+                        )
+                    ],
+                )
+            }
+        )
+
+        result = OntologyValidator().validate(_make_a(agents), b)
+
+        assert result.valid
+        assert any("persona topics" in warning for warning in result.warnings)
+
+    def test_empty_semantic_memory_skips_topic_mismatch_warning(self) -> None:
+        agents = {"a1": _make_profile("a1")}
+        b = OntologyB(stores={"a1": MemoryStore(agent_id="a1", semantic=[])})
+
+        result = OntologyValidator().validate(_make_a(agents), b)
+
+        assert result.valid
+        assert not any("persona topics" in warning for warning in result.warnings)

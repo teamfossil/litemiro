@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import random
+import re
 
 from litemiro.phase1.local_graph import LocalGraph
 from litemiro.phase1.models import (
     AgentProfile,
+    Edge,
     Entity,
     KeyRelationship,
     MemoryStore,
@@ -25,6 +27,26 @@ _FOLLOW_PROBS: dict[str, float] = {
 _CONFLICT_TYPES = {"OPPOSES", "RIVALS"}
 _ALLY_TYPES = {"COLLEAGUES", "ALLIES", "WORKS_FOR", "BELONGS_TO"}
 _BIDIRECTIONAL_TYPES = {"COLLEAGUES", "ALLIES"}
+_MAX_MEMORY_TOPICS = 3
+_KEYWORD_RE = re.compile(r"\w+")
+_TOPIC_ATTRIBUTE_KEYS = {
+    "beat",
+    "category",
+    "categories",
+    "domain",
+    "domains",
+    "field",
+    "fields",
+    "keyword",
+    "keywords",
+    "sector",
+    "sectors",
+    "tag",
+    "tags",
+    "topic",
+    "topics",
+    "type",
+}
 
 
 class MemoryInitializer:
@@ -61,7 +83,7 @@ class MemoryInitializer:
                 SemanticMemory(
                     id=f"seed_{agent.agent_id}_{seq}",
                     summary=entity.summary,
-                    topics=agent.topics[:2],
+                    topics=_derive_entity_topics(entity),
                     dominant_sentiment="중립",
                     key_relationships=[],
                 )
@@ -85,7 +107,7 @@ class MemoryInitializer:
 
                 neighbor_agent_id = _find_agent_for_entity(neighbor_id, self._graph)
                 sentiment = _infer_sentiment(edge.type)
-                shared_topics = _topic_intersection(agent.topics, neighbor.summary)
+                memory_topics = _derive_relationship_topics(edge, neighbor)
                 summary = f"{neighbor.name}와(과) {edge.description}"
 
                 key_rels: list[KeyRelationship] = []
@@ -101,7 +123,7 @@ class MemoryInitializer:
                     SemanticMemory(
                         id=f"seed_{agent.agent_id}_{seq}",
                         summary=summary,
-                        topics=shared_topics,
+                        topics=memory_topics,
                         dominant_sentiment=sentiment,
                         key_relationships=key_rels,
                     )
@@ -192,11 +214,76 @@ def _edge_type_to_nature(edge_type: str) -> str:
     return "neutral"
 
 
-def _topic_intersection(topics: list[str], text: str) -> list[str]:
-    if not topics or not text:
-        return []
-    text_lower = text.lower()
-    return [t for t in topics if t.lower() in text_lower]
+def _derive_entity_topics(entity: Entity) -> list[str]:
+    return _dedupe_topics(
+        [
+            *_topics_from_attributes(entity.attributes),
+            entity.type,
+            *_keywords_from_text(entity.summary),
+        ]
+    )
+
+
+def _derive_relationship_topics(edge: Edge, neighbor: Entity) -> list[str]:
+    return _dedupe_topics(
+        [
+            *_topics_from_attributes(neighbor.attributes),
+            neighbor.type,
+            *_keywords_from_text(edge.description),
+            *_keywords_from_text(neighbor.summary),
+            edge.type,
+        ]
+    )
+
+
+def _topics_from_attributes(attributes: dict[str, object]) -> list[str]:
+    topics: list[str] = []
+    for key, value in attributes.items():
+        if key.lower() in _TOPIC_ATTRIBUTE_KEYS:
+            topics.extend(_topic_values(value))
+    return topics
+
+
+def _topic_values(value: object) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list | tuple | set):
+        topics: list[str] = []
+        for item in value:
+            topics.extend(_topic_values(item))
+        return topics
+    if isinstance(value, dict):
+        nested_topics: list[str] = []
+        for item in value.values():
+            nested_topics.extend(_topic_values(item))
+        return nested_topics
+    return []
+
+
+def _keywords_from_text(text: str) -> list[str]:
+    return [token for token in _KEYWORD_RE.findall(text) if _is_topic_token(token)]
+
+
+def _is_topic_token(token: str) -> bool:
+    cleaned = token.strip("_")
+    return len(cleaned) >= 2 and not cleaned.isdigit()
+
+
+def _dedupe_topics(candidates: list[str]) -> list[str]:
+    topics: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        topic = str(candidate).strip()
+        if not topic:
+            continue
+        key = topic.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        topics.append(topic)
+        if len(topics) >= _MAX_MEMORY_TOPICS:
+            break
+    return topics
 
 
 def _jaccard(a: list[str], b: list[str]) -> float:
