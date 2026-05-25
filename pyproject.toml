@@ -60,6 +60,7 @@ dev = [
 [project.scripts]
 litemiro-validate = "litemiro.cli.validate:main"
 litemiro-ontology = "litemiro.cli.ontology:main"
+litemiro-run = "litemiro.cli.run:main"
 
 [project.urls]
 Repository = "https://github.com/teamfossil/litemiro"
