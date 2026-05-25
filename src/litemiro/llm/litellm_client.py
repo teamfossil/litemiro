@@ -12,6 +12,12 @@ endpoint so a freshly-cloned repo with only ``OPENROUTER_API_KEY``
 set just works. Models follow OpenRouter naming
 (``openrouter/anthropic/claude-3.5-sonnet``).
 
+``max_output_tokens`` is plumbed straight to ``litellm.acompletion``'s
+``max_tokens`` so OpenRouter doesn't pre-bill the model's full context
+window. Set ``LITEMIRO_MAX_OUTPUT_TOKENS`` for an env-level cap; when
+both call site and env are silent we leave the kwarg off and let the
+backend pick its own ceiling.
+
 Usage extraction is best-effort: litellm normalises the OpenAI-style
 ``usage`` block onto the response, but local fakes and self-hosted
 endpoints sometimes omit it. Missing or malformed counts collapse to
@@ -29,6 +35,21 @@ import litellm
 from litemiro.models import LLMResponse
 
 _OPENROUTER_DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
+_MAX_OUTPUT_TOKENS_ENV = "LITEMIRO_MAX_OUTPUT_TOKENS"
+
+
+def _resolve_max_output_tokens(explicit: int | None) -> int | None:
+    """Explicit arg wins; otherwise pull a positive int from the env var."""
+    if explicit is not None:
+        return explicit if explicit > 0 else None
+    raw = os.environ.get(_MAX_OUTPUT_TOKENS_ENV)
+    if raw is None or not raw.strip():
+        return None
+    try:
+        parsed = int(raw)
+    except ValueError:
+        return None
+    return parsed if parsed > 0 else None
 
 
 def _coerce_token_count(value: Any) -> int:
@@ -55,6 +76,7 @@ class LiteLLMClient:
         api_key: str | None = None,
         base_url: str | None = None,
         timeout_seconds: float | None = 30.0,
+        max_output_tokens: int | None = None,
     ) -> None:
         self._api_key = api_key if api_key is not None else os.environ.get("OPENROUTER_API_KEY")
         self._base_url = (
@@ -63,18 +85,22 @@ class LiteLLMClient:
             else os.environ.get("OPENROUTER_BASE_URL", _OPENROUTER_DEFAULT_BASE_URL)
         )
         self._timeout_seconds = timeout_seconds
+        self._max_output_tokens = _resolve_max_output_tokens(max_output_tokens)
 
     async def complete(self, *, system: str, user: str, model: str) -> LLMResponse:
-        response: Any = await litellm.acompletion(
-            model=model,
-            api_key=self._api_key,
-            base_url=self._base_url,
-            timeout=self._timeout_seconds,
-            messages=[
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "api_key": self._api_key,
+            "base_url": self._base_url,
+            "timeout": self._timeout_seconds,
+            "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-        )
+        }
+        if self._max_output_tokens is not None:
+            kwargs["max_tokens"] = self._max_output_tokens
+        response: Any = await litellm.acompletion(**kwargs)
         content = response.choices[0].message.content
         text = "" if content is None else str(content)
         prompt_tokens, completion_tokens = _extract_usage(response)
