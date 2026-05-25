@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from jsonschema import Draft7Validator
+from jsonschema import Draft7Validator, FormatChecker
 
 from litemiro.eventlog import EventLogger
 from litemiro.models import Action, ActionType, ContextSummary, LLMMeta, RoundEvent
@@ -161,6 +161,6 @@ class TestSchemaParity:
         finally:
             await logger.aclose()
 
-        validator = Draft7Validator(round_event_schema())
+        validator = Draft7Validator(round_event_schema(), format_checker=FormatChecker())
         for line in path.read_text(encoding="utf-8").splitlines():
             validator.validate(json.loads(line))
