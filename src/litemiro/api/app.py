@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from litemiro.api.routes import health_router, plazas_router
+from litemiro.api.routes import events_router, health_router, plazas_router
 from litemiro.api.store import PlazaStore
 
 if TYPE_CHECKING:
@@ -62,6 +62,7 @@ def create_app(
     )
     app.include_router(health_router)
     app.include_router(plazas_router)
+    app.include_router(events_router)
     return app
 
 
