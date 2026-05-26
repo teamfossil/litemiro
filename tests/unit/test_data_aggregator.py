@@ -6,6 +6,7 @@ JSONL 라인을 결정적 카테고리 dict 로 줄이는 단일 책임을 검�
 
 from __future__ import annotations
 
+import math
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -216,3 +217,160 @@ class TestAggregateFromJsonl:
         )
         with pytest.raises(ValueError, match=r":1 RoundEvent 검증 실패"):
             DataAggregator.aggregate(path)
+
+
+class TestQaMetrics:
+    """OASIS 등가성 게이트용 결정적 수치 검증 (`docs/qa/metrics.md`).
+
+    범위 [0, 1] 안에 정규화되어야 하고, 동일 입력에 같은 값을 돌려준다.
+    """
+
+    def test_empty_events_all_zero(self) -> None:
+        qa = DataAggregator.aggregate_events([]).qa_metrics
+        assert qa.action_entropy_normalized == 0.0
+        assert qa.follow_clustering_coefficient == 0.0
+        assert qa.content_word_entropy_normalized == 0.0
+
+    def test_action_entropy_zero_when_single_type(self) -> None:
+        events = [
+            _event(round_num=0, agent_id=f"a-{i}", action_type=ActionType.DO_NOTHING)
+            for i in range(6)
+        ]
+        qa = DataAggregator.aggregate_events(events).qa_metrics
+        assert qa.action_entropy_normalized == 0.0
+
+    def test_action_entropy_one_when_uniform_over_all_types(self) -> None:
+        # ActionType 6 종을 똑같이 1 회씩 → Shannon = log2(6), 정규화 후 1.0
+        events = [
+            _event(round_num=0, agent_id="a", action_type=ActionType.CREATE_POST, content="x"),
+            _event(round_num=0, agent_id="a", action_type=ActionType.LIKE_POST, target_post_id="p"),
+            _event(round_num=0, agent_id="a", action_type=ActionType.REPOST, target_post_id="p"),
+            _event(
+                round_num=0,
+                agent_id="a",
+                action_type=ActionType.QUOTE_POST,
+                target_post_id="p",
+                content="q",
+            ),
+            _event(round_num=0, agent_id="a", action_type=ActionType.FOLLOW, target_agent_id="b"),
+            _event(round_num=0, agent_id="a", action_type=ActionType.DO_NOTHING),
+        ]
+        qa = DataAggregator.aggregate_events(events).qa_metrics
+        assert qa.action_entropy_normalized == pytest.approx(1.0)
+
+    def test_action_entropy_in_unit_interval_for_skewed(self) -> None:
+        # 한 타입에 몰린 분포는 0 < H < 1
+        events = [
+            _event(round_num=0, agent_id="a", action_type=ActionType.LIKE_POST, target_post_id="p"),
+            _event(round_num=0, agent_id="b", action_type=ActionType.LIKE_POST, target_post_id="p"),
+            _event(round_num=0, agent_id="c", action_type=ActionType.LIKE_POST, target_post_id="p"),
+            _event(round_num=0, agent_id="d", action_type=ActionType.CREATE_POST, content="x"),
+        ]
+        qa = DataAggregator.aggregate_events(events).qa_metrics
+        assert 0.0 < qa.action_entropy_normalized < 1.0
+
+    def test_clustering_zero_when_fewer_than_three_nodes(self) -> None:
+        events = [
+            _event(round_num=0, agent_id="a", action_type=ActionType.FOLLOW, target_agent_id="b"),
+        ]
+        qa = DataAggregator.aggregate_events(events).qa_metrics
+        assert qa.follow_clustering_coefficient == 0.0
+
+    def test_clustering_one_for_triangle(self) -> None:
+        # 삼각형: a-b, b-c, a-c 모두 양방향 FOLLOW (무방향 그래프에서 자동으로 채워짐)
+        events = [
+            _event(round_num=0, agent_id="a", action_type=ActionType.FOLLOW, target_agent_id="b"),
+            _event(round_num=0, agent_id="b", action_type=ActionType.FOLLOW, target_agent_id="c"),
+            _event(round_num=0, agent_id="a", action_type=ActionType.FOLLOW, target_agent_id="c"),
+        ]
+        qa = DataAggregator.aggregate_events(events).qa_metrics
+        assert qa.follow_clustering_coefficient == pytest.approx(1.0)
+
+    def test_clustering_zero_for_star(self) -> None:
+        # 별 그래프 hub a → b, c, d. b/c/d 간 엣지 없음 → 클러스터링 0.
+        events = [
+            _event(round_num=0, agent_id="a", action_type=ActionType.FOLLOW, target_agent_id="b"),
+            _event(round_num=0, agent_id="a", action_type=ActionType.FOLLOW, target_agent_id="c"),
+            _event(round_num=0, agent_id="a", action_type=ActionType.FOLLOW, target_agent_id="d"),
+        ]
+        qa = DataAggregator.aggregate_events(events).qa_metrics
+        assert qa.follow_clustering_coefficient == 0.0
+
+    def test_clustering_ignores_self_loops_and_duplicates(self) -> None:
+        # self-loop 무시 + 같은 엣지 중복 무시 → 결과는 단순 a-b 엣지 (노드 2 → 0.0)
+        events = [
+            _event(round_num=0, agent_id="a", action_type=ActionType.FOLLOW, target_agent_id="a"),
+            _event(round_num=0, agent_id="a", action_type=ActionType.FOLLOW, target_agent_id="b"),
+            _event(round_num=1, agent_id="a", action_type=ActionType.FOLLOW, target_agent_id="b"),
+        ]
+        qa = DataAggregator.aggregate_events(events).qa_metrics
+        assert qa.follow_clustering_coefficient == 0.0
+
+    def test_content_entropy_zero_when_no_posts(self) -> None:
+        events = [
+            _event(round_num=0, agent_id="a", action_type=ActionType.LIKE_POST, target_post_id="p"),
+            _event(round_num=0, agent_id="b", action_type=ActionType.DO_NOTHING),
+        ]
+        qa = DataAggregator.aggregate_events(events).qa_metrics
+        assert qa.content_word_entropy_normalized == 0.0
+
+    def test_content_entropy_zero_for_single_repeated_word(self) -> None:
+        # vocab = 1 → 정규화 분모 log2(1) = 0, 정의에 의해 0.0
+        events = [
+            _event(round_num=0, agent_id="a", action_type=ActionType.CREATE_POST, content="hi"),
+            _event(round_num=0, agent_id="b", action_type=ActionType.CREATE_POST, content="hi"),
+        ]
+        qa = DataAggregator.aggregate_events(events).qa_metrics
+        assert qa.content_word_entropy_normalized == 0.0
+
+    def test_content_entropy_one_for_uniform_vocab(self) -> None:
+        # 세 단어가 각 1 회씩 → H = log2(3), vocab = 3 → 정규화 1.0
+        events = [
+            _event(round_num=0, agent_id="a", action_type=ActionType.CREATE_POST, content="a b c"),
+        ]
+        qa = DataAggregator.aggregate_events(events).qa_metrics
+        assert qa.content_word_entropy_normalized == pytest.approx(1.0)
+
+    def test_content_entropy_includes_quote_posts(self) -> None:
+        events = [
+            _event(round_num=0, agent_id="a", action_type=ActionType.CREATE_POST, content="x y"),
+            _event(
+                round_num=1,
+                agent_id="b",
+                action_type=ActionType.QUOTE_POST,
+                target_post_id="p",
+                content="z w",
+            ),
+        ]
+        qa = DataAggregator.aggregate_events(events).qa_metrics
+        # 단어 4 종 uniform → 1.0 (부동소수 오차 허용)
+        assert qa.content_word_entropy_normalized == pytest.approx(1.0)
+
+    def test_qa_metrics_within_unit_interval(self) -> None:
+        # 부동소수 오차로 [0, 1] 밖으로 새지 않는다.
+        events = [
+            _event(
+                round_num=r, agent_id=f"a-{r}", action_type=ActionType.CREATE_POST, content=f"w{r}"
+            )
+            for r in range(20)
+        ]
+        qa = DataAggregator.aggregate_events(events).qa_metrics
+        for name in (
+            "action_entropy_normalized",
+            "follow_clustering_coefficient",
+            "content_word_entropy_normalized",
+        ):
+            value = getattr(qa, name)
+            assert 0.0 <= value <= 1.0, f"{name}={value} 가 단위 구간 밖"
+            assert not math.isnan(value)
+
+    def test_qa_metrics_deterministic(self) -> None:
+        events = [
+            _event(round_num=0, agent_id="a", action_type=ActionType.CREATE_POST, content="x y"),
+            _event(round_num=0, agent_id="b", action_type=ActionType.FOLLOW, target_agent_id="a"),
+            _event(round_num=1, agent_id="c", action_type=ActionType.FOLLOW, target_agent_id="a"),
+            _event(round_num=1, agent_id="b", action_type=ActionType.FOLLOW, target_agent_id="c"),
+        ]
+        first = DataAggregator.aggregate_events(events).qa_metrics.model_dump()
+        second = DataAggregator.aggregate_events(events).qa_metrics.model_dump()
+        assert first == second

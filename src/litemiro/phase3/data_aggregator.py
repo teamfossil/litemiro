@@ -15,6 +15,7 @@ LLM 호출 없음. 결정적. 같은 입력은 항상 같은 ``AggregationResult
 from __future__ import annotations
 
 import json
+import math
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,7 @@ from litemiro.phase3.models import (
     CATEGORY_TIME_SERIES,
     CATEGORY_TOPIC_FLOW,
     AggregationResult,
+    QaMetrics,
 )
 
 _TOPIC_FLOW_SAMPLE_LIMIT = 10
@@ -52,6 +54,7 @@ class DataAggregator:
                 CATEGORY_TOPIC_FLOW: _topic_flow(events),
                 CATEGORY_TIME_SERIES: _time_series(events),
             },
+            qa_metrics=_qa_metrics(events),
         )
 
 
@@ -169,6 +172,107 @@ def _time_series(events: list[RoundEvent]) -> dict[str, Any]:
         "rounds": rounds,
         "series": series,
     }
+
+
+def _qa_metrics(events: list[RoundEvent]) -> QaMetrics:
+    """OASIS 등가성 회귀 게이트용 결정적 수치 (`docs/qa/metrics.md`).
+
+    빈 입력은 모든 메트릭을 0 으로 — 데이터가 없으면 다양성도 0 으로 보고하는
+    것이 self-consistent (보고서 fallback 도 같은 규약).
+    """
+    return QaMetrics(
+        action_entropy_normalized=_action_entropy_normalized(events),
+        follow_clustering_coefficient=_follow_clustering_coefficient(events),
+        content_word_entropy_normalized=_content_word_entropy_normalized(events),
+    )
+
+
+def _action_entropy_normalized(events: list[RoundEvent]) -> float:
+    if not events:
+        return 0.0
+    counts = Counter(e.action.type for e in events)
+    total = sum(counts.values())
+    # K = ActionType 카테고리 수 (현 enum). 정규화 분모를 정의에 따라 고정해야
+    # 라운드별 분포가 한쪽에 몰린 정도를 비교 가능.
+    k = len(ActionType)
+    if k <= 1:
+        return 0.0
+    probs = [c / total for c in counts.values() if c > 0]
+    return _clamp_unit(_shannon_entropy(probs) / math.log2(k))
+
+
+def _follow_clustering_coefficient(events: list[RoundEvent]) -> float:
+    """FOLLOW 이벤트로 무방향 그래프 재구성 → 평균 local clustering coefficient.
+
+    self-loop 와 중복 엣지는 무시 (set 으로 정규화). 노드 < 3 이면 정의되지 않아
+    0.0 으로 떨어뜨림 — 같은 사유로 OASIS 비교 시 작은 시뮬레이션은 무의미.
+    """
+    neighbors: dict[str, set[str]] = defaultdict(set)
+    for e in events:
+        if e.action.type is not ActionType.FOLLOW:
+            continue
+        target = e.action.target_agent_id
+        if target is None or target == e.agent_id:
+            continue
+        neighbors[e.agent_id].add(target)
+        neighbors[target].add(e.agent_id)
+    nodes = list(neighbors)
+    if len(nodes) < 3:
+        return 0.0
+    total = 0.0
+    counted = 0
+    for node in nodes:
+        nbrs = neighbors[node]
+        if len(nbrs) < 2:
+            # 정의에 따라 degree < 2 노드의 local coefficient 는 0 (분모 = 0).
+            counted += 1
+            continue
+        possible = len(nbrs) * (len(nbrs) - 1) / 2
+        actual = sum(
+            1
+            for i, a in enumerate(sorted(nbrs))
+            for b in sorted(nbrs)[i + 1 :]
+            if b in neighbors[a]
+        )
+        total += actual / possible
+        counted += 1
+    return total / counted if counted else 0.0
+
+
+def _content_word_entropy_normalized(events: list[RoundEvent]) -> float:
+    """CREATE_POST / QUOTE_POST 의 content 공백 토크나이즈 → word freq Shannon /
+    log2(|vocab|). 한국어 형태소 분석 없이 어휘 다양성만 근사 — 진짜 토픽
+    entropy 는 RoundEvent.topics 필드 추가 후 별도 PR (`docs/qa/metrics.md`).
+    """
+    tokens: list[str] = []
+    for e in events:
+        if e.action.type not in (ActionType.CREATE_POST, ActionType.QUOTE_POST):
+            continue
+        content = e.action.content or ""
+        tokens.extend(content.split())
+    if not tokens:
+        return 0.0
+    counts = Counter(tokens)
+    vocab = len(counts)
+    if vocab <= 1:
+        return 0.0
+    total = sum(counts.values())
+    probs = [c / total for c in counts.values()]
+    return _clamp_unit(_shannon_entropy(probs) / math.log2(vocab))
+
+
+def _shannon_entropy(probs: list[float]) -> float:
+    return -sum(p * math.log2(p) for p in probs if p > 0.0)
+
+
+def _clamp_unit(value: float) -> float:
+    # 정규화 결과가 부동소수 오차로 1.0 을 미세하게 넘기는 경우 (예: 1+2e-16)
+    # QaMetrics 의 Field(le=1.0) 검증을 통과시키기 위해 [0, 1] 로 잘라낸다.
+    if value < 0.0:
+        return 0.0
+    if value > 1.0:
+        return 1.0
+    return value
 
 
 __all__ = ["DataAggregator"]

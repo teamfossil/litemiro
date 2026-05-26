@@ -28,7 +28,16 @@ from litemiro.phase3.models import (
     CATEGORY_NETWORK_METRICS,
     CATEGORY_TIME_SERIES,
     CATEGORY_TOPIC_FLOW,
+    QaMetrics,
 )
+
+
+def _zero_qa() -> QaMetrics:
+    return QaMetrics(
+        action_entropy_normalized=0.0,
+        follow_clustering_coefficient=0.0,
+        content_word_entropy_normalized=0.0,
+    )
 
 
 def _to_item(item: str | LLMResponse | BaseException) -> LLMResponse | BaseException:
@@ -106,6 +115,7 @@ def _stub_result() -> AggregationResult:
                 ],
             },
         },
+        qa_metrics=_zero_qa(),
     )
 
 
