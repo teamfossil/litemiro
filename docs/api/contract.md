@@ -84,7 +84,7 @@ pending → running → composing → completed
 
 - `composing`: 시뮬레이션 라운드는 다 끝났고 (`rounds_done == rounds_total`) LLM 보고서를 합성 중인 구간 — terminal 아님. 프론트는 progress 100% + "보고서 합성중" 으로 표시. SSE 의 terminal 판정도 composing 을 끊지 않는다.
 - `failed` 일 때만 `error` 가 non-null (`"<ExceptionType>: <message>"`). composing 단계에서 LLM 이 폴백까지 전부 실패해도 `completed` — 본문은 `null` 로 나간다 (`/report` 참고).
-- `404`: 존재하지 않는 `plaza_id` (프로세스 재시작 후 in-memory 가 비었을 때 포함).
+- `404`: DB 에도 존재하지 않는 `plaza_id`.
 
 ## `GET /api/plazas/{plaza_id}/report`
 

@@ -150,34 +150,38 @@ def load_all(conn: sqlite3.Connection) -> list[PlazaRecord]:
     from litemiro.api.store import PlazaRecord  # noqa: PLC0415 — circular avoid
 
     records: list[PlazaRecord] = []
-    for row in conn.execute(_SELECT_ALL_SQL):
+    for row in list(conn.execute(_SELECT_ALL_SQL)):
         raw_status = row["status"]
+        needs_writeback = False
         if raw_status not in _VALID_STATUSES:
             # 미래에 추가된 상태가 옛 코드에서 읽히는 경우. 안전 폴백.
             raw_status = "failed"
+            needs_writeback = True
         status = cast(PlazaStatus, raw_status)
         error: str | None = row["error"]
         if status in _INTERRUPTED_STATUSES:
             error = f"process restarted while {status}"
             status = "failed"
-        records.append(
-            PlazaRecord(
-                plaza_id=row["plaza_id"],
-                status=status,
-                rounds_total=row["rounds_total"],
-                rounds_done=row["rounds_done"],
-                label=row["label"],
-                error=error,
-                tokens_used=row["tokens_used"],
-                preset=Preset(row["preset"]),
-                ontology_a_path=Path(row["ontology_a_path"]) if row["ontology_a_path"] else None,
-                ontology_b_path=Path(row["ontology_b_path"]) if row["ontology_b_path"] else None,
-                event_log_path=Path(row["event_log_path"]) if row["event_log_path"] else None,
-                checkpoint_dir=Path(row["checkpoint_dir"]) if row["checkpoint_dir"] else None,
-                report_markdown=row["report_markdown"],
-                report_fallback_used=bool(row["report_fallback_used"]),
-            )
+            needs_writeback = True
+        record = PlazaRecord(
+            plaza_id=row["plaza_id"],
+            status=status,
+            rounds_total=row["rounds_total"],
+            rounds_done=row["rounds_done"],
+            label=row["label"],
+            error=error,
+            tokens_used=row["tokens_used"],
+            preset=Preset(row["preset"]),
+            ontology_a_path=Path(row["ontology_a_path"]) if row["ontology_a_path"] else None,
+            ontology_b_path=Path(row["ontology_b_path"]) if row["ontology_b_path"] else None,
+            event_log_path=Path(row["event_log_path"]) if row["event_log_path"] else None,
+            checkpoint_dir=Path(row["checkpoint_dir"]) if row["checkpoint_dir"] else None,
+            report_markdown=row["report_markdown"],
+            report_fallback_used=bool(row["report_fallback_used"]),
         )
+        if needs_writeback:
+            upsert_record(conn, record)
+        records.append(record)
     return records
 
 

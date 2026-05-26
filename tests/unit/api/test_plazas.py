@@ -413,6 +413,19 @@ class TestPersistence:
         assert body["error"] is not None
         assert "restart" in body["error"].lower()
 
+        import sqlite3  # noqa: PLC0415 — 테스트 전용 직접 검증.
+
+        conn = sqlite3.connect(str(tmp_path / "plazas.db"))
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT status, error FROM plazas WHERE plaza_id = ?",
+            (plaza_id,),
+        ).fetchone()
+        conn.close()
+        assert row is not None
+        assert row["status"] == "failed"
+        assert "restart" in row["error"].lower()
+
     def test_per_round_progress_persisted(self, tmp_path: Path) -> None:
         """``on_progress`` 가 부른 ``rounds_done`` 이 매 라운드 DB 에 영속돼야 한다.
 
