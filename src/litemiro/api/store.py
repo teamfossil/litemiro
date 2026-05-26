@@ -579,15 +579,21 @@ class PlazaStore:
         self,
         *,
         limit: int,
-        offset: int,
+        offset: int = 0,
+        cursor: tuple[datetime, str] | None = None,
         status_filter: PlazaStatus | None = None,
-    ) -> tuple[list[_db.PlazaSummary], int]:
+    ) -> tuple[list[_db.PlazaSummary], int, str | None]:
         """``GET /api/plazas`` 백킹 — 최신 plaza 가 위.
 
         영속 모드 (``self._db is not None``) 는 SQLite SELECT 로 정렬·필터·페이지
         처리. 비영속 모드 (단위 테스트) 는 ``_records`` 를 ``created_at`` desc
         로 정렬 — INSERT 시점에 박힌 값을 그대로 쓰므로 영속 모드와 결과 순서가
         같다. tie-break 는 ``plaza_id`` (UUID hex) 로 결정성 확보.
+
+        ``cursor`` 가 주어지면 keyset 페이징 — ``offset`` 무시. 두 경로 (in-mem
+        / SQLite) 가 동일한 keyset 의미를 유지하도록 in-mem 도 ``(created_at,
+        plaza_id) < cursor`` 필터를 직접 적용한다. ``next_cursor`` 는 cursor
+        모드일 때만 채운다 — offset 모드 응답은 ``None``.
         """
         async with self._lock:
             if self._db is not None:
@@ -595,6 +601,7 @@ class PlazaStore:
                     self._db,
                     limit=limit,
                     offset=offset,
+                    cursor=cursor,
                     status_filter=status_filter,
                 )
             records = list(self._records.values())
@@ -602,7 +609,14 @@ class PlazaStore:
                 records = [r for r in records if r.status == status_filter]
             total = len(records)
             records.sort(key=lambda r: (r.created_at, r.plaza_id), reverse=True)
-            page = records[offset : offset + limit]
+            if cursor is not None:
+                cursor_created, cursor_id = cursor
+                records = [
+                    r for r in records if (r.created_at, r.plaza_id) < (cursor_created, cursor_id)
+                ]
+                page = records[:limit]
+            else:
+                page = records[offset : offset + limit]
             summaries = [
                 _db.PlazaSummary(
                     plaza_id=r.plaza_id,
@@ -618,7 +632,11 @@ class PlazaStore:
                 )
                 for r in page
             ]
-            return summaries, total
+            next_cursor: str | None = None
+            if summaries and len(summaries) == limit:
+                last = summaries[-1]
+                next_cursor = _db.encode_cursor(last.created_at, last.plaza_id)
+            return summaries, total, next_cursor
 
     async def shutdown(self) -> None:
         """프로세스 종료 시 미완료 태스크를 모두 취소 + SQLite 커넥션을 닫는다.
