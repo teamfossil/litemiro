@@ -55,6 +55,30 @@ class HealthResponse(BaseModel):
     version: str
 
 
+class PlazaAgentItem(BaseModel):
+    """Casting 화면이 슬롯에 띄울 앵커 1명. ``OntologyA.agents`` 의 ``AgentProfile``
+    에서 시각화에 의미 있는 필드만 추려 노출 — avatar 는 ontology 스키마에 없어
+    프론트가 ``id`` 해시 같은 deterministic generator 로 만든다.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    name: str
+    # ``AgentProfile.entity_type`` 그대로. ontology 추출 결과의 카테고리
+    # (예: "AIRegulationPolicy", "Researcher") — UI 가 그대로 라벨로 쓴다.
+    role: str
+    ideology: float = Field(ge=0.0, le=1.0)
+    topics: list[str] = Field(default_factory=list)
+
+
+class PlazaAgentsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    plaza_id: str
+    agents: list[PlazaAgentItem]
+
+
 class PlazaReportResponse(BaseModel):
     """완료된 plaza 의 보고서 응답 — 결정적 집계 + (선택) LLM Markdown 본문.
 
@@ -85,6 +109,8 @@ __all__ = [
     "CreatePlazaRequest",
     "CreatePlazaResponse",
     "HealthResponse",
+    "PlazaAgentItem",
+    "PlazaAgentsResponse",
     "PlazaReportResponse",
     "PlazaStatus",
     "PlazaStatusResponse",

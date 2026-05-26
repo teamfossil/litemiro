@@ -86,6 +86,31 @@ pending → running → composing → completed
 - `failed` 일 때만 `error` 가 non-null (`"<ExceptionType>: <message>"`). composing 단계에서 LLM 이 폴백까지 전부 실패해도 `completed` — 본문은 `null` 로 나간다 (`/report` 참고).
 - `404`: DB 에도 존재하지 않는 `plaza_id`.
 
+## `GET /api/plazas/{plaza_id}/agents`
+
+Casting 화면이 슬롯에 띄울 앵커 리스트. plaza 에 묶인 `ontology_a_persona.json`
+(Phase 1 산출) 의 `agents` 를 라우트가 직접 읽어 시각화에 의미 있는 필드만 추려
+돌려준다. plaza 생성 시점에 ontology_a 가 이미 존재하므로 **pending / running**
+에서도 200 으로 떨어진다 — sim 시작 전부터 앵커 슬롯 그릴 수 있다.
+
+응답 200:
+
+```json
+{
+  "plaza_id": "ab12cd34...",
+  "agents": [
+    { "id": "agent_001", "name": "AI 기본법", "role": "AIRegulationPolicy", "ideology": 0.65, "topics": ["AI 규제 기본 원칙"] },
+    { "id": "agent_002", "name": "스타트업 협회", "role": "IndustryGroup", "ideology": 0.30, "topics": [...] }
+  ]
+}
+```
+
+- `id`: `AgentProfile.agent_id`. 프론트가 deterministic avatar 생성에도 쓴다 — `avatar` 필드는 ontology 스키마에 없어 응답에서 빠진다.
+- `role`: `AgentProfile.entity_type`. ontology 추출 결과의 카테고리 라벨.
+- `ideology`: 0.0 ~ 1.0.
+- `404`: 존재하지 않는 `plaza_id`, 또는 `ontology_a_path` 가 디스크에 없는 경우.
+- `500`: 파일이 있지만 스키마 파싱 실패 — Phase 1 산출이 손상된 경우.
+
 ## `GET /api/plazas/{plaza_id}/report`
 
 결정적 집계 (`DataAggregator.aggregate`) + LLM 본문 (`ReportComposer`). 집계
