@@ -16,7 +16,7 @@ import json
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from pydantic import ValidationError
 
 from litemiro.api.layout import compute_layout, plaza_seed
@@ -330,6 +330,28 @@ async def get_layout(plaza_id: str, request: Request) -> PlazaLayoutResponse:
         for p in profiles
     ]
     return PlazaLayoutResponse(plaza_id=plaza_id, ready=True, agents=items)
+
+
+@router.delete("/{plaza_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_plaza(plaza_id: str, request: Request) -> Response:
+    """plaza 를 메모리·SQLite·디스크 산출물까지 통째로 정리.
+
+    상태에 관계없이 받아들인다 — 잘못 만든 plaza 를 즉시 치우는 게 흔한 use
+    case 라 ``pending`` / ``running`` / ``composing`` 도 cancel + cleanup 으로
+    수렴시킨다. 자세한 동작은 ``PlazaStore.delete`` doc 참고. 없는 plaza 는 404.
+
+    응답은 204 No Content — body 가 비므로 ``Response`` 를 직접 돌려준다
+    (FastAPI 가 None 반환 시 4xx 가 아닌 한 빈 body 를 채워주긴 하지만, 명시적
+    인 게 의도를 더 잘 드러낸다).
+    """
+    store = _store(request)
+    deleted = await store.delete(plaza_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"plaza {plaza_id!r} not found",
+        )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 __all__ = ["router"]

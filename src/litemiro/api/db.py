@@ -230,6 +230,17 @@ def load_all(conn: sqlite3.Connection) -> list[PlazaRecord]:
     return records
 
 
+def delete_record(conn: sqlite3.Connection, plaza_id: str) -> bool:
+    """plaza row 한 건 삭제. row 가 있었으면 True / 없으면 False.
+
+    호출자가 직접 commit 불필요 (``isolation_level=None`` — auto-commit). 디스크
+    산출물 (events.jsonl / checkpoints/) 삭제는 ``PlazaStore.delete`` 책임이다 —
+    DB layer 는 한 row 만 본다.
+    """
+    cursor = conn.execute("DELETE FROM plazas WHERE plaza_id = ?", (plaza_id,))
+    return cursor.rowcount > 0
+
+
 def list_summary(
     conn: sqlite3.Connection,
     *,
@@ -283,4 +294,11 @@ def list_summary(
     return summaries, total
 
 
-__all__ = ["PlazaSummary", "connect", "list_summary", "load_all", "upsert_record"]
+__all__ = [
+    "PlazaSummary",
+    "connect",
+    "delete_record",
+    "list_summary",
+    "load_all",
+    "upsert_record",
+]

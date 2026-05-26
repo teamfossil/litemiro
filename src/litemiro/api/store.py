@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import shutil
 import sqlite3
 import uuid
 from dataclasses import dataclass, field
@@ -517,6 +518,44 @@ class PlazaStore:
                 return
             with contextlib.suppress(ValueError):
                 record.subscribers.remove(queue)
+
+    async def delete(self, plaza_id: str) -> bool:
+        """plaza 한 건을 통째로 정리. 없으면 False / 있었으면 True.
+
+        진행 중인 plaza 도 그대로 받는다 — 잘못 만든 plaza 를 즉시 치우려는 게
+        DELETE 의 주된 동기라 ``pending`` / ``running`` / ``composing`` 에서 409
+        로 막으면 가장 흔한 use case 가 차단된다. 대신 안전하게:
+
+        1) 살아 있는 ``task`` 를 ``cancel`` + ``await`` (shutdown 패턴과 같음).
+           ``_drive`` 의 finally 가 마지막 terminal status emit 까지 끝낸 뒤 task
+           가 종료된다.
+        2) ``_records`` 에서 빼서 그 후 들어오는 ``get`` 이 404 가 되게.
+        3) SQLite row 삭제 — 재시작 후에도 안 보이게.
+        4) ``plaza_root`` 디렉토리 (events.jsonl + checkpoints/) 를 통째로 삭제.
+           ``ignore_errors=True`` — 디렉토리가 이미 사라졌거나 (테스트 fake) 권한
+           이슈여도 DELETE 응답은 성공으로 떨군다 (idempotent 한 측면 강화).
+
+        ``subscribers`` 는 큐를 명시적으로 닫지 않는다 — SSE 라우트가 task 종료
+        후 다음 ``record.subscribers.remove`` 시 plaza 가 사라진 걸 보고 빠진다.
+        지금은 SSE 라우트가 아직 없어 lifecycle 만 잡아둔다.
+        """
+        async with self._lock:
+            record = self._records.pop(plaza_id, None)
+        if record is None:
+            # SQLite 에만 남아 있고 메모리엔 없는 케이스는 없다 (생성 시 _records 에
+            # 박고 hydrate 도 한꺼번에 박는다) — 그래도 404 로 떨구는 게 일관적.
+            return False
+        task = record.task
+        if task is not None and not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await task
+        if self._db is not None:
+            _db.delete_record(self._db, plaza_id)
+        if record.event_log_path is not None:
+            plaza_root = record.event_log_path.parent
+            await asyncio.to_thread(shutil.rmtree, plaza_root, ignore_errors=True)
+        return True
 
     async def list_plazas(
         self,
