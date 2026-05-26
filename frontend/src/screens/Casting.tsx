@@ -237,6 +237,11 @@ export default function Casting() {
             </div>
           </div>
           <div className="lm-cast__head-actions">
+            {!done && (
+              <Button kind="ghost" onClick={handleSkip}>
+                건너뛰기
+              </Button>
+            )}
             <Button kind="primary" disabled={!done} onClick={handleSkip} trailing={<ArrowGlyph dir="right" />}>
               {done ? '광장으로 입장' : `광장 준비 중 · ${Math.round(t * 100)}%`}
             </Button>
