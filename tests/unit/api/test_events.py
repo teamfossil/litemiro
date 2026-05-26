@@ -329,9 +329,7 @@ def _append_line(path: Path, line: str) -> None:
         f.write(line + "\n")
 
 
-def _event_writing_runner(
-    events: list[RoundEvent], *, between_delay: float = 0.05
-) -> _RunnerCoro:
+def _event_writing_runner(events: list[RoundEvent], *, between_delay: float = 0.05) -> _RunnerCoro:
     """라운드마다 events.jsonl 한 줄을 append + on_progress 호출.
 
     ``between_delay`` 는 tail poll 사이클이 새 라인을 한 번이라도 잡아낼 수
@@ -389,9 +387,7 @@ def test_stream_emits_action_event_per_logged_line(
             target_post_id="a1_r0000",
         ),
     ]
-    app = create_app(
-        runner=_event_writing_runner(events, between_delay=0.05), base_dir=tmp_path
-    )
+    app = create_app(runner=_event_writing_runner(events, between_delay=0.05), base_dir=tmp_path)
     with TestClient(app) as client:
         plaza_id = _create_plaza(client, rounds=3)
         with client.stream("GET", f"/api/plazas/{plaza_id}/events") as resp:
@@ -437,9 +433,7 @@ def test_stream_drains_final_action_before_terminal_status(
     """
     monkeypatch.setattr(store_module, "_TAIL_POLL_INTERVAL_SECONDS", 0.1)
 
-    last_event = _round_event(
-        round_num=0, agent_id="a-final", action_type=ActionType.DO_NOTHING
-    )
+    last_event = _round_event(round_num=0, agent_id="a-final", action_type=ActionType.DO_NOTHING)
 
     async def _run(
         *,
@@ -474,8 +468,6 @@ def test_stream_drains_final_action_before_terminal_status(
     # action 이 terminal 보다 먼저.
     action_idx = actions[0][0]
     terminal_idx = max(
-        i
-        for i, (n, d) in enumerate(sse)
-        if n == "status" and d.get("status") == "completed"
+        i for i, (n, d) in enumerate(sse) if n == "status" and d.get("status") == "completed"
     )
     assert action_idx < terminal_idx

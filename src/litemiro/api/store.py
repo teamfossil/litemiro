@@ -210,9 +210,7 @@ class PlazaStore:
         for queue in list(record.subscribers):
             queue.put_nowait(event)
 
-    async def _tail_event_log(
-        self, record: PlazaRecord, stop_event: asyncio.Event
-    ) -> None:
+    async def _tail_event_log(self, record: PlazaRecord, stop_event: asyncio.Event) -> None:
         """events.jsonl 을 폴링하면서 새 라인을 ``action`` SSE 로 broadcast.
 
         runner Protocol 을 건드리지 않으려고 callback 대신 file tail 로 갔다 —
@@ -271,9 +269,7 @@ class PlazaStore:
         while not stop_event.is_set():
             await drain()
             try:
-                await asyncio.wait_for(
-                    stop_event.wait(), timeout=_TAIL_POLL_INTERVAL_SECONDS
-                )
+                await asyncio.wait_for(stop_event.wait(), timeout=_TAIL_POLL_INTERVAL_SECONDS)
             except TimeoutError:
                 continue
         # final drain — stop 직전 sleep window 안에 막판에 들어온 라인을 회수.
