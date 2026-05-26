@@ -15,24 +15,28 @@ from typing import Any
 from fastapi.testclient import TestClient
 
 from litemiro.api.app import create_app
-from litemiro.api.store import ProgressCallback
+from litemiro.api.store import ProgressCallback, RunnerOutcome
 
-_RunnerCoro = Callable[..., Coroutine[Any, Any, None]]
+_RunnerCoro = Callable[..., Coroutine[Any, Any, RunnerOutcome]]
 
 
-def _success_runner(rounds_to_report: int) -> _RunnerCoro:
+def _success_runner(rounds_to_report: int, *, tokens: int = 0) -> _RunnerCoro:
     async def _run(
         *,
         plaza_id: str,
         ontology_a_path: Path,
         ontology_b_path: Path,
         rounds: int,
+        event_log_path: Path,
+        checkpoint_dir: Path,
         on_progress: ProgressCallback,
-    ) -> None:
+    ) -> RunnerOutcome:
         del plaza_id, ontology_a_path, ontology_b_path, rounds
+        del event_log_path, checkpoint_dir
         for r in range(rounds_to_report):
             await asyncio.sleep(0)
             on_progress(rounds_done=r + 1)
+        return RunnerOutcome(tokens_used=tokens)
 
     return _run
 
@@ -43,9 +47,12 @@ async def _failing_runner(
     ontology_a_path: Path,
     ontology_b_path: Path,
     rounds: int,
+    event_log_path: Path,
+    checkpoint_dir: Path,
     on_progress: ProgressCallback,
-) -> None:
-    del plaza_id, ontology_a_path, ontology_b_path, rounds, on_progress
+) -> RunnerOutcome:
+    del plaza_id, ontology_a_path, ontology_b_path, rounds
+    del event_log_path, checkpoint_dir, on_progress
     raise RuntimeError("boom")
 
 
@@ -68,8 +75,8 @@ def _wait_until(
 
 
 class TestCreatePlaza:
-    def test_returns_202_and_plaza_id(self) -> None:
-        app = create_app(runner=_success_runner(rounds_to_report=3))
+    def test_returns_202_and_plaza_id(self, tmp_path: Path) -> None:
+        app = create_app(runner=_success_runner(rounds_to_report=3), base_dir=tmp_path)
         with TestClient(app) as client:
             resp = client.post(
                 "/api/plazas",
@@ -86,8 +93,8 @@ class TestCreatePlaza:
         assert isinstance(body["plaza_id"], str)
         assert len(body["plaza_id"]) >= 16
 
-    def test_rejects_invalid_rounds(self) -> None:
-        app = create_app(runner=_success_runner(rounds_to_report=0))
+    def test_rejects_invalid_rounds(self, tmp_path: Path) -> None:
+        app = create_app(runner=_success_runner(rounds_to_report=0), base_dir=tmp_path)
         with TestClient(app) as client:
             resp = client.post(
                 "/api/plazas",
@@ -99,8 +106,8 @@ class TestCreatePlaza:
             )
         assert resp.status_code == 422
 
-    def test_rejects_unknown_field(self) -> None:
-        app = create_app(runner=_success_runner(rounds_to_report=1))
+    def test_rejects_unknown_field(self, tmp_path: Path) -> None:
+        app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
         with TestClient(app) as client:
             resp = client.post(
                 "/api/plazas",
@@ -115,14 +122,14 @@ class TestCreatePlaza:
 
 
 class TestGetStatus:
-    def test_404_for_unknown_id(self) -> None:
-        app = create_app(runner=_success_runner(rounds_to_report=1))
+    def test_404_for_unknown_id(self, tmp_path: Path) -> None:
+        app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
         with TestClient(app) as client:
             resp = client.get("/api/plazas/does-not-exist/status")
         assert resp.status_code == 404
 
-    def test_reaches_completed_with_progress(self) -> None:
-        app = create_app(runner=_success_runner(rounds_to_report=3))
+    def test_reaches_completed_with_progress(self, tmp_path: Path) -> None:
+        app = create_app(runner=_success_runner(rounds_to_report=3), base_dir=tmp_path)
         with TestClient(app) as client:
             created = client.post(
                 "/api/plazas",
@@ -140,8 +147,8 @@ class TestGetStatus:
         assert body["label"] == "demo"
         assert body["error"] is None
 
-    def test_failure_surfaces_error(self) -> None:
-        app = create_app(runner=_failing_runner)
+    def test_failure_surfaces_error(self, tmp_path: Path) -> None:
+        app = create_app(runner=_failing_runner, base_dir=tmp_path)
         with TestClient(app) as client:
             created = client.post(
                 "/api/plazas",

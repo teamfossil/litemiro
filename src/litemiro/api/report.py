@@ -1,0 +1,51 @@
+"""``PlazaReport`` 빌더 — events.jsonl → ``PlazaReportResponse``.
+
+``DataAggregator.aggregate`` 결과를 그대로 직렬화한다. LLM 분석
+(``PatternAnalyzer`` / ``ReportComposer``) 은 step 4 에서 합치므로 본
+모듈은 결정적 통계만 다룬다 — 같은 events.jsonl 은 항상 같은 응답.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from litemiro.api.models import PlazaReportResponse
+from litemiro.phase3.data_aggregator import DataAggregator
+
+if TYPE_CHECKING:
+    from litemiro.api.store import PlazaRecord
+
+
+def build_report(record: PlazaRecord) -> PlazaReportResponse:
+    """완료된 plaza 의 events.jsonl 을 집계해 응답 모델로 빌드.
+
+    호출자가 status == completed 인지 검사한 뒤 호출해야 한다 — 본 함수는
+    파일이 비어 있어도 (``DataAggregator`` 가 빈 결과를 돌려줌) 그대로 응답한다.
+    파일이 아예 없는 경우 (``--fake`` 모드에서 진짜 시뮬을 안 돌린 경우, 또는
+    runner 가 0 round 로 끝난 경우) 도 빈 집계로 폴백 — 500 보다 200 + 빈
+    결과가 클라이언트에 더 친절.
+    """
+    if record.event_log_path is None:
+        raise ValueError(f"plaza {record.plaza_id!r} has no event_log_path")
+    if record.event_log_path.exists():
+        aggregation = DataAggregator.aggregate(record.event_log_path)
+    else:
+        aggregation = DataAggregator.aggregate_events([])
+    return PlazaReportResponse(
+        plaza_id=record.plaza_id,
+        label=record.label,
+        status=record.status,
+        rounds_total=record.rounds_total,
+        rounds_done=record.rounds_done,
+        tokens_used=record.tokens_used,
+        n_events=aggregation.n_events,
+        n_agents=aggregation.n_agents,
+        n_rounds=aggregation.n_rounds,
+        # Pydantic 의 frozen mapping 을 mutable dict 로 직렬화 — FastAPI 응답 시
+        # JSON 변환을 단순화하기 위함.
+        categories={k: dict(v) for k, v in aggregation.categories.items()},
+        qa_metrics=aggregation.qa_metrics.model_dump(),
+    )
+
+
+__all__ = ["build_report"]
