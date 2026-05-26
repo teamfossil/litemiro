@@ -30,7 +30,15 @@ export function pathForScreen(id: ScreenId, plazaId: string = DEMO_PLAZA_ID): st
 }
 
 // 화면 컴포넌트에서: const go = useScreenNav();  go('plaza');
-export function useScreenNav(plazaId: string = DEMO_PLAZA_ID): (id: ScreenId) => void {
+// 두 번째 인자로 plazaId 를 명시하면 그 plaza 로 — Seed → Casting 처럼
+// `createPlaza` 응답의 실 plaza_id 로 이동할 때 쓴다. defaultPlazaId 는
+// `useParams<{ plazaId: string }>().plazaId` 처럼 undefined 가능한 값을 그대로
+// 받을 수 있게 optional + DEMO 폴백.
+export function useScreenNav(
+  defaultPlazaId?: string,
+): (id: ScreenId, overridePlazaId?: string) => void {
   const navigate = useNavigate();
-  return (id: ScreenId) => navigate(pathForScreen(id, plazaId));
+  const baseId = defaultPlazaId ?? DEMO_PLAZA_ID;
+  return (id, overridePlazaId) =>
+    navigate(pathForScreen(id, overridePlazaId ?? baseId));
 }

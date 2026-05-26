@@ -16,7 +16,7 @@
 // 보이지 않는다.
 // =====================================================================
 
-import type { RoleId } from '@/data/types';
+import type { AvatarSpec, Expr, Pose, Prop, RoleId } from '@/data/types';
 
 const _FALLBACK: RoleId = 'citizen_x';
 
@@ -37,4 +37,24 @@ const ENTITY_TYPE_TO_ROLE_ID: Record<string, RoleId> = {
 
 export function mapBackendRoleToRoleId(entityType: string): RoleId {
   return ENTITY_TYPE_TO_ROLE_ID[entityType] ?? _FALLBACK;
+}
+
+// --------------------------------------------------------------------
+// avatar_seed (uint32, sha256(agent_id)[:4]) → AvatarSpec.
+// 백엔드가 시드만 권위로 제공하고 (해시 알고리즘은 contract 로 lock-in)
+// pose/prop/expr 추출 정책은 프론트가 결정. 같은 시드면 같은 결과 — reload/
+// 재연결에서 아바타가 안 튄다.
+// --------------------------------------------------------------------
+const _POSES: Pose[] = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6'];
+const _PROPS: Prop[] = ['O0', 'O1', 'O2', 'O3', 'O4', 'O5'];
+const _EXPRS: Expr[] = ['E1', 'E2', 'E3'];
+
+export function avatarFromSeed(seed: number): AvatarSpec {
+  // 32-bit 시드의 각 8-bit 청크로 pose/prop/expr 결정 — 충돌 가능성 낮고
+  // 비트 분포 활용.
+  return {
+    pose: _POSES[seed % _POSES.length],
+    prop: _PROPS[(seed >> 8) % _PROPS.length],
+    expr: _EXPRS[(seed >> 16) % _EXPRS.length],
+  };
 }

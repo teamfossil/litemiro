@@ -6,10 +6,13 @@
 // =====================================================================
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { lm } from '@/data/mock';
 import type { Action, ActionType, Agent, AgentRegistry, PlazaNode, RoleId } from '@/data/types';
 import { AvatarSVG, Button, Stat, ArrowGlyph } from '@/components/atoms';
 import { useScreenNav } from '@/lib/nav';
+import { api, type PlazaActionEvent, type PlazaStatus } from '@/api/client';
+import { avatarFromSeed, mapBackendRoleToRoleId } from '@/lib/roles';
 
 // --------------------------------------------------------------------
 // 1) 에이전트 레지스트리
@@ -462,41 +465,94 @@ function liveStatus(round: number, total: number) {
 // ScreenLive — 메인
 // --------------------------------------------------------------------
 export default function Live() {
-  const go = useScreenNav();
-  const total = 50;
+  const { plazaId } = useParams<{ plazaId: string }>();
+  const go = useScreenNav(plazaId);
   const nodes = useMemo(() => generateLiveNodes(), []);
-  const agents = useMemo(() => buildAgentRegistry(), []);
-  const actions = useMemo(() => generateLiveActions(agents, total), [agents]);
+  // 에이전트 레지스트리는 mock + 백엔드 /agents 보강. /agents 가 비어도 mock 으로
+  // 사이드바 피드가 빈 칸이 안 됨.
+  const [agents, setAgents] = useState<AgentRegistry>(() => buildAgentRegistry());
 
+  // SSE 구동 상태 — round/total/status/actions 모두 백엔드 이벤트로 갱신.
   const [round, setRound] = useState(0);
-  const [playing, setPlaying] = useState(true);
+  const [total, setTotal] = useState(50);
+  const [phaseStatus, setPhaseStatus] = useState<PlazaStatus>('pending');
+  const [liveActions, setLiveActions] = useState<Action[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const startedAt = useRef<number>(0);
-  const rafRef = useRef<number>(0);
 
+  // /agents fetch — agent_id → name/role 매핑이 사이드바 피드에 필요.
   useEffect(() => {
-    if (!playing) return;
-    const DURATION = 36000; // 50R → ~36s
-    startedAt.current = performance.now() - (round / total) * DURATION;
-    const tick = () => {
-      const elapsed = performance.now() - startedAt.current;
-      const t = Math.min(1, elapsed / DURATION);
-      const r = Math.floor(t * total);
-      setRound(r);
-      if (t < 1) {
-        rafRef.current = requestAnimationFrame(tick);
-      } else {
-        setPlaying(false);
-      }
+    if (!plazaId) return;
+    let cancelled = false;
+    api
+      .getAgents(plazaId)
+      .then((res) => {
+        if (cancelled || res.agents.length === 0) return;
+        setAgents((prev) => {
+          const list = [...prev.list];
+          const byId = { ...prev.byId };
+          for (const a of res.agents) {
+            const ag: Agent = {
+              id: a.id,
+              name: a.name,
+              short: a.name,
+              role: mapBackendRoleToRoleId(a.role),
+              kind: 'anchor',
+              avatar: avatarFromSeed(a.avatar_seed),
+            };
+            if (!byId[ag.id]) list.push(ag);
+            byId[ag.id] = ag;
+          }
+          return { list, byId };
+        });
+      })
+      .catch(() => {
+        // mock 유지.
+      });
+    return () => {
+      cancelled = true;
     };
-    rafRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafRef.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playing]);
+  }, [plazaId]);
 
-  const settle = round / total;
-  const status = liveStatus(round, total);
-  const stats = useMemo(() => computeStats(actions, round, total), [actions, round]);
+  // SSE — progress / status / action / actions_snapshot.
+  useEffect(() => {
+    if (!plazaId) return;
+    const toAction = (e: PlazaActionEvent): Action => ({
+      round: e.round_num,
+      agentId: e.agent_id,
+      type: e.type as ActionType,
+      content: e.content ?? undefined,
+      targetId: e.target_agent_id ?? undefined,
+    });
+    const stream = api.streamPlazaEvents(plazaId, {
+      onProgress: (e) => {
+        setRound(e.rounds_done);
+        setTotal(e.rounds_total);
+      },
+      onStatus: (e) => {
+        setPhaseStatus(e.status);
+        setRound(e.rounds_done);
+        setTotal(e.rounds_total);
+      },
+      onAction: (e) => {
+        setLiveActions((prev) => [...prev.slice(-39), toAction(e)]);
+      },
+      onActionsSnapshot: (e) => {
+        setLiveActions(e.actions.map(toAction));
+      },
+    });
+    return () => stream.close();
+  }, [plazaId]);
+
+  // composing 은 sim 자체는 끝났으니 progress 100% 강제, status 텍스트만 갱신.
+  const progress = phaseStatus === 'composing' || phaseStatus === 'completed' ? 1 : round / Math.max(total, 1);
+  const settle = progress;
+  const status = phaseStatus === 'composing'
+    ? { tag: '보고서 합성중', text: 'LLM 이 결과 보고서를 정리하고 있어요.' }
+    : phaseStatus === 'completed'
+    ? { tag: '광장 종료', text: '결과를 확인하세요.' }
+    : liveStatus(round, total);
+  const isCompleted = phaseStatus === 'completed';
+  const stats = useMemo(() => computeStats(liveActions, round, total), [liveActions, round, total]);
 
   return (
     <div className={`lm-live ${sidebarOpen ? 'is-sidebar-open' : ''}`}>
@@ -542,32 +598,30 @@ export default function Live() {
           </div>
           <div className="lm-live__foot-actions">
             <Button
-              kind="ghost"
-              onClick={() => {
-                setRound(0);
-                setPlaying(true);
-              }}
+              kind="primary"
+              onClick={() => go('plaza')}
+              trailing={<ArrowGlyph dir="right" />}
+              disabled={!isCompleted}
             >
-              처음부터
-            </Button>
-            {playing ? (
-              <Button kind="secondary" onClick={() => setPlaying(false)}>
-                일시정지
-              </Button>
-            ) : (
-              <Button kind="secondary" onClick={() => setPlaying(true)}>
-                재생
-              </Button>
-            )}
-            <Button kind="primary" onClick={() => go('plaza')} trailing={<ArrowGlyph dir="right" />} disabled={round < total}>
-              {round < total ? '광장이 닫히면 결과로' : '결과 광장 보기'}
+              {isCompleted
+                ? '결과 광장 보기'
+                : phaseStatus === 'composing'
+                ? '보고서 합성중…'
+                : '광장이 닫히면 결과로'}
             </Button>
           </div>
         </footer>
       </div>
 
       {sidebarOpen && (
-        <LiveSidebar actions={actions} agents={agents} round={round} total={total} stats={stats} onClose={() => setSidebarOpen(false)} />
+        <LiveSidebar
+          actions={liveActions}
+          agents={agents}
+          round={round}
+          total={total}
+          stats={stats}
+          onClose={() => setSidebarOpen(false)}
+        />
       )}
     </div>
   );
