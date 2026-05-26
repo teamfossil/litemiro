@@ -1,13 +1,22 @@
 // =====================================================================
 // 캐스팅 (Phase 4) — Persona Extraction
-// (screen-casting.jsx → ES 모듈 + 타입. 별칭 훅 → 표준 훅, window.LM → lm)
+// 두 모드:
+// - /casting/new?ontology=...&preset=...&rounds=...&label=...
+//   → CastingReal. /api/ontologies/{id} 를 1.5~2 초 간격으로 폴링, ready 가
+//     되면 /api/plazas 를 만들어 /live/{plaza_id} 로 넘긴다. Seed 흐름의
+//     실제 진입로.
+// - /casting/:plazaId
+//   → CastingDemo. 옛 프로토타입의 8 초 fake 애니메이션. Landing 의 데모
+//     진입 및 헤더 phase nav 에서 잡아둔다.
 // =====================================================================
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { lm } from '@/data/mock';
 import type { Anchor, Seed } from '@/data/types';
 import { AvatarSVG, Badge, RoleSwatch, Button, ArrowGlyph } from '@/components/atoms';
-import { useScreenNav } from '@/lib/nav';
+import { useScreenNav, pathForScreen } from '@/lib/nav';
+import { api, ApiError, type OntologyResponse, type Preset } from '@/api/client';
 
 // --------------------------------------------------------------------
 // 타이밍 — 총 8초.
@@ -161,9 +170,9 @@ function DerivedSwarm({ progress }: { progress: number }) {
 }
 
 // --------------------------------------------------------------------
-// ScreenCasting — 메인.
+// CastingDemo — 옛 8 초 fake 애니메이션. Landing 데모 / phase nav 진입용.
 // --------------------------------------------------------------------
-export default function Casting() {
+function CastingDemo() {
   const go = useScreenNav();
   const seed = lm.SEED;
   const anchors = lm.ANCHORS;
@@ -280,4 +289,188 @@ export default function Casting() {
       </div>
     </div>
   );
+}
+
+// --------------------------------------------------------------------
+// CastingReal — Seed 흐름의 실제 진입. /api/ontologies/{id} 폴링 →
+// ready=true 시 /api/plazas POST → /live/{plaza_id} replace. URL 검색어
+// (ontology / preset / rounds / label) 만으로 상태가 복원돼 새로고침에도
+// 살아남는다.
+// --------------------------------------------------------------------
+const ONTOLOGY_POLL_INTERVAL_MS = 2_000;
+const DEFAULT_ROUNDS = 15;
+type RealPhase = 'polling' | 'launching' | 'failed';
+
+function CastingReal() {
+  const [search] = useSearchParams();
+  const navigate = useNavigate();
+  const ontologyId = search.get('ontology') ?? '';
+  const labelParam = search.get('label') ?? '';
+  const presetParam = search.get('preset') ?? 'standard';
+  const roundsParam = Number(search.get('rounds') ?? DEFAULT_ROUNDS);
+
+  const preset: Preset = isPreset(presetParam) ? presetParam : 'standard';
+  const rounds =
+    Number.isFinite(roundsParam) && roundsParam > 0 ? Math.floor(roundsParam) : DEFAULT_ROUNDS;
+  // preset → 목표 인격 수. 기본 표시용. contract.md 의 quick=100 / standard=300 / full=500.
+  const targetCount = preset === 'quick' ? 100 : preset === 'full' ? 500 : 300;
+
+  const [status, setStatus] = useState<OntologyResponse | null>(null);
+  const [phase, setPhase] = useState<RealPhase>('polling');
+  const [error, setError] = useState<string | null>(null);
+  const [elapsedSec, setElapsedSec] = useState(0);
+
+  useEffect(() => {
+    if (!ontologyId) {
+      setError('ontology_id 가 누락됐어요. 시드 화면에서 다시 시작해주세요.');
+      setPhase('failed');
+      return;
+    }
+
+    let cancelled = false;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+    const startedAt = Date.now();
+    const elapsedTimer = window.setInterval(() => {
+      if (!cancelled) setElapsedSec(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+
+    const tick = async () => {
+      if (cancelled) return;
+      let onto: OntologyResponse;
+      try {
+        onto = await api.getOntology(ontologyId);
+      } catch (e) {
+        if (cancelled) return;
+        setError(formatError(e, '상태 조회 실패'));
+        setPhase('failed');
+        return;
+      }
+      if (cancelled) return;
+      setStatus(onto);
+
+      if (onto.status === 'completed') {
+        setPhase('launching');
+        try {
+          const plaza = await api.createPlaza({
+            ontology_id: ontologyId,
+            rounds,
+            preset,
+            label: labelParam || undefined,
+          });
+          if (!cancelled) {
+            navigate(pathForScreen('live', plaza.plaza_id), { replace: true });
+          }
+        } catch (e) {
+          if (cancelled) return;
+          setError(formatError(e, '광장 열기 실패'));
+          setPhase('failed');
+        }
+        return;
+      }
+      if (onto.status === 'failed') {
+        setError(`인격 생성 실패: ${onto.error ?? '알 수 없는 오류'}`);
+        setPhase('failed');
+        return;
+      }
+      pollTimer = setTimeout(tick, ONTOLOGY_POLL_INTERVAL_MS);
+    };
+    tick();
+
+    return () => {
+      cancelled = true;
+      if (pollTimer) clearTimeout(pollTimer);
+      window.clearInterval(elapsedTimer);
+    };
+  }, [ontologyId, rounds, preset, labelParam, navigate]);
+
+  const elapsedLabel = formatElapsed(elapsedSec);
+  const statusTag = phase === 'failed' ? 'failed' : (status?.status ?? 'pending');
+  const headTitle =
+    phase === 'failed'
+      ? '문제가 발생했어요'
+      : phase === 'launching'
+        ? '광장을 여는 중…'
+        : `${targetCount}명 인격을 만들고 있어요`;
+  const headSubtext =
+    phase === 'failed'
+      ? (error ?? '알 수 없는 오류')
+      : phase === 'launching'
+        ? '곧 자동으로 광장이 열립니다.'
+        : `LLM 호출이 진행되고 있어요 · ${elapsedLabel} 경과`;
+
+  return (
+    <div className="lm-cast">
+      <div className="lm-cast__pad">
+        <header className="lm-cast__head">
+          <div className="lm-cast__head-left">
+            <div className="lm-cast__head-eyebrow">Phase 1 · 인격 생성</div>
+            <h1 className="lm-cast__head-title">{headTitle}</h1>
+            <div className="lm-cast__head-status">
+              <span className="lm-cast__head-status-tag">{statusTag}</span>
+              <span className="lm-cast__head-status-text">{headSubtext}</span>
+            </div>
+          </div>
+          <div className="lm-cast__head-actions">
+            {phase === 'failed' ? (
+              <Button kind="primary" onClick={() => navigate('/seed', { replace: true })}>
+                시드로 돌아가기
+              </Button>
+            ) : (
+              <Button kind="primary" disabled>
+                {phase === 'launching' ? '광장 여는 중…' : '생성 중…'}
+              </Button>
+            )}
+          </div>
+        </header>
+
+        <div className="lm-cast__real">
+          {phase === 'failed' ? (
+            <p className="lm-cast__real-error">{error ?? '알 수 없는 오류'}</p>
+          ) : (
+            <>
+              <div className="lm-cast__real-spinner" aria-hidden="true" />
+              <p className="lm-cast__real-hint">
+                자료에서 핵심 인물·기관을 뽑고 {targetCount}명 시민 인격을 빚는 중입니다.
+                보통 분 단위가 걸려요. 이 화면에 머물러 있으면 자동으로 광장이 열립니다.
+              </p>
+              {status?.agent_count != null && (
+                <p className="lm-cast__real-progress">
+                  현재 {status.agent_count} / {targetCount} 명 완료
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --------------------------------------------------------------------
+// Casting (default) — URL 분기 한 줄짜리 디스패처.
+// --------------------------------------------------------------------
+export default function Casting() {
+  const location = useLocation();
+  if (location.pathname === '/casting/new') return <CastingReal />;
+  return <CastingDemo />;
+}
+
+function isPreset(v: string): v is Preset {
+  return v === 'quick' || v === 'standard' || v === 'full';
+}
+
+function formatElapsed(sec: number): string {
+  if (sec < 60) return `${sec}초`;
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}분 ${s}초`;
+}
+
+function formatError(err: unknown, fallback: string): string {
+  if (err instanceof ApiError) {
+    const detail = err.message.length > 200 ? err.message.slice(0, 200) + '…' : err.message;
+    return `${fallback} (${err.status}): ${detail}`;
+  }
+  if (err instanceof Error) return `${fallback}: ${err.message}`;
+  return fallback;
 }

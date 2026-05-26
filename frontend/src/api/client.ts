@@ -15,7 +15,9 @@ export type PlazaStatus = 'pending' | 'running' | 'composing' | 'completed' | 'f
 // ontology generation 의 상태 — plaza 와 달리 composing 단계가 없다.
 export type OntologyStatus = 'pending' | 'running' | 'completed' | 'failed';
 
-// 보고서 합성 호출 수 — quick=1 / standard=4 / full=8. 시뮬레이션 비용과는 직교.
+// 두 가지를 한꺼번에 결정 — (a) 보고서 합성 LLM 콜 수 (quick=1 / standard=4 /
+// full=8), (b) `POST /api/ontologies` 의 ontology agent 수 (quick=100 /
+// standard=300 / full=500). 자세한 의미는 docs/api/contract.md L59.
 export type Preset = 'quick' | 'standard' | 'full';
 
 export interface HealthResponse {

@@ -64,6 +64,9 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/seed" element={<Seed />} />
+        {/* Seed → /casting/new?ontology=... — ontology 폴링 + plaza 생성 단계.
+            기존 /casting/:plazaId 는 Landing 의 데모 진입용으로 남겨둔다. */}
+        <Route path="/casting/new" element={<Casting />} />
         <Route path="/casting/:plazaId" element={<Casting />} />
         <Route path="/live/:plazaId" element={<Live />} />
         <Route path="/plaza/:plazaId" element={<Plaza />} />

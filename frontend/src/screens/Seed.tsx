@@ -1,14 +1,14 @@
 // =====================================================================
 // 시드 입력 (Phase 2) — Seed
-// PDF/TXT 업로드 → /api/documents → requirement 입력 → /api/ontologies +
-// 폴링 → /api/plazas → /casting/{plaza_id}. 한 화면 한 흐름.
+// PDF/TXT 업로드 → /api/documents → requirement 입력 → /api/ontologies POST.
+// 분 단위 걸리는 ontology 폴링과 plaza 생성은 다음 화면(Casting)이 맡는다 —
+// Seed 는 "광장 열기" 버튼을 짧게 잠그고 바로 Casting 으로 넘긴다.
 // =====================================================================
 
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ScreenHeader } from '@/components/chrome';
 import { Button, ArrowGlyph } from '@/components/atoms';
-import { pathForScreen } from '@/lib/nav';
 import { api, ApiError, type DocumentResponse, type Preset } from '@/api/client';
 
 // --------------------------------------------------------------------
@@ -31,21 +31,15 @@ const SEED_PLANS: SeedPlan[] = [
   { id: 'full', name: 'Full', participants: 500, rounds: 50, minutes: 37.5, cost: 2980, desc: '정밀 · 군중 두께 + 영향력 분포' },
 ];
 
-// 폴링 — Phase 1 generation 은 분 단위. 2s 간격으로 5분까지 기다리고 그 뒤
-// timeout 으로 본다. 백엔드가 그 안에 끝나지 않으면 사용자에게 직접 다시
-// 시도하라고 안내.
-const ONTOLOGY_POLL_INTERVAL_MS = 2_000;
-const ONTOLOGY_POLL_TIMEOUT_MS = 5 * 60 * 1_000;
-
 // 광장 열기 버튼이 거치는 단계. idle 외에는 사용자 입력을 모두 잠근다.
-type Phase = 'idle' | 'uploading' | 'generating' | 'launching';
+// 폴링/plaza 생성은 Casting 으로 넘어가 거기서 처리하므로 Seed 단계엔
+// 'starting' 이 짧게만 (createOntology 응답 한 라운드) 잡힌다.
+type Phase = 'idle' | 'uploading' | 'starting';
 
 // 백엔드가 받는 확장자만 화이트리스트. 옛 prototype 의 docx/md 는 제외 — 백엔드
 // _ALLOWED_EXTENSIONS 와 일치시킨다.
 const ACCEPT_FILE = '.pdf,.txt,application/pdf,text/plain';
 const MAX_UPLOAD_MB = 5;
-
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 // --------------------------------------------------------------------
 // FileDropZone — 비어있을 때.
@@ -200,10 +194,8 @@ function phaseLabel(phase: Phase): string {
   switch (phase) {
     case 'uploading':
       return '문서를 서버로 보내는 중…';
-    case 'generating':
-      return 'Phase 1 인격을 만드는 중… 분 단위 소요';
-    case 'launching':
-      return '광장을 여는 중…';
+    case 'starting':
+      return 'Phase 1 시작 요청 중…';
     default:
       return '';
   }
@@ -260,41 +252,24 @@ export default function Seed() {
     if (!canStart || doc === null) return;
     setError(null);
 
-    setPhase('generating');
-    let ontologyId: string;
+    // POST 만 하고 응답이 떨어지면 곧장 Casting 으로 넘긴다. 분 단위 폴링과
+    // plaza 생성은 거기서 처리 — Seed 화면이 길게 막혀 보이지 않도록.
+    setPhase('starting');
     try {
       const created = await api.createOntology({
         document_id: doc.document_id,
         requirement: requirementTrimmed,
         preset: planId,
       });
-      ontologyId = created.ontology_id;
-
-      // status === 'completed' / 'failed' 둘 다 terminal. 폴링은 ready 또는
-      // failed 까지 기다린다 — composing 단계는 ontology 쪽엔 없다.
-      const ready = await pollOntology(ontologyId);
-      if (!ready.ready) {
-        setError(`인격 생성 실패: ${ready.error ?? '알 수 없는 오류'}`);
-        setPhase('idle');
-        return;
-      }
-    } catch (e) {
-      setError(formatError(e, '인격 생성 요청 실패'));
-      setPhase('idle');
-      return;
-    }
-
-    setPhase('launching');
-    try {
-      const plaza = await api.createPlaza({
-        ontology_id: ontologyId,
-        rounds: plan.rounds,
+      const search = new URLSearchParams({
+        ontology: created.ontology_id,
         preset: planId,
+        rounds: String(plan.rounds),
         label: doc.filename,
       });
-      navigate(pathForScreen('casting', plaza.plaza_id));
+      navigate(`/casting/new?${search.toString()}`);
     } catch (e) {
-      setError(formatError(e, '광장 열기 실패'));
+      setError(formatError(e, '인격 생성 요청 실패'));
       setPhase('idle');
     }
   };
@@ -389,24 +364,6 @@ export default function Seed() {
       </div>
     </div>
   );
-}
-
-// --------------------------------------------------------------------
-// 폴링 — 2s 마다 GET /api/ontologies/{id}. terminal status 도달 시 반환.
-// timeout 도달 시 마지막 응답을 그대로 돌려준다 — caller 가 ready 로 분기.
-// --------------------------------------------------------------------
-async function pollOntology(ontologyId: string) {
-  const deadline = Date.now() + ONTOLOGY_POLL_TIMEOUT_MS;
-  // 첫 호출은 즉시 — 백엔드가 빠르게 끝나는 경우 한 라운드 기다림을 아낀다.
-  let last = await api.getOntology(ontologyId);
-  while (last.status !== 'completed' && last.status !== 'failed') {
-    if (Date.now() > deadline) {
-      return { ...last, ready: false, error: last.error ?? '시간 초과 — 다시 시도해주세요' };
-    }
-    await sleep(ONTOLOGY_POLL_INTERVAL_MS);
-    last = await api.getOntology(ontologyId);
-  }
-  return last;
 }
 
 // --------------------------------------------------------------------
