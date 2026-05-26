@@ -9,6 +9,7 @@ composing → completed | failed) 과 동기. 새 상태를 추가할 때는 sto
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -125,6 +126,42 @@ class PlazaLayoutResponse(BaseModel):
     agents: list[PlazaLayoutAgentItem]
 
 
+class PlazaSummaryItem(BaseModel):
+    """``GET /api/plazas`` 목록 한 줄. ``PlazaStatusResponse`` 와 같은 진행
+    상태 필드 + ``preset`` / ``tokens_used`` / 두 timestamp 까지. ``report_markdown``
+    같은 큰 본문은 일부러 빼서 카드 리스트가 가볍게 그려지게 한다.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    plaza_id: str
+    status: PlazaStatus
+    rounds_total: int
+    rounds_done: int
+    label: str | None = None
+    error: str | None = None
+    preset: Preset
+    tokens_used: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class PlazaListResponse(BaseModel):
+    """``GET /api/plazas`` 의 응답.
+
+    ``total`` 은 필터(``status``) 가 걸린 경우 그 필터 후 전체 row 수 — 페이지
+    네이션 위젯의 "총 N건" 표시에 그대로 쓸 수 있게 한다. ``plazas`` 자체는
+    ``limit`` / ``offset`` 으로 잘려 들어온 한 페이지.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    plazas: list[PlazaSummaryItem]
+    total: int = Field(ge=0)
+    limit: int = Field(ge=1, le=100)
+    offset: int = Field(ge=0)
+
+
 class PlazaReportResponse(BaseModel):
     """완료된 plaza 의 보고서 응답 — 결정적 집계 + (선택) LLM Markdown 본문.
 
@@ -159,7 +196,9 @@ __all__ = [
     "PlazaAgentsResponse",
     "PlazaLayoutAgentItem",
     "PlazaLayoutResponse",
+    "PlazaListResponse",
     "PlazaReportResponse",
     "PlazaStatus",
     "PlazaStatusResponse",
+    "PlazaSummaryItem",
 ]

@@ -17,6 +17,7 @@ import contextlib
 import sqlite3
 import uuid
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
@@ -28,6 +29,13 @@ from litemiro.api.models import PlazaStatus
 from litemiro.models import ActionType, RoundEvent
 from litemiro.phase1.models import Preset
 from litemiro.phase3.models import AggregationResult
+
+
+def _utcnow() -> datetime:
+    # microsecond 제거 — SQLite 직렬화가 ``isoformat(timespec="seconds")`` 라
+    # in-memory 와 hydrate 후 record 의 created_at 정밀도가 어긋나지 않게 한다.
+    return datetime.now(UTC).replace(microsecond=0)
+
 
 # SSE 이벤트의 분류 —
 #  * progress:          라운드 진행률 갱신 (rounds_done 증가)
@@ -211,6 +219,13 @@ class PlazaRecord:
     # 통해 채워지고, ``/report`` 가 매 호출마다 events.jsonl 을 재집계하지 않는다.
     # composer 가 없는 fake 경로는 ``build_report`` 가 lazy 로 채운다.
     aggregation_cache: AggregationResult | None = field(default=None, repr=False)
+    # ``GET /api/plazas`` 목록 정렬용. INSERT 시점에 박고 그 후 mutation 마다
+    # ``upsert_record`` 가 ``updated_at`` 만 ``_utcnow`` 로 덮는다. SQLite 영속화
+    # 시 ``isoformat(timespec="seconds")`` 로 저장되므로 마이크로초 정밀도는
+    # 디스크 직렬화 후 잘린다 — 같은 라운드 안에서 두 record 가 동일 timestamp
+    # 가 될 수 있지만 정렬 안정성은 plaza_id 가 tie-break.
+    created_at: datetime = field(default_factory=_utcnow)
+    updated_at: datetime = field(default_factory=_utcnow)
 
 
 class PlazaStore:
@@ -502,6 +517,51 @@ class PlazaStore:
                 return
             with contextlib.suppress(ValueError):
                 record.subscribers.remove(queue)
+
+    async def list_plazas(
+        self,
+        *,
+        limit: int,
+        offset: int,
+        status_filter: PlazaStatus | None = None,
+    ) -> tuple[list[_db.PlazaSummary], int]:
+        """``GET /api/plazas`` 백킹 — 최신 plaza 가 위.
+
+        영속 모드 (``self._db is not None``) 는 SQLite SELECT 로 정렬·필터·페이지
+        처리. 비영속 모드 (단위 테스트) 는 ``_records`` 를 ``created_at`` desc
+        로 정렬 — INSERT 시점에 박힌 값을 그대로 쓰므로 영속 모드와 결과 순서가
+        같다. tie-break 는 ``plaza_id`` (UUID hex) 로 결정성 확보.
+        """
+        async with self._lock:
+            if self._db is not None:
+                return _db.list_summary(
+                    self._db,
+                    limit=limit,
+                    offset=offset,
+                    status_filter=status_filter,
+                )
+            records = list(self._records.values())
+            if status_filter is not None:
+                records = [r for r in records if r.status == status_filter]
+            total = len(records)
+            records.sort(key=lambda r: (r.created_at, r.plaza_id), reverse=True)
+            page = records[offset : offset + limit]
+            summaries = [
+                _db.PlazaSummary(
+                    plaza_id=r.plaza_id,
+                    status=r.status,
+                    rounds_total=r.rounds_total,
+                    rounds_done=r.rounds_done,
+                    label=r.label,
+                    error=r.error,
+                    preset=r.preset,
+                    tokens_used=r.tokens_used,
+                    created_at=r.created_at,
+                    updated_at=r.updated_at,
+                )
+                for r in page
+            ]
+            return summaries, total
 
     async def shutdown(self) -> None:
         """프로세스 종료 시 미완료 태스크를 모두 취소 + SQLite 커넥션을 닫는다.

@@ -17,6 +17,7 @@ checkpoint 기반 자동 재개는 별도 작업.
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, cast, get_args
@@ -26,6 +27,26 @@ from litemiro.phase1.models import Preset
 
 if TYPE_CHECKING:
     from litemiro.api.store import PlazaRecord
+
+
+@dataclass(frozen=True)
+class PlazaSummary:
+    """``GET /api/plazas`` 목록용 한 줄. ``PlazaRecord`` 와 달리 큰 본문
+    (``report_markdown`` / 파일 경로 4종) 은 빼고 ``created_at`` / ``updated_at``
+    을 채운다 — 카드 리스트 화면에서 행마다 markdown KB 를 끌어오는 건 낭비.
+    """
+
+    plaza_id: str
+    status: PlazaStatus
+    rounds_total: int
+    rounds_done: int
+    label: str | None
+    error: str | None
+    preset: Preset
+    tokens_used: int
+    created_at: datetime
+    updated_at: datetime
+
 
 _VALID_STATUSES: frozenset[PlazaStatus] = frozenset(get_args(PlazaStatus))
 _INTERRUPTED_STATUSES: frozenset[PlazaStatus] = frozenset({"pending", "running", "composing"})
@@ -82,9 +103,21 @@ SELECT
     plaza_id, status, rounds_total, rounds_done, label, error,
     tokens_used, preset,
     ontology_a_path, ontology_b_path, event_log_path, checkpoint_dir,
-    report_markdown, report_fallback_used
+    report_markdown, report_fallback_used,
+    created_at, updated_at
 FROM plazas
 """
+
+# Summary 전용 SELECT — list 화면 카드에 쓸 컬럼만. ``report_markdown`` 같은
+# KB 단위 본문은 빼서 행마다 markdown 을 끌어오는 낭비를 피한다.
+_SELECT_SUMMARY_BASE = """
+SELECT
+    plaza_id, status, rounds_total, rounds_done, label, error,
+    tokens_used, preset, created_at, updated_at
+FROM plazas
+"""
+
+_COUNT_BASE = "SELECT COUNT(*) AS n FROM plazas"
 
 
 def _utcnow_iso() -> str:
@@ -115,8 +148,18 @@ def upsert_record(conn: sqlite3.Connection, record: PlazaRecord) -> None:
 
     ``isolation_level=None`` 으로 connect 했기 때문에 sqlite3 가 implicit
     transaction 을 시작하지 않는다 — 매 execute 가 곧 commit.
+
+    ``updated_at`` 은 항상 지금으로 갱신하고 ``record.updated_at`` 에도 반영해서
+    in-memory 가 DB row 와 어긋나지 않게 한다. ``created_at`` 은
+    ``record.created_at`` 값을 그대로 — INSERT 첫 호출에서 박힌 값을 그 후
+    UPSERT 가 ``ON CONFLICT`` 절에서 안 덮는다 (라인 76-77 참고).
     """
-    now = _utcnow_iso()
+    now_dt = datetime.now(UTC).replace(microsecond=0)
+    created = record.created_at
+    if created.tzinfo is None:
+        # naive 가 흘러들어오는 경로는 없지만 안전망 — UTC 가정.
+        created = created.replace(tzinfo=UTC)
+    record.updated_at = now_dt
     conn.execute(
         _UPSERT_SQL,
         (
@@ -134,8 +177,8 @@ def upsert_record(conn: sqlite3.Connection, record: PlazaRecord) -> None:
             str(record.checkpoint_dir) if record.checkpoint_dir else None,
             record.report_markdown,
             1 if record.report_fallback_used else 0,
-            now,
-            now,
+            created.isoformat(timespec="seconds"),
+            now_dt.isoformat(timespec="seconds"),
         ),
     )
 
@@ -178,6 +221,8 @@ def load_all(conn: sqlite3.Connection) -> list[PlazaRecord]:
             checkpoint_dir=Path(row["checkpoint_dir"]) if row["checkpoint_dir"] else None,
             report_markdown=row["report_markdown"],
             report_fallback_used=bool(row["report_fallback_used"]),
+            created_at=datetime.fromisoformat(row["created_at"]),
+            updated_at=datetime.fromisoformat(row["updated_at"]),
         )
         if needs_writeback:
             upsert_record(conn, record)
@@ -185,4 +230,51 @@ def load_all(conn: sqlite3.Connection) -> list[PlazaRecord]:
     return records
 
 
-__all__ = ["connect", "load_all", "upsert_record"]
+def list_summary(
+    conn: sqlite3.Connection,
+    *,
+    limit: int,
+    offset: int,
+    status_filter: PlazaStatus | None = None,
+) -> tuple[list[PlazaSummary], int]:
+    """plaza summary 행 + 필터 적용 후 전체 row 수.
+
+    정렬은 ``created_at DESC`` — 최신 plaza 가 위. ``_utcnow_iso`` 가
+    ``isoformat(timespec="seconds")`` UTC 라 lexicographic 정렬과 시간 정렬이
+    일치 (TZ offset 동일 + zero-padded).
+
+    ``status_filter`` 는 단일 PlazaStatus literal — 동일 필터를 COUNT 에도
+    걸어 페이지네이션 용 ``total`` 이 "필터 후 전체" 를 가리키게 한다.
+    """
+    where = ""
+    params: tuple[object, ...] = ()
+    if status_filter is not None:
+        where = " WHERE status = ?"
+        params = (status_filter,)
+    rows = list(
+        conn.execute(
+            _SELECT_SUMMARY_BASE + where + " ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            (*params, limit, offset),
+        )
+    )
+    total_row = conn.execute(_COUNT_BASE + where, params).fetchone()
+    total = int(total_row["n"]) if total_row is not None else 0
+    summaries = [
+        PlazaSummary(
+            plaza_id=r["plaza_id"],
+            status=cast(PlazaStatus, r["status"]),
+            rounds_total=r["rounds_total"],
+            rounds_done=r["rounds_done"],
+            label=r["label"],
+            error=r["error"],
+            preset=Preset(r["preset"]),
+            tokens_used=r["tokens_used"],
+            created_at=datetime.fromisoformat(r["created_at"]),
+            updated_at=datetime.fromisoformat(r["updated_at"]),
+        )
+        for r in rows
+    ]
+    return summaries, total
+
+
+__all__ = ["PlazaSummary", "connect", "list_summary", "load_all", "upsert_record"]
