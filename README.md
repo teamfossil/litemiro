@@ -5,7 +5,7 @@ Mirofish — LLM-driven social media simulation engine. 학부 캡스톤 (W1~8).
 ## 현황
 
 Phase 1 (듀얼 온톨로지 생성) quick preset 이 실 LLM (OpenRouter / qwen-plus) 으로
-end-to-end 동작. 100 agent · ~220s · ~$0.03 / 1 회 기준. Phase 2 (시뮬레이션) /
+end-to-end 동작. 100 agent · 220s · $0.03 / 1 회 기준. Phase 2 (시뮬레이션) /
 Phase 3 (분석 + ReportComposer) 머지 완료. HTTP API (`litemiro-api`) + Vite/React
 프론트 골격까지 step 1~5 합류 — preset 별 보고서 합성 + SSE 진행률 까지 동작.
 plaza 메타데이터는 `--data-dir/plazas.db` (SQLite, WAL) 로 영속.
