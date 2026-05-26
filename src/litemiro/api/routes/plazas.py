@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from pathlib import Path
 
@@ -26,6 +27,15 @@ from litemiro.api.models import (
 from litemiro.api.report import build_report
 from litemiro.api.store import PlazaStore
 from litemiro.phase1.models import OntologyA
+
+
+def _avatar_seed(agent_id: str) -> int:
+    """``agent_id`` 를 결정적 uint32 시드로. sha256 의 앞 4바이트.
+
+    Python ``hash()`` 는 PYTHONHASHSEED 영향을 받아 프로세스 재시작 시 깨진다 —
+    프론트가 reload 때마다 다른 아바타를 보면 안 되므로 sha256 사용.
+    """
+    return int.from_bytes(hashlib.sha256(agent_id.encode("utf-8")).digest()[:4], "big")
 
 
 def _load_ontology_a(onto_path: Path) -> OntologyA | None:
@@ -155,6 +165,7 @@ async def get_agents(plaza_id: str, request: Request) -> PlazaAgentsResponse:
             role=profile.entity_type,
             ideology=profile.ideology,
             topics=list(profile.topics),
+            avatar_seed=_avatar_seed(profile.agent_id),
         )
         for profile in ontology.agents.values()
     ]

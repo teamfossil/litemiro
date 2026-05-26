@@ -540,8 +540,36 @@ class TestGetAgents:
         assert by_id["agent_001"]["role"] == "AIRegulationPolicy"
         assert by_id["agent_001"]["ideology"] == 0.65
         assert by_id["agent_001"]["topics"] == ["agent_001-topic"]
-        # avatar 필드 부재 확인 (프론트가 generate 한다).
+        # avatar_seed 는 결정적 uint32. 라우트 helper 와 같은 알고리즘 (sha256[:4]).
+        seed = by_id["agent_001"]["avatar_seed"]
+        assert isinstance(seed, int)
+        assert 0 <= seed <= 0xFFFFFFFF
+        # raw avatar 필드는 빠진다 — 프론트가 seed 로 deterministic 생성.
         assert "avatar" not in by_id["agent_001"]
+        # agent_id 가 다르면 seed 도 (충돌 가능성은 무시할 수준 — 2^32 분포).
+        seeds = {a["id"]: a["avatar_seed"] for a in body["agents"]}
+        assert len(set(seeds.values())) == 3
+
+    def test_avatar_seed_deterministic_across_requests(self, tmp_path: Path) -> None:
+        """같은 plaza 를 두 번 fetch 해도 seed 가 같아야 — reload 시 아바타 안 튀는 회귀."""
+        onto_a = _write_ontology_a(
+            tmp_path / "ontology_a.json",
+            [("agent_alpha", "Alpha", "Researcher", 0.4)],
+        )
+        app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/plazas",
+                json={
+                    "ontology_a_path": str(onto_a),
+                    "ontology_b_path": "/tmp/b.json",
+                    "rounds": 1,
+                },
+            ).json()
+            plaza_id = created["plaza_id"]
+            first = client.get(f"/api/plazas/{plaza_id}/agents").json()
+            second = client.get(f"/api/plazas/{plaza_id}/agents").json()
+        assert first["agents"][0]["avatar_seed"] == second["agents"][0]["avatar_seed"]
 
     def test_available_before_sim_finishes(self, tmp_path: Path) -> None:
         """plaza 가 pending/running 이어도 ontology_a 만 있으면 200 으로 떨어진다.

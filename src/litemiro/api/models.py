@@ -57,19 +57,23 @@ class HealthResponse(BaseModel):
 
 class PlazaAgentItem(BaseModel):
     """Casting 화면이 슬롯에 띄울 앵커 1명. ``OntologyA.agents`` 의 ``AgentProfile``
-    에서 시각화에 의미 있는 필드만 추려 노출 — avatar 는 ontology 스키마에 없어
-    프론트가 ``id`` 해시 같은 deterministic generator 로 만든다.
+    에서 시각화에 의미 있는 필드만 추려 노출.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     id: str
     name: str
-    # ``AgentProfile.entity_type`` 그대로. ontology 추출 결과의 카테고리
-    # (예: "AIRegulationPolicy", "Researcher") — UI 가 그대로 라벨로 쓴다.
+    # ``AgentProfile.entity_type`` 그대로 (raw). ontology 추출 결과의 카테고리
+    # 라벨 — 프론트가 자체 매핑 테이블로 RoleId enum 으로 좁힌다.
+    # 매핑 테이블 SSoT 는 ``docs/api/contract.md`` 의 ``/agents`` 섹션.
     role: str
     ideology: float = Field(ge=0.0, le=1.0)
     topics: list[str] = Field(default_factory=list)
+    # agent_id 의 sha256 앞 4바이트 → uint32. 같은 plaza/같은 agent 면 reload·재연결에서도
+    # 같은 값이 와서 프론트 deterministic avatar 가 안 튄다. 백엔드가 직접 계산하는 이유는
+    # 프론트 해시 알고리즘 변경/언어 차이로 시드가 어긋나는 걸 막기 위해.
+    avatar_seed: int = Field(ge=0, le=4294967295)
 
 
 class PlazaAgentsResponse(BaseModel):
