@@ -78,7 +78,7 @@ class ReportConfig(BaseModel):
 
     preset: Preset = Preset.QUICK
     analyzer_model: str = "openrouter/qwen/qwen-plus"
-    composer_primary_model: str = "openrouter/anthropic/claude-opus-4"
+    composer_primary_model: str = "openrouter/anthropic/claude-opus-4.7"
     composer_fallback_model: str = "openrouter/qwen/qwen-plus"
 
 
