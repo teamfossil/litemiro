@@ -45,6 +45,7 @@ async def create_plaza(payload: CreatePlazaRequest, request: Request) -> CreateP
         ontology_b_path=Path(payload.ontology_b_path),
         rounds=payload.rounds,
         label=payload.label,
+        preset=payload.preset,
     )
     return CreatePlazaResponse(plaza_id=record.plaza_id, status=record.status)
 

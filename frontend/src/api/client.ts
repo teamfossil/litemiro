@@ -8,7 +8,12 @@
 
 const API_BASE: string = import.meta.env.VITE_API_BASE ?? '';
 
-export type PlazaStatus = 'pending' | 'running' | 'completed' | 'failed';
+// `composing` 은 시뮬레이션은 끝났지만 LLM 보고서 합성 중인 중간 단계.
+// terminal 아님 — progress bar 100% 로 두고 "보고서 합성중" 표시용.
+export type PlazaStatus = 'pending' | 'running' | 'composing' | 'completed' | 'failed';
+
+// 보고서 합성 호출 수 — quick=1 / standard=4 / full=8. 시뮬레이션 비용과는 직교.
+export type Preset = 'quick' | 'standard' | 'full';
 
 export interface HealthResponse {
   status: 'ok';
@@ -20,6 +25,8 @@ export interface CreatePlazaRequest {
   ontology_b_path: string;
   rounds: number;
   label?: string;
+  // 미지정 시 백엔드가 quick 으로 채움 (CreatePlazaRequest.preset default).
+  preset?: Preset;
 }
 
 export interface CreatePlazaResponse {

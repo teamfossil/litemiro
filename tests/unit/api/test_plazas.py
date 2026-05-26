@@ -15,7 +15,9 @@ from typing import Any
 from fastapi.testclient import TestClient
 
 from litemiro.api.app import create_app
+from litemiro.api.composer import ComposerOutcome
 from litemiro.api.store import ProgressCallback, RunnerOutcome
+from litemiro.phase1.models import Preset
 
 _RunnerCoro = Callable[..., Coroutine[Any, Any, RunnerOutcome]]
 
@@ -173,6 +175,127 @@ class TestGetStatus:
         assert body["error"] is not None
         assert "boom" in body["error"]
         assert body["rounds_done"] == 0
+
+    def test_composing_status_visible_between_sim_and_completed(self, tmp_path: Path) -> None:
+        """sim 종료 후 composer 호출 직전 status="composing" 으로 잠시 머무른다.
+
+        composer 가 충분히 느리도록 sleep 을 걸고 폴링으로 그 윈도우를 잡는다.
+        잡힌 record 의 ``rounds_done == rounds_total`` 이면 sim 은 끝났다는
+        뜻 — 그 시점에 status 가 running 으로 남아 있으면 회귀.
+        """
+
+        async def _slow_composer(
+            *, plaza_id: str, event_log_path: Path, preset: Preset
+        ) -> ComposerOutcome:
+            del plaza_id, event_log_path, preset
+            await asyncio.sleep(0.3)
+            return ComposerOutcome(markdown="# ok")
+
+        app = create_app(
+            runner=_success_runner(rounds_to_report=2),
+            base_dir=tmp_path,
+            composer=_slow_composer,
+        )
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/plazas",
+                json={
+                    "ontology_a_path": "/tmp/a.json",
+                    "ontology_b_path": "/tmp/b.json",
+                    "rounds": 2,
+                    "label": "compose-window",
+                },
+            ).json()
+            plaza_id = created["plaza_id"]
+            deadline = time.monotonic() + 2.0
+            saw_composing = False
+            while time.monotonic() < deadline:
+                body = client.get(f"/api/plazas/{plaza_id}/status").json()
+                if body["status"] == "composing":
+                    saw_composing = True
+                    assert body["rounds_done"] == body["rounds_total"]
+                    break
+                if body["status"] in {"completed", "failed"}:
+                    break
+                time.sleep(0.01)
+            body = _wait_until(client, plaza_id, terminal={"completed", "failed"})
+        assert saw_composing, "composing 상태가 한 번도 관찰되지 않았다"
+        assert body["status"] == "completed"
+
+    def test_preset_round_trips_to_composer_call(self, tmp_path: Path) -> None:
+        """``CreatePlazaRequest.preset`` 이 composer 인자까지 그대로 흘러가야 한다.
+
+        스택 어디서 preset 을 떨궈도 보고서 호출 수가 조용히 quick 으로 떨어진다
+        — 이건 비용/지연 회귀라 사용자가 늦게 알아챈다.
+        """
+        seen: dict[str, Preset] = {}
+
+        async def _capturing_composer(
+            *, plaza_id: str, event_log_path: Path, preset: Preset
+        ) -> ComposerOutcome:
+            del plaza_id, event_log_path
+            seen["preset"] = preset
+            return ComposerOutcome(markdown=None)
+
+        app = create_app(
+            runner=_success_runner(rounds_to_report=1),
+            base_dir=tmp_path,
+            composer=_capturing_composer,
+        )
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/plazas",
+                json={
+                    "ontology_a_path": "/tmp/a.json",
+                    "ontology_b_path": "/tmp/b.json",
+                    "rounds": 1,
+                    "preset": "standard",
+                },
+            ).json()
+            _wait_until(client, created["plaza_id"], terminal={"completed", "failed"})
+        assert seen["preset"] is Preset.STANDARD
+
+    def test_preset_defaults_to_quick_when_omitted(self, tmp_path: Path) -> None:
+        """preset 미지정 시 backend 가 quick 으로 채운다."""
+        seen: dict[str, Preset] = {}
+
+        async def _capturing_composer(
+            *, plaza_id: str, event_log_path: Path, preset: Preset
+        ) -> ComposerOutcome:
+            del plaza_id, event_log_path
+            seen["preset"] = preset
+            return ComposerOutcome(markdown=None)
+
+        app = create_app(
+            runner=_success_runner(rounds_to_report=1),
+            base_dir=tmp_path,
+            composer=_capturing_composer,
+        )
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/plazas",
+                json={
+                    "ontology_a_path": "/tmp/a.json",
+                    "ontology_b_path": "/tmp/b.json",
+                    "rounds": 1,
+                },
+            ).json()
+            _wait_until(client, created["plaza_id"], terminal={"completed", "failed"})
+        assert seen["preset"] is Preset.QUICK
+
+    def test_rejects_unknown_preset(self, tmp_path: Path) -> None:
+        app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
+        with TestClient(app) as client:
+            resp = client.post(
+                "/api/plazas",
+                json={
+                    "ontology_a_path": "/tmp/a.json",
+                    "ontology_b_path": "/tmp/b.json",
+                    "rounds": 1,
+                    "preset": "bogus",
+                },
+            )
+        assert resp.status_code == 422
 
     def test_early_exit_keeps_actual_rounds_done(self, tmp_path: Path) -> None:
         """outcome.rounds_run 이 요청 total 보다 작으면 그 값을 그대로 유지해야 한다.

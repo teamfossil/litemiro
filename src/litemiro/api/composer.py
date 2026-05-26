@@ -55,31 +55,37 @@ class ComposerOutcome:
 class RealPlazaComposer:
     """실 LLM 으로 도는 composer — `LiteLLMClient` 를 받아 Phase 3 파이프라인을 돌린다.
 
-    프리셋은 일단 ``quick`` 고정 (1 콜 analyzer + 1 콜 composer = 최소 2 콜).
-    사용자가 preset 을 고르게 하는 건 후속 — CreatePlazaRequest 에 필드 추가
-    + 클라이언트 미러링까지 같이 가야 한다.
+    프리셋은 plaza 단위로 호출자 (PlazaStore) 가 넘긴다 — 같은 composer
+    인스턴스가 여러 plaza 의 서로 다른 preset 을 처리할 수 있게 init 이 아닌
+    ``__call__`` 에서 받는다. 모델 slug 는 init 에서 override 가능 (테스트/
+    실험용) — default 는 `ReportConfig` 단일 진실의 원천.
     """
 
     def __init__(
         self,
         *,
         llm_client: LLMClient,
-        preset: Preset = Preset.QUICK,
         analyzer_model: str | None = None,
         composer_primary_model: str | None = None,
         composer_fallback_model: str | None = None,
     ) -> None:
-        # 명시 인자 없으면 `ReportConfig` 의 default 를 그대로 — slug 가 한 곳에서만
-        # 정의되도록.
         self._llm = llm_client
-        self._config = ReportConfig(
+        # `ReportConfig` 의 default 를 그대로 — slug 가 한 곳에서만 정의되도록.
+        self._analyzer_model = analyzer_model or _DEFAULTS.analyzer_model
+        self._composer_primary_model = composer_primary_model or _DEFAULTS.composer_primary_model
+        self._composer_fallback_model = composer_fallback_model or _DEFAULTS.composer_fallback_model
+
+    def _config_for(self, preset: Preset) -> ReportConfig:
+        return ReportConfig(
             preset=preset,
-            analyzer_model=analyzer_model or _DEFAULTS.analyzer_model,
-            composer_primary_model=composer_primary_model or _DEFAULTS.composer_primary_model,
-            composer_fallback_model=composer_fallback_model or _DEFAULTS.composer_fallback_model,
+            analyzer_model=self._analyzer_model,
+            composer_primary_model=self._composer_primary_model,
+            composer_fallback_model=self._composer_fallback_model,
         )
 
-    async def __call__(self, *, plaza_id: str, event_log_path: Path) -> ComposerOutcome:
+    async def __call__(
+        self, *, plaza_id: str, event_log_path: Path, preset: Preset = Preset.QUICK
+    ) -> ComposerOutcome:
         # events.jsonl 이 비어 있어도 (--fake 또는 0-round) 빈 집계로 폴백 —
         # 통계 응답은 떨어지지만 markdown 은 None 으로 비운다. 단일 stat
         # syscall 이라 async 로 감쌀 가치 없음 — `litemiro-report` CLI 도 동일.
@@ -91,14 +97,13 @@ class RealPlazaComposer:
             )
             return ComposerOutcome(markdown=None)
 
+        config = self._config_for(preset)
         aggregation = DataAggregator.aggregate(event_log_path)
         analyzer = PatternAnalyzer(llm=self._llm)
         composer = ReportComposer(llm=self._llm)
-        insights = await analyzer.analyze(result=aggregation, config=self._config)
+        insights = await analyzer.analyze(result=aggregation, config=config)
         try:
-            report = await composer.compose(
-                result=aggregation, insights=insights, config=self._config
-            )
+            report = await composer.compose(result=aggregation, insights=insights, config=config)
         except Exception as exc:
             # ReportComposer 의 primary+fallback 모두 실패. 통계는 떨어지므로
             # 500 으로 죽이지 말고 markdown=None 으로 폴백한다.

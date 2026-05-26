@@ -18,8 +18,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from litemiro.api.app import create_app
+from litemiro.api.composer import ComposerOutcome
 from litemiro.api.routes import events as events_route
 from litemiro.api.store import ProgressCallback, RunnerOutcome
+from litemiro.phase1.models import Preset
 
 _RunnerCoro = Callable[..., Coroutine[Any, Any, RunnerOutcome]]
 
@@ -226,6 +228,43 @@ async def test_stream_emits_keepalive_and_cleans_up_on_disconnect(
                 break
             await asyncio.sleep(0.02)
         assert record.subscribers == []
+
+
+def test_stream_emits_composing_status_when_composer_runs(tmp_path: Path) -> None:
+    """composer 가 붙어 있으면 status 시퀀스에 composing 이 등장하고 terminal 아님.
+
+    composing 이 누락되면 프론트는 sim 종료 후 보고서 합성 중간을 알 길이 없어
+    "응답 없음" 으로 오해할 수 있다. composer 가 None 인 경로는 기존 테스트가 본다.
+    """
+
+    async def _composer(*, plaza_id: str, event_log_path: Path, preset: Preset) -> ComposerOutcome:
+        del plaza_id, event_log_path, preset
+        # composing 상태가 큐에 쌓일 시간을 준다 — 슬립 없이 곧장 끝나면 다음
+        # _emit_status (completed) 가 같은 틱에 합쳐져 race 위험.
+        await asyncio.sleep(0.05)
+        return ComposerOutcome(markdown="# ok")
+
+    app = create_app(
+        runner=_success_runner(rounds_to_report=2),
+        base_dir=tmp_path,
+        composer=_composer,
+    )
+    with TestClient(app) as client:
+        plaza_id = _create_plaza(client, rounds=2)
+        with client.stream("GET", f"/api/plazas/{plaza_id}/events") as resp:
+            assert resp.status_code == 200
+            body = resp.read().decode("utf-8")
+
+    events = _parse_sse(body)
+    status_events = [e for e in events if e[0] == "status"]
+    status_sequence = [e[1]["status"] for e in status_events]
+    # composing 이 어딘가 한 번은 등장하고, terminal 은 마지막에만 등장.
+    assert "composing" in status_sequence
+    composing_idx = status_sequence.index("composing")
+    completed_idx = status_sequence.index("completed")
+    assert composing_idx < completed_idx, "composing 은 completed 보다 먼저 와야 한다"
+    # composing 은 terminal 이 아니므로 그 자체로 스트림이 끊겨선 안 된다.
+    assert status_sequence[-1] == "completed"
 
 
 def test_stream_returns_immediately_when_already_completed(tmp_path: Path) -> None:

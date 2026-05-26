@@ -1,7 +1,10 @@
 """API 요청/응답 모델 — Pydantic v2.
 
 `PlazaStatus` literal 은 ``PlazaStore`` 의 상태 머신 (pending → running →
-completed | failed) 과 동기. 새 상태를 추가할 때는 store 와 함께 바꿔야 한다.
+composing → completed | failed) 과 동기. 새 상태를 추가할 때는 store 와 함께
+바꿔야 한다. ``composing`` 은 시뮬레이션은 끝났지만 LLM 보고서를 만드는 중간
+구간 — terminal 아님, 프론트는 progress bar 100% 로 두고 "보고서 합성중"
+표시.
 """
 
 from __future__ import annotations
@@ -10,7 +13,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-PlazaStatus = Literal["pending", "running", "completed", "failed"]
+from litemiro.phase1.models import Preset
+
+PlazaStatus = Literal["pending", "running", "composing", "completed", "failed"]
 
 
 class CreatePlazaRequest(BaseModel):
@@ -20,6 +25,9 @@ class CreatePlazaRequest(BaseModel):
     ontology_b_path: str = Field(min_length=1)
     rounds: int = Field(ge=1, le=200)
     label: str | None = Field(default=None, max_length=120)
+    # 보고서 합성 시 호출 수를 결정. quick=1 콜 / standard=4 콜 / full=8 콜.
+    # 시뮬레이션 자체와는 직교 — sim 비용은 runner 설정이 본다.
+    preset: Preset = Preset.QUICK
 
 
 class CreatePlazaResponse(BaseModel):
