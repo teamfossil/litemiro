@@ -27,10 +27,16 @@ def build_report(record: PlazaRecord) -> PlazaReportResponse:
     """
     if record.event_log_path is None:
         raise ValueError(f"plaza {record.plaza_id!r} has no event_log_path")
-    if record.event_log_path.exists():
+    # composer 가 한 번 돌았으면 record 캐시 사용 — events.jsonl 재집계 회피.
+    # 없으면 (fake 경로 / composer 미실행) lazy 로 한 번 컴퓨테해 캐싱.
+    if record.aggregation_cache is not None:
+        aggregation = record.aggregation_cache
+    elif record.event_log_path.exists():
         aggregation = DataAggregator.aggregate(record.event_log_path)
+        record.aggregation_cache = aggregation
     else:
         aggregation = DataAggregator.aggregate_events([])
+        record.aggregation_cache = aggregation
     return PlazaReportResponse(
         plaza_id=record.plaza_id,
         label=record.label,
