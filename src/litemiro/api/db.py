@@ -239,9 +239,13 @@ def list_summary(
 ) -> tuple[list[PlazaSummary], int]:
     """plaza summary 행 + 필터 적용 후 전체 row 수.
 
-    정렬은 ``created_at DESC`` — 최신 plaza 가 위. ``_utcnow_iso`` 가
-    ``isoformat(timespec="seconds")`` UTC 라 lexicographic 정렬과 시간 정렬이
-    일치 (TZ offset 동일 + zero-padded).
+    정렬은 ``created_at DESC, plaza_id DESC`` — 최신 plaza 가 위. ``_utcnow_iso``
+    가 ``isoformat(timespec="seconds")`` UTC 라 lexicographic 정렬과 시간 정렬이
+    일치 (TZ offset 동일 + zero-padded). ``created_at`` 이 초 단위 truncate 라
+    같은 초에 만들어진 두 plaza 가 충분히 가능 — ``plaza_id`` 2 차 키 없이는
+    SQLite 가 동률 행 순서를 보장 안 해서 ``LIMIT/OFFSET`` 페이지 경계에 걸린
+    plaza 가 누락/중복될 수 있다. in-memory 폴백 경로 (``PlazaStore.list_plazas``)
+    도 동일 키 ``(created_at, plaza_id)`` 둘 다 reverse 로 sort 해 두 경로 동치.
 
     ``status_filter`` 는 단일 PlazaStatus literal — 동일 필터를 COUNT 에도
     걸어 페이지네이션 용 ``total`` 이 "필터 후 전체" 를 가리키게 한다.
@@ -253,7 +257,9 @@ def list_summary(
         params = (status_filter,)
     rows = list(
         conn.execute(
-            _SELECT_SUMMARY_BASE + where + " ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            _SELECT_SUMMARY_BASE
+            + where
+            + " ORDER BY created_at DESC, plaza_id DESC LIMIT ? OFFSET ?",
             (*params, limit, offset),
         )
     )

@@ -10,19 +10,20 @@ import asyncio
 import json
 import time
 from collections.abc import Callable, Coroutine
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from fastapi.testclient import TestClient
 
+from litemiro.api import db as _db
 from litemiro.api.app import create_app
 from litemiro.api.composer import ComposerOutcome
 from litemiro.api.sample_fixtures import (
     DEFAULT_ONTOLOGY_A_PATH,
     DEFAULT_ONTOLOGY_B_PATH,
 )
-from litemiro.api.store import ProgressCallback, RunnerOutcome
+from litemiro.api.store import PlazaRecord, ProgressCallback, RunnerOutcome
 from litemiro.phase1.models import Preset
 
 
@@ -1048,6 +1049,34 @@ class TestListPlazas:
         assert len(page2["plazas"]) == 2
         seen = {p["plaza_id"] for p in page1["plazas"]} | {p["plaza_id"] for p in page2["plazas"]}
         assert len(seen) == 4  # 페이지가 겹치지 않음
+
+    def test_same_second_tie_break_by_plaza_id_desc(self, tmp_path: Path) -> None:
+        # ``created_at`` 초 단위 truncate → 같은 초에 만들어진 두 plaza 가 흔하다.
+        # 2 차 정렬 키 ``plaza_id DESC`` 가 없으면 SQLite 가 동률 행 순서를 보장
+        # 안 해서 ``LIMIT/OFFSET`` 페이지 경계에 걸린 plaza 가 누락/중복될 수
+        # 있다 — db 경로 (SQLite) 와 in-memory 폴백 경로가 일관되게 ``plaza_id``
+        # 큰 쪽이 위로 오는지 확인한다.
+        conn = _db.connect(tmp_path / "plazas.db")
+        try:
+            shared = datetime(2026, 5, 26, 12, 0, 0, tzinfo=UTC)
+            # alphabetic 으로 ``id-b`` > ``id-a``. plaza_id DESC 면 b 가 먼저.
+            for pid in ("id-a", "id-b"):
+                record = PlazaRecord(
+                    plaza_id=pid,
+                    status="completed",
+                    rounds_total=1,
+                    rounds_done=1,
+                    label=pid,
+                    preset=Preset.QUICK,
+                    created_at=shared,
+                    updated_at=shared,
+                )
+                _db.upsert_record(conn, record)
+            summaries, total = _db.list_summary(conn, limit=10, offset=0)
+        finally:
+            conn.close()
+        assert total == 2
+        assert [s.plaza_id for s in summaries] == ["id-b", "id-a"]
 
     def test_rejects_unknown_status(self, tmp_path: Path) -> None:
         app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
