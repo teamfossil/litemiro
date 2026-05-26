@@ -19,11 +19,14 @@ from dotenv import find_dotenv, load_dotenv
 
 from litemiro.api.app import create_app
 from litemiro.api.composer import RealPlazaComposer
+from litemiro.api.ontology_store import OntologyRunResult
 from litemiro.api.runner import RealPlazaRunner
 from litemiro.api.store import RunnerOutcome
 
 if TYPE_CHECKING:
+    from litemiro.api.ontology_store import OntologyRunner
     from litemiro.api.store import PlazaComposer, PlazaRunner, ProgressCallback
+    from litemiro.phase1.models import Preset
 
 
 async def _noop_runner(
@@ -98,6 +101,48 @@ def _build_real_runner_and_composer(*, llm_model: str) -> tuple[PlazaRunner, Pla
     return runner, composer
 
 
+def _build_real_ontology_runner(*, llm_model: str) -> OntologyRunner:
+    """Phase 1 ``OntologyPipeline`` 을 감싸 ``OntologyStore`` 가 부르는 시그니처에
+    맞춘 closure 를 만든다. ``litellm.acompletion`` 콜이 1건의 ontology 당 분 단위
+    — fake runner 와 달리 OpenRouter 키가 반드시 필요하다.
+
+    pipeline 은 ``output_dir / ontology_{a,b}_*.json`` 두 파일을 떨군 뒤
+    ``(OntologyA, OntologyB)`` 를 돌려준다. runner 는 그 경로를 그대로
+    ``OntologyRunResult`` 에 박아 store 의 row 에 반영된다.
+    """
+    from litemiro.cli.ontology import Phase1LiteLLMClient  # noqa: PLC0415
+    from litemiro.phase1.pipeline import OntologyPipeline, PipelineConfig  # noqa: PLC0415
+
+    llm = Phase1LiteLLMClient()
+
+    async def _run(
+        *,
+        document_path: Path,
+        requirement: str,
+        preset: Preset,
+        output_dir: Path,
+    ) -> OntologyRunResult:
+        # OntologyStore 가 미리 mkdir 해 두지만 한 번 더 보장 — pipeline 의
+        # serializer 가 write 직전에 dir 존재를 기대한다. 동기 호출 한 줄이라
+        # event-loop 블록 무시 가능.
+        output_dir.mkdir(parents=True, exist_ok=True)  # noqa: ASYNC240
+        config = PipelineConfig(
+            input_path=document_path,
+            requirement=requirement,
+            preset=preset,
+            output_dir=output_dir,
+            model=llm_model,
+        )
+        ontology_a, _ = await OntologyPipeline(config, llm).run()
+        return OntologyRunResult(
+            ontology_a_path=output_dir / "ontology_a_persona.json",
+            ontology_b_path=output_dir / "ontology_b_memory.json",
+            agent_count=ontology_a.agent_count,
+        )
+
+    return _run
+
+
 def main(argv: list[str] | None = None) -> int:
     # `.env` 의 OPENROUTER_API_KEY 자동 로드. cli/run.py 와 같은 동작.
     load_dotenv(find_dotenv(usecwd=True))
@@ -106,11 +151,14 @@ def main(argv: list[str] | None = None) -> int:
 
     runner: PlazaRunner
     composer: PlazaComposer | None
+    ontology_runner: OntologyRunner | None
     if args.fake:
-        # --fake 는 LLM 키 없이도 닫혀야 한다 — composer 도 함께 비운다.
-        # 통계만 떨어지고 report_markdown 은 None 으로 응답.
+        # --fake 는 LLM 키 없이도 닫혀야 한다 — composer/ontology_runner 도 함께
+        # 비운다. POST /api/ontologies 는 503 으로 응답해 프론트가 /documents 만
+        # 단독으로 검증할 수 있도록.
         runner = _noop_runner
         composer = None
+        ontology_runner = None
     else:
         if not os.environ.get("OPENROUTER_API_KEY"):
             print(
@@ -119,12 +167,19 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 1
         runner, composer = _build_real_runner_and_composer(llm_model=args.llm_model)
+        ontology_runner = _build_real_ontology_runner(llm_model=args.llm_model)
 
     # uvicorn 은 ``[api]`` extra 에서만 들어오므로 main 안에서 import — fastapi
     # 만 깔린 테스트 환경에서도 모듈 import 가 깨지지 않도록.
     import uvicorn  # noqa: PLC0415
 
-    app = create_app(runner=runner, base_dir=args.data_dir, composer=composer, cors_origins=origins)
+    app = create_app(
+        runner=runner,
+        base_dir=args.data_dir,
+        composer=composer,
+        ontology_runner=ontology_runner,
+        cors_origins=origins,
+    )
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
     return 0
 

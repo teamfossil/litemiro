@@ -108,15 +108,45 @@ def _store(request: Request) -> PlazaStore:
 )
 async def create_plaza(payload: CreatePlazaRequest, request: Request) -> CreatePlazaResponse:
     store = _store(request)
-    # 두 경로 모두 생략 가능 — 프론트 Seed 화면 같이 항상 같은 sample 을 쓰는
-    # 호출 측이 dummy path 를 매번 박지 않게 한다. 명시된 경로는 그대로,
-    # ``None`` 은 repo 의 dev fixture 로 폴백 (``sample_fixtures``).
-    ontology_a_path = (
-        Path(payload.ontology_a_path) if payload.ontology_a_path else DEFAULT_ONTOLOGY_A_PATH
-    )
-    ontology_b_path = (
-        Path(payload.ontology_b_path) if payload.ontology_b_path else DEFAULT_ONTOLOGY_B_PATH
-    )
+    # 경로 결정 우선순위:
+    #   1) ``ontology_id`` — /api/ontologies 결과 (사용자 PDF 기반). completed 가
+    #      아니면 409, 없으면 404.
+    #   2) 명시된 ``ontology_a_path/b_path`` 두 필드 — 직접 경로 지정.
+    #   3) 둘 다 없으면 repo 의 dev fixture (``sample_fixtures``).
+    if payload.ontology_id is not None:
+        ontology_store = getattr(request.app.state, "ontology_store", None)
+        if ontology_store is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="ontology_store not configured — start API with --ontology-runner",
+            )
+        ontology_row = ontology_store.get(payload.ontology_id)
+        if ontology_row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"ontology {payload.ontology_id!r} not found",
+            )
+        if ontology_row.status != "completed":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"ontology {payload.ontology_id!r} not ready (status={ontology_row.status})"
+                ),
+            )
+        if ontology_row.ontology_a_path is None or ontology_row.ontology_b_path is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"ontology {payload.ontology_id!r} missing output paths",
+            )
+        ontology_a_path = ontology_row.ontology_a_path
+        ontology_b_path = ontology_row.ontology_b_path
+    else:
+        ontology_a_path = (
+            Path(payload.ontology_a_path) if payload.ontology_a_path else DEFAULT_ONTOLOGY_A_PATH
+        )
+        ontology_b_path = (
+            Path(payload.ontology_b_path) if payload.ontology_b_path else DEFAULT_ONTOLOGY_B_PATH
+        )
     record = await store.create(
         ontology_a_path=ontology_a_path,
         ontology_b_path=ontology_b_path,

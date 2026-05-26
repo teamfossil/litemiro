@@ -20,13 +20,19 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, cast, get_args
+from typing import TYPE_CHECKING, Literal, cast, get_args
 
 from litemiro.api.models import PlazaStatus
 from litemiro.phase1.models import Preset
 
 if TYPE_CHECKING:
     from litemiro.api.store import PlazaRecord
+
+
+OntologyStatus = Literal["pending", "running", "completed", "failed"]
+_VALID_ONTOLOGY_STATUSES: frozenset[OntologyStatus] = frozenset(get_args(OntologyStatus))
+# Phase 1 도중 프로세스가 죽으면 (= pending/running) 다음 부팅에서 failed 로 강제 마킹.
+_INTERRUPTED_ONTOLOGY_STATUSES: frozenset[OntologyStatus] = frozenset({"pending", "running"})
 
 
 @dataclass(frozen=True)
@@ -44,6 +50,40 @@ class PlazaSummary:
     error: str | None
     preset: Preset
     tokens_used: int
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass
+class DocumentRow:
+    """업로드된 사용자 문서 한 건. ``storage_path`` 는 디스크 위치(절대 경로)."""
+
+    document_id: str
+    filename: str
+    mime_type: str
+    size_bytes: int
+    sha256: str
+    storage_path: Path
+    created_at: datetime
+
+
+@dataclass
+class OntologyRow:
+    """Phase 1 generation 한 건. ``status`` 가 ``completed`` 면 두 path 가 채워진다.
+
+    ``agent_count`` 는 ``OntologyA.agent_count`` — preset 으로 결정되지만 Phase 1
+    내부 동작에 따라 미달할 수 있어 실측값을 따로 저장. 보고용.
+    """
+
+    ontology_id: str
+    document_id: str
+    preset: Preset
+    requirement: str
+    status: OntologyStatus
+    ontology_a_path: Path | None
+    ontology_b_path: Path | None
+    agent_count: int | None
+    error: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -70,6 +110,35 @@ CREATE TABLE IF NOT EXISTS plazas (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS documents (
+    document_id TEXT PRIMARY KEY,
+    filename TEXT NOT NULL,
+    mime_type TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    sha256 TEXT NOT NULL,
+    storage_path TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_documents_sha256 ON documents (sha256);
+
+CREATE TABLE IF NOT EXISTS ontologies (
+    ontology_id TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL,
+    preset TEXT NOT NULL,
+    requirement TEXT NOT NULL,
+    status TEXT NOT NULL,
+    ontology_a_path TEXT,
+    ontology_b_path TEXT,
+    agent_count INTEGER,
+    error TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (document_id) REFERENCES documents(document_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ontologies_document ON ontologies (document_id);
 """
 
 _UPSERT_SQL = """
@@ -294,11 +363,192 @@ def list_summary(
     return summaries, total
 
 
+_DOCUMENT_INSERT_SQL = """
+INSERT INTO documents (
+    document_id, filename, mime_type, size_bytes, sha256, storage_path, created_at
+) VALUES (?, ?, ?, ?, ?, ?, ?)
+"""
+
+_DOCUMENT_SELECT_SQL = """
+SELECT document_id, filename, mime_type, size_bytes, sha256, storage_path, created_at
+FROM documents
+"""
+
+
+def insert_document(conn: sqlite3.Connection, row: DocumentRow) -> None:
+    """문서 한 건 INSERT. 같은 document_id 면 sqlite IntegrityError — 호출자가
+    UUID 발급 책임을 지므로 충돌이 나면 발급 측 버그.
+    """
+    conn.execute(
+        _DOCUMENT_INSERT_SQL,
+        (
+            row.document_id,
+            row.filename,
+            row.mime_type,
+            row.size_bytes,
+            row.sha256,
+            str(row.storage_path),
+            row.created_at.isoformat(timespec="seconds"),
+        ),
+    )
+
+
+def get_document(conn: sqlite3.Connection, document_id: str) -> DocumentRow | None:
+    cursor = conn.execute(
+        _DOCUMENT_SELECT_SQL + " WHERE document_id = ?",
+        (document_id,),
+    )
+    row = cursor.fetchone()
+    if row is None:
+        return None
+    return DocumentRow(
+        document_id=row["document_id"],
+        filename=row["filename"],
+        mime_type=row["mime_type"],
+        size_bytes=row["size_bytes"],
+        sha256=row["sha256"],
+        storage_path=Path(row["storage_path"]),
+        created_at=datetime.fromisoformat(row["created_at"]),
+    )
+
+
+def list_documents(conn: sqlite3.Connection) -> list[DocumentRow]:
+    rows = list(conn.execute(_DOCUMENT_SELECT_SQL + " ORDER BY created_at DESC, document_id DESC"))
+    return [
+        DocumentRow(
+            document_id=r["document_id"],
+            filename=r["filename"],
+            mime_type=r["mime_type"],
+            size_bytes=r["size_bytes"],
+            sha256=r["sha256"],
+            storage_path=Path(r["storage_path"]),
+            created_at=datetime.fromisoformat(r["created_at"]),
+        )
+        for r in rows
+    ]
+
+
+def delete_document(conn: sqlite3.Connection, document_id: str) -> bool:
+    cursor = conn.execute("DELETE FROM documents WHERE document_id = ?", (document_id,))
+    return cursor.rowcount > 0
+
+
+_ONTOLOGY_UPSERT_SQL = """
+INSERT INTO ontologies (
+    ontology_id, document_id, preset, requirement, status,
+    ontology_a_path, ontology_b_path, agent_count, error,
+    created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(ontology_id) DO UPDATE SET
+    status=excluded.status,
+    ontology_a_path=excluded.ontology_a_path,
+    ontology_b_path=excluded.ontology_b_path,
+    agent_count=excluded.agent_count,
+    error=excluded.error,
+    updated_at=excluded.updated_at
+"""
+
+_ONTOLOGY_SELECT_SQL = """
+SELECT ontology_id, document_id, preset, requirement, status,
+       ontology_a_path, ontology_b_path, agent_count, error,
+       created_at, updated_at
+FROM ontologies
+"""
+
+
+def upsert_ontology(conn: sqlite3.Connection, row: OntologyRow) -> None:
+    """ontology row INSERT or UPDATE. ``updated_at`` 은 항상 지금으로 갱신.
+
+    ``isolation_level=None`` (auto-commit) 이라 호출자가 따로 commit 안 해도 됨.
+    """
+    now_dt = datetime.now(UTC).replace(microsecond=0)
+    created = row.created_at
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=UTC)
+    row.updated_at = now_dt
+    conn.execute(
+        _ONTOLOGY_UPSERT_SQL,
+        (
+            row.ontology_id,
+            row.document_id,
+            row.preset.value,
+            row.requirement,
+            row.status,
+            str(row.ontology_a_path) if row.ontology_a_path else None,
+            str(row.ontology_b_path) if row.ontology_b_path else None,
+            row.agent_count,
+            row.error,
+            created.isoformat(timespec="seconds"),
+            now_dt.isoformat(timespec="seconds"),
+        ),
+    )
+
+
+def _row_to_ontology(row: sqlite3.Row) -> OntologyRow:
+    raw_status = row["status"]
+    if raw_status not in _VALID_ONTOLOGY_STATUSES:
+        # 옛 코드가 새 status 를 만난 경우 폴백 — 클라가 "stuck" 처럼 보이지 않도록.
+        raw_status = "failed"
+    return OntologyRow(
+        ontology_id=row["ontology_id"],
+        document_id=row["document_id"],
+        preset=Preset(row["preset"]),
+        requirement=row["requirement"],
+        status=cast(OntologyStatus, raw_status),
+        ontology_a_path=Path(row["ontology_a_path"]) if row["ontology_a_path"] else None,
+        ontology_b_path=Path(row["ontology_b_path"]) if row["ontology_b_path"] else None,
+        agent_count=row["agent_count"],
+        error=row["error"],
+        created_at=datetime.fromisoformat(row["created_at"]),
+        updated_at=datetime.fromisoformat(row["updated_at"]),
+    )
+
+
+def get_ontology(conn: sqlite3.Connection, ontology_id: str) -> OntologyRow | None:
+    cursor = conn.execute(
+        _ONTOLOGY_SELECT_SQL + " WHERE ontology_id = ?",
+        (ontology_id,),
+    )
+    row = cursor.fetchone()
+    return _row_to_ontology(row) if row is not None else None
+
+
+def list_ontologies(conn: sqlite3.Connection) -> list[OntologyRow]:
+    rows = list(conn.execute(_ONTOLOGY_SELECT_SQL + " ORDER BY created_at DESC, ontology_id DESC"))
+    return [_row_to_ontology(r) for r in rows]
+
+
+def load_ontologies_recover(conn: sqlite3.Connection) -> list[OntologyRow]:
+    """모든 ontology row 를 복원. pending/running 은 ``failed`` 로 강제 마킹 +
+    error 에 그 사실을 적어 클라가 stuck 처럼 보지 않게 한다 (plazas 와 동일 패턴).
+    """
+    out: list[OntologyRow] = []
+    for r in list(conn.execute(_ONTOLOGY_SELECT_SQL)):
+        row = _row_to_ontology(r)
+        if row.status in _INTERRUPTED_ONTOLOGY_STATUSES:
+            row.status = "failed"
+            row.error = f"process restarted while {r['status']}"
+            upsert_ontology(conn, row)
+        out.append(row)
+    return out
+
+
 __all__ = [
+    "DocumentRow",
+    "OntologyRow",
+    "OntologyStatus",
     "PlazaSummary",
     "connect",
+    "delete_document",
     "delete_record",
+    "get_document",
+    "get_ontology",
+    "insert_document",
+    "list_documents",
+    "list_ontologies",
     "list_summary",
     "load_all",
+    "load_ontologies_recover",
+    "upsert_ontology",
     "upsert_record",
 ]
