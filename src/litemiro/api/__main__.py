@@ -103,8 +103,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         if not os.environ.get("OPENROUTER_API_KEY"):
             print(
-                "Error: OPENROUTER_API_KEY is not set. "
-                "Use --fake to start without an LLM.",
+                "Error: OPENROUTER_API_KEY is not set. Use --fake to start without an LLM.",
                 file=sys.stderr,
             )
             return 1
