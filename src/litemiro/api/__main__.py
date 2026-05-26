@@ -1,9 +1,9 @@
 """``litemiro-api`` CLI 진입점 — uvicorn 으로 FastAPI 앱을 띄운다.
 
-step 1 의 runner 는 의도적으로 **즉시 완료되는 no-op**. step 2 에서 실
-``run_simulation`` 어댑터로 교체. ``LITEMIRO_API_REAL_RUNNER=1`` 같은 env
-flag 는 step 4 까지 도입 안 함 — fake 와 real 사이의 매끄러운 분리가
-없으면 이후 단계 PR 이 본 파일을 만질 일이 없게 한다.
+기동 시 ``LiteLLMClient`` + ``STEmbedder`` 를 한 번만 만들어 ``RealPlazaRunner``
+에 주입한다. sentence-transformers 모델 로딩이 수 초 걸리는데 매 plaza 마다
+새로 만들면 첫 라운드 응답이 늘어진다. ``--fake`` 플래그는 LLM 없이 API 만
+띄울 때 사용 — 프론트 전반 흐름만 확인할 때 편하다.
 """
 
 from __future__ import annotations
@@ -11,14 +11,18 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import sys
+from pathlib import Path
 from typing import TYPE_CHECKING
 
+from dotenv import find_dotenv, load_dotenv
+
 from litemiro.api.app import create_app
+from litemiro.api.runner import RealPlazaRunner
+from litemiro.api.store import RunnerOutcome
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
-    from litemiro.api.store import ProgressCallback
+    from litemiro.api.store import PlazaRunner, ProgressCallback
 
 
 async def _noop_runner(
@@ -27,17 +31,20 @@ async def _noop_runner(
     ontology_a_path: Path,
     ontology_b_path: Path,
     rounds: int,
+    event_log_path: Path,
+    checkpoint_dir: Path,
     on_progress: ProgressCallback,
-) -> None:
-    """step 1 placeholder: 라운드만큼 잠깐 sleep 하고 진행률을 채운다.
+) -> RunnerOutcome:
+    """``--fake`` 모드용: 라운드만큼 잠깐 sleep 하고 진행률을 채운다.
 
-    프론트와 손 맞춰보려고 progress polling 동작은 살려둔다. 실 시뮬레이션
-    실행은 step 2 에서 ``run_simulation`` 으로 교체.
+    프론트 폴링/상태 머신을 검증할 때 LLM 키 없이도 닫히도록 둔다.
     """
     del plaza_id, ontology_a_path, ontology_b_path
+    del event_log_path, checkpoint_dir
     for r in range(rounds):
         await asyncio.sleep(0)
         on_progress(rounds_done=r + 1)
+    return RunnerOutcome()
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -52,19 +59,65 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         default=None,
         help="허용 CORS origin (반복 가능). 기본: http://localhost:5173",
     )
+    parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=Path(os.environ.get("LITEMIRO_API_DATA_DIR", "./runs/api")),
+        help="plaza 별 events.jsonl + checkpoints/ 가 쌓이는 루트 (기본: ./runs/api)",
+    )
+    parser.add_argument(
+        "--fake",
+        action="store_true",
+        help="LLM 없이 더미 runner 로 기동 — 프론트 polling 검증용",
+    )
+    parser.add_argument(
+        "--llm-model",
+        default=os.environ.get("LITEMIRO_API_LLM_MODEL", "openrouter/qwen/qwen-plus"),
+    )
     return parser.parse_args(argv)
 
 
-def main(argv: list[str] | None = None) -> None:
-    # uvicorn 은 ``[api]`` extra 에서만 들어오므로 main 안에서 import 한다 — fastapi
+def _build_real_runner(*, llm_model: str) -> PlazaRunner:
+    """실 시뮬레이션 runner — LLM 키 없이는 만들지 말 것."""
+    # cli/run.py 와 동일한 인스턴스화 — embedder 로딩이 무거우므로 모듈 단위가
+    # 아닌 main() 안에서 한 번만 만든다.
+    from litemiro.embedding.sentence_transformers import STEmbedder  # noqa: PLC0415
+    from litemiro.llm.litellm_client import LiteLLMClient  # noqa: PLC0415
+
+    return RealPlazaRunner(
+        llm_client=LiteLLMClient(),
+        embedder=STEmbedder(),
+        llm_model=llm_model,
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    # `.env` 의 OPENROUTER_API_KEY 자동 로드. cli/run.py 와 같은 동작.
+    load_dotenv(find_dotenv(usecwd=True))
+    args = _parse_args(argv)
+    origins = tuple(args.cors_origin) if args.cors_origin else ("http://localhost:5173",)
+
+    runner: PlazaRunner
+    if args.fake:
+        runner = _noop_runner
+    else:
+        if not os.environ.get("OPENROUTER_API_KEY"):
+            print(
+                "Error: OPENROUTER_API_KEY is not set. "
+                "Use --fake to start without an LLM.",
+                file=sys.stderr,
+            )
+            return 1
+        runner = _build_real_runner(llm_model=args.llm_model)
+
+    # uvicorn 은 ``[api]`` extra 에서만 들어오므로 main 안에서 import — fastapi
     # 만 깔린 테스트 환경에서도 모듈 import 가 깨지지 않도록.
     import uvicorn  # noqa: PLC0415
 
-    args = _parse_args(argv)
-    origins = tuple(args.cors_origin) if args.cors_origin else ("http://localhost:5173",)
-    app = create_app(runner=_noop_runner, cors_origins=origins)
+    app = create_app(runner=runner, base_dir=args.data_dir, cors_origins=origins)
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    return 0
 
 
-if __name__ == "__main__":
-    main()
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())

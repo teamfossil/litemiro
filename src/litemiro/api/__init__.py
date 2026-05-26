@@ -8,6 +8,7 @@ step 1/4: `/api/health`, `POST /api/plazas`, `GET /api/plazas/{id}/status`.
 from __future__ import annotations
 
 from litemiro.api.app import create_app
+from litemiro.api.runner import RealPlazaRunner
 from litemiro.api.store import PlazaRunner, PlazaStore
 
-__all__ = ["PlazaRunner", "PlazaStore", "create_app"]
+__all__ = ["PlazaRunner", "PlazaStore", "RealPlazaRunner", "create_app"]

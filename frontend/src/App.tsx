@@ -18,6 +18,7 @@ import Casting from '@/screens/Casting';
 import Live from '@/screens/Live';
 import Plaza from '@/screens/Plaza';
 import Report from '@/screens/Report';
+import { ApiStatusBadge } from '@/api/ApiStatusBadge';
 
 // 경로 → 화면 ID 매핑 (헤더 활성 표시 + 헤더 숨김 판단용)
 function screenFromPath(pathname: string): ScreenId {
@@ -69,6 +70,7 @@ export default function App() {
         <Route path="/report/:plazaId" element={<Report />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <ApiStatusBadge />
     </AppShell>
   );
 }

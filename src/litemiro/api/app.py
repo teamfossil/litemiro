@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
@@ -27,13 +28,16 @@ if TYPE_CHECKING:
 def create_app(
     *,
     runner: PlazaRunner,
+    base_dir: Path,
     cors_origins: Sequence[str] = ("http://localhost:5173",),
 ) -> FastAPI:
     """앱 인스턴스 생성. ``runner`` 는 plaza 한 건을 처리하는 콜러블.
 
+    ``base_dir`` 아래에 plaza 별 events.jsonl + checkpoints/ 가 저장된다.
     CORS 기본값은 Vite 개발 서버(5173). 배포 환경에서는 호출자가 명시.
     """
-    store = PlazaStore(runner=runner)
+    base_dir.mkdir(parents=True, exist_ok=True)
+    store = PlazaStore(runner=runner, base_dir=base_dir)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
