@@ -222,12 +222,18 @@ store = StateStore(
    불일치 시 `ValueError`.
 3. **agent_count 일관성** — `len(OntologyA.agents) == OntologyA.agent_count`.
 4. **재현성** — 동일 입력 + 동일 seed → 동일 `Agent` 튜플, 동일 `SocialGraph.to_dict()`.
-5. **페르소나–메모리 모순 검출** — 각 `agent_id` 에 대해
-   `set(AgentProfile.topics) & set(reduce(union, [m.topics for m in SemanticMemory]))`
-   가 공집합이면 warning 로그. MVP 는 warning 만, 후속 단계에서 hard error 승격
-   검토. Phase 2 design 의 `OntologyLoader.validate_consistency` 두 번째 의도
-   ("페르소나 관심사 vs 메모리 경험 모순 검출") 반영. **빈 `semantic` 리스트는
-   warning 면제** (cold start 케이스).
+5. **페르소나–메모리 모순 검출** — `OntologyLoader.validate_consistency(*, ontology_a,
+   ontology_b, embedder=None, similarity_threshold=0.4)` 가 각 `agent_id` 에 대해
+   페르소나 토픽 묶음과 `SemanticMemory.topics` 합집합을 비교한다. `embedder` 가
+   주어지면 (**옵션 B**, `#58`) 두 묶음을 임베딩 후 **max pairwise cosine** 이
+   `similarity_threshold` 미만이면 warning — 페르소나 (LLM 추상 개념) 와 메모리
+   (NER 엔티티) 의 어휘공간이 달라도 의미 매칭이 잡힌다. `embedder=None` 은
+   legacy set intersection 경로 (단위 테스트가 모델 로딩 없이 돌게 두는 백워드
+   호환). MVP 는 warning 만, 후속 단계에서 hard error 승격 검토 (§8.4). **빈
+   `semantic` 리스트는 warning 면제** (cold start). `ConsistencyWarning.max_similarity`
+   는 임베딩 경로에서만 채워지며 threshold calibration 시 분포 관측에 쓴다.
+   `run_simulation` 은 `FeedEngine` 용으로 이미 인스턴스화된 embedder 를 재사용해
+   모델 로딩이 한 번에 묶이게 한다.
 
 ### 6.1 Reference fixtures
 
@@ -324,16 +330,21 @@ quick 1 회 토큰 비용을 `C(rate)` 라 할 때 (라운드 수 / 에이전트
 
 ### 8.4 페르소나–메모리 모순 hard-error 승격 기준
 
-Section 6.5 의 warning 을 hard error 로 올리는 조건:
+Section 6 step 5 의 warning 을 hard error 로 올리는 조건 — 옵션 B 임베딩 cosine
+경로 (`#58`) 기준으로 측정:
 
-1. Phase 1 quick 프리셋 3 회 이상 실행하여 누적 warning 비율이 **5% 미만** 이고,
+1. **threshold calibration** — `similarity_threshold=0.4` 디폴트로 Phase 1 quick
+   프리셋을 3 회 이상 실행해 `ConsistencyWarning.max_similarity` 분포를 수집한다.
+   warning rate 가 안정적으로 **5% 미만** 이면 (그 이상이면 threshold 가 너무
+   엄격한 신호) 다음 단계로,
 2. 발생 사례가 모두 derived agent (`origin=derived`) 또는 빈 `topics` 등 의도적
    cold start 로 설명 가능하면,
 3. extracted agent 의 모순은 hard error 로 승격하고 (`origin == EXTRACTED` 한정),
    `OntologyLoader.load` 가 `ValueError` 로 거부.
 
-승격 결정은 ADR (`docs/decisions/`) 로 별도 기록한다. **owner: C** (Loader 측
-hard error 게이트) + **B** (관측 데이터 수집).
+calibration 측정치와 승격 결정은 ADR (`docs/decisions/`) 로 별도 기록한다.
+**owner: C** (Loader 측 hard error 게이트) + **B** (관측 데이터 수집 + threshold
+민감도).
 
 ## 9. Owner 분담
 

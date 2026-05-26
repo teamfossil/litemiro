@@ -14,8 +14,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from litemiro.integration import OntologyLoader
+from litemiro.integration.ontology_loader import ConsistencyWarning
 from litemiro.phase1.models import (
     AgentOrigin,
     AgentProfile,
@@ -508,3 +510,178 @@ def test_validate_consistency_preserves_derived_origin() -> None:
     warnings = OntologyLoader.validate_consistency(ontology_a=a, ontology_b=b)
     assert len(warnings) == 1
     assert warnings[0].origin == AgentOrigin.DERIVED
+
+
+# ── validate_consistency — 옵션 B (#58) 임베딩 cosine 경로 ────────────
+
+
+class _MapEmbedder:
+    """결정적 fake embedder — 토픽 → 사전 정의 벡터.
+
+    실제 sentence-transformers 로딩 없이 임의 cosine 값을 만들도록 한다. 모르는
+    토픽이 들어오면 직교 단위벡터로 폴백 (== cosine 0, 유사 안 함).
+    """
+
+    def __init__(self, mapping: dict[str, tuple[float, ...]]) -> None:
+        self._mapping = mapping
+        self.calls: list[str] = []
+
+    def embed(self, text: str) -> tuple[float, ...]:
+        self.calls.append(text)
+        return self._mapping.get(text, (0.0, 0.0, 1.0))
+
+
+def _semantic_with_topics(mid: str, topics: list[str]) -> SemanticMemory:
+    return SemanticMemory(
+        id=mid,
+        summary=f"summary-{mid}",
+        topics=topics,
+        simulation_count=1,
+        last_relevant_sim=1,
+    )
+
+
+def _single_agent_ontology(
+    *, persona_topics: list[str], memory_topics: list[str]
+) -> tuple[OntologyA, OntologyB]:
+    a = OntologyA(
+        seed=1,
+        agent_count=1,
+        preset=Preset.QUICK,
+        source_document="x",
+        simulation_requirement="x",
+        generated_at=datetime(2026, 5, 25, tzinfo=UTC),
+        ontology=Ontology(entity_types=[], edge_types=[]),
+        agents={"a1": _profile("a1", topics=persona_topics, post_rate=0.5)},
+    )
+    b = OntologyB(
+        stores={
+            "a1": MemoryStore(agent_id="a1", semantic=[_semantic_with_topics("m1", memory_topics)])
+        }
+    )
+    return a, b
+
+
+def test_validate_consistency_with_embedder_below_threshold_warns() -> None:
+    """페르소나-기억 cosine 최댓값이 threshold 미만이면 warning + max_similarity 기록."""
+    a, b = _single_agent_ontology(persona_topics=["선거"], memory_topics=["김치"])
+    embedder = _MapEmbedder(
+        {
+            "선거": (1.0, 0.0, 0.0),
+            "김치": (0.0, 1.0, 0.0),  # cosine == 0
+        }
+    )
+    warnings = OntologyLoader.validate_consistency(
+        ontology_a=a, ontology_b=b, embedder=embedder, similarity_threshold=0.4
+    )
+    assert len(warnings) == 1
+    assert warnings[0].agent_id == "a1"
+    assert warnings[0].max_similarity == pytest.approx(0.0)
+
+
+def test_validate_consistency_with_embedder_above_threshold_passes() -> None:
+    """cosine 최댓값이 threshold 이상이면 어휘가 안 겹쳐도 통과 (옵션 B 본질)."""
+    a, b = _single_agent_ontology(persona_topics=["정치"], memory_topics=["대통령"])
+    embedder = _MapEmbedder(
+        {
+            "정치": (1.0, 0.0, 0.0),
+            "대통령": (0.9, 0.4, 0.0),  # cosine ≈ 0.913
+        }
+    )
+    warnings = OntologyLoader.validate_consistency(
+        ontology_a=a, ontology_b=b, embedder=embedder, similarity_threshold=0.4
+    )
+    assert warnings == ()
+
+
+def test_validate_consistency_embedder_takes_max_over_pairs() -> None:
+    """여러 토픽쌍 중 한 쌍이라도 threshold 를 넘기면 통과."""
+    a, b = _single_agent_ontology(persona_topics=["문화", "정치"], memory_topics=["대통령", "음식"])
+    embedder = _MapEmbedder(
+        {
+            "문화": (1.0, 0.0, 0.0),
+            "정치": (0.0, 1.0, 0.0),
+            "대통령": (0.0, 0.95, 0.0),  # 정치-대통령 cosine == 0.95 → max
+            "음식": (0.0, 0.0, 1.0),  # 다른 쌍은 cosine 0
+        }
+    )
+    warnings = OntologyLoader.validate_consistency(
+        ontology_a=a, ontology_b=b, embedder=embedder, similarity_threshold=0.4
+    )
+    assert warnings == ()
+
+
+def test_validate_consistency_embedder_caches_repeated_topics() -> None:
+    """같은 토픽 문자열은 한 번만 임베딩 — 호출 카운트로 검증."""
+    a = OntologyA(
+        seed=1,
+        agent_count=2,
+        preset=Preset.QUICK,
+        source_document="x",
+        simulation_requirement="x",
+        generated_at=datetime(2026, 5, 25, tzinfo=UTC),
+        ontology=Ontology(entity_types=[], edge_types=[]),
+        agents={
+            "a1": _profile("a1", topics=["정치"], post_rate=0.5),
+            "a2": _profile("a2", topics=["정치"], post_rate=0.5),
+        },
+    )
+    b = OntologyB(
+        stores={
+            "a1": MemoryStore(agent_id="a1", semantic=[_semantic_with_topics("m1", ["대통령"])]),
+            "a2": MemoryStore(agent_id="a2", semantic=[_semantic_with_topics("m1", ["대통령"])]),
+        }
+    )
+    embedder = _MapEmbedder(
+        {
+            "정치": (1.0, 0.0, 0.0),
+            "대통령": (0.0, 1.0, 0.0),
+        }
+    )
+    OntologyLoader.validate_consistency(
+        ontology_a=a, ontology_b=b, embedder=embedder, similarity_threshold=0.4
+    )
+    # 두 에이전트가 같은 두 토픽을 가져도 각 토픽은 한 번씩만 embed.
+    assert embedder.calls.count("정치") == 1
+    assert embedder.calls.count("대통령") == 1
+
+
+def test_validate_consistency_legacy_path_leaves_max_similarity_none() -> None:
+    """embedder 미주입 (legacy) — max_similarity 는 None 으로 남는다."""
+    a, b = _single_agent_ontology(persona_topics=["기술"], memory_topics=["정치"])
+    warnings = OntologyLoader.validate_consistency(ontology_a=a, ontology_b=b)
+    assert len(warnings) == 1
+    assert warnings[0].max_similarity is None
+
+
+def test_validate_consistency_embedder_exempts_cold_start() -> None:
+    """semantic 가 비면 embedder 가 있어도 면제 (호출조차 안 함)."""
+    a = OntologyA(
+        seed=1,
+        agent_count=1,
+        preset=Preset.QUICK,
+        source_document="x",
+        simulation_requirement="x",
+        generated_at=datetime(2026, 5, 25, tzinfo=UTC),
+        ontology=Ontology(entity_types=[], edge_types=[]),
+        agents={"a1": _profile("a1", topics=["완전_다른_주제"], post_rate=0.5)},
+    )
+    b = OntologyB(stores={"a1": MemoryStore(agent_id="a1", semantic=[])})
+    embedder = _MapEmbedder({})
+    warnings = OntologyLoader.validate_consistency(
+        ontology_a=a, ontology_b=b, embedder=embedder, similarity_threshold=0.4
+    )
+    assert warnings == ()
+    assert embedder.calls == []
+
+
+def test_consistency_warning_rejects_out_of_range_similarity() -> None:
+    """Pydantic Field(ge=-1, le=1) 가드 — 범위 밖 값이 들어오면 ValidationError."""
+    with pytest.raises(ValidationError):
+        ConsistencyWarning(
+            agent_id="a1",
+            origin=AgentOrigin.EXTRACTED,
+            persona_topics=("X",),
+            memory_topics=("Y",),
+            max_similarity=1.5,
+        )
