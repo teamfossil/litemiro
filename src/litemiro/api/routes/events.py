@@ -87,6 +87,15 @@ async def stream_events(plaza_id: str, request: Request) -> StreamingResponse:
                 )
             )
 
+            # 재연결 시 부감 뷰가 빈 피드로 시작하지 않도록 최근 액션을 한 번에
+            # 흘린다. terminal 이어도 보낸다 — 이미 끝난 plaza 를 새로 열어
+            # 과거 흐름을 한눈에 보고 싶을 때 의미가 가장 큰 케이스가 이쪽.
+            snapshot = await store.load_recent_actions(plaza_id)
+            if snapshot:
+                yield _format_sse(
+                    PlazaEvent(type="actions_snapshot", data={"actions": snapshot}),
+                )
+
             if record.status in _TERMINAL_STATUSES:
                 return
 

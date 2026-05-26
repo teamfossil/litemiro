@@ -235,23 +235,23 @@ events.jsonl 이 아직 안정적이지 않으므로 `ready: false` + `agents: [
 
 ## `GET /api/plazas/{plaza_id}/events`
 
-SSE 진행률 스트림. 프론트가 `/status` 를 폴링하지 않고 라운드 단위 progress
-와 상태 머신 전환을 push 로 받는다.
+SSE 진행률 스트림. 프론트가 `/status` 를 폴링하지 않고 라운드 단위 progress,
+상태 머신 전환, 그리고 events.jsonl 의 라이브 액션을 push 로 받는다.
 
-응답 200 (`text/event-stream`). 두 종류의 이벤트:
+응답 200 (`text/event-stream`). 네 종류의 이벤트:
 
 ```
 event: status
-data: {"status":"pending","rounds_done":0,"rounds_total":5,"error":null}
+data: {"status":"running","rounds_done":2,"rounds_total":5,"error":null}
+
+event: actions_snapshot
+data: {"actions":[{"round_num":0,"agent_id":"a1","type":"CREATE_POST","target_post_id":null,"target_agent_id":null,"content":"hello","timestamp":"2026-05-26T12:34:56.789012+00:00"}, ...]}
+
+event: action
+data: {"round_num":3,"agent_id":"a2","type":"FOLLOW","target_post_id":null,"target_agent_id":"a1","content":null,"timestamp":"2026-05-26T12:34:58.123456+00:00"}
 
 event: progress
-data: {"rounds_done":1,"rounds_total":5}
-
-event: status
-data: {"status":"running","rounds_done":0,"rounds_total":5,"error":null}
-
-event: progress
-data: {"rounds_done":5,"rounds_total":5}
+data: {"rounds_done":3,"rounds_total":5}
 
 event: status
 data: {"status":"composing","rounds_done":5,"rounds_total":5,"error":null}
@@ -261,13 +261,19 @@ data: {"status":"completed","rounds_done":5,"rounds_total":5,"error":null}
 ```
 
 - 연결 즉시 현재 status 를 한 번 보낸다 (초기 sync).
+- 그 직후 `event: actions_snapshot` 이 한 번 떨어진다 — 재연결/탭 전환 후 빈
+  부감 뷰로 시작하지 않게 events.jsonl 의 최근 40 건을 한 번에 흘려준다.
+  `data.actions` 는 element 가 `event: action` 과 동일한 shape, 시간 오름차순
+  배열. 액션이 0 건이거나 events.jsonl 이 아직 없으면 본 이벤트는 생략된다.
 - `event: progress`: 라운드 1건 종료. SSE 단독으로 progress bar 가 갱신된다.
 - `event: status`: 상태 머신 전환 (pending→running, running→composing, composing→completed/failed). `composing` 도 정식 이벤트라 프론트는 sim 종료와 보고서 합성 시작을 분리해서 표시 가능.
+- `event: action`: events.jsonl 의 한 줄 = agent 1 명의 액션 1 건. 부감 뷰가 노드 깜빡임 / 엣지 추가 / 새 포스트 토스트 등에 쓴다. `type` 은 `ActionType` enum (`CREATE_POST` / `LIKE_POST` / `REPOST` / `QUOTE_POST` / `FOLLOW`). 타입별로 `target_post_id` / `target_agent_id` / `content` 중 의미 있는 필드만 채워지고 나머지는 `null`. **`DO_NOTHING` 은 SSE 단계에서 컷** — events.jsonl 에는 그대로 남아 집계/재현성은 유지되지만, 스트림은 의미 있는 액션만 전달한다 (`actions_snapshot` 도 동일 필터).
+- 액션은 events.jsonl 폴링 tail (50 ms 간격) 로 흘려 보낸다 — runner 의 라운드 끝 flush 와 SSE push 사이 latency 가 라운드 wall-clock 에 비해 무시 가능. 서버는 terminal status emit 직전 마지막 drain 을 한 번 더 돌려 마지막 라인 누락을 막는다.
+- events.jsonl 의 라인 순서는 **runner 가 호출 순서 그대로 append 한 결과**. 같은 시드 / 같은 환경이면 같은 순서. SSE `event: action` 도 같은 순서로 흘러나오고 `actions_snapshot` 의 배열 순서도 동일. 라운드 안에서 여러 agent 의 액션은 runner 의 agent 처리 순서로 줄지어 들어간다.
 - `status` 가 **terminal** (`completed` / `failed`) 이면 본 이벤트가 스트림의 마지막 — 서버가 응답을 닫는다. `composing` 은 terminal 아님.
-- 연결 시점에 record 가 이미 terminal 이면 첫 status 이벤트 직후 스트림이 닫힌다.
+- 연결 시점에 record 가 이미 terminal 이면 첫 status 이벤트 + `actions_snapshot` (있으면) 직후 스트림이 닫힌다 — 과거 액션을 받을 마지막 기회.
 - 큐가 한동안 비면 15 초마다 `: keepalive` SSE comment 가 나간다 (클라 `onmessage` 에는 안 잡힘 — proxy idle timeout 방지용).
 - `404`: 존재하지 않는 `plaza_id`.
-- 라운드 단위 액션 스트림 (events.jsonl 라이브 tail) 은 아직 미포함 — 동일 라우트에 추후 `event: action` 으로 얹는다.
 
 ## 실행
 
