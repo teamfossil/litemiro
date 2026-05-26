@@ -55,6 +55,34 @@ class HealthResponse(BaseModel):
     version: str
 
 
+class PlazaAgentItem(BaseModel):
+    """Casting 화면이 슬롯에 띄울 앵커 1명. ``OntologyA.agents`` 의 ``AgentProfile``
+    에서 시각화에 의미 있는 필드만 추려 노출.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    name: str
+    # ``AgentProfile.entity_type`` 그대로 (raw). ontology 추출 결과의 카테고리
+    # 라벨 — 프론트가 자체 매핑 테이블로 RoleId enum 으로 좁힌다.
+    # 매핑 테이블 SSoT 는 ``docs/api/contract.md`` 의 ``/agents`` 섹션.
+    role: str
+    ideology: float = Field(ge=0.0, le=1.0)
+    topics: list[str] = Field(default_factory=list)
+    # agent_id 의 sha256 앞 4바이트 → uint32. 같은 plaza/같은 agent 면 reload·재연결에서도
+    # 같은 값이 와서 프론트 deterministic avatar 가 안 튄다. 백엔드가 직접 계산하는 이유는
+    # 프론트 해시 알고리즘 변경/언어 차이로 시드가 어긋나는 걸 막기 위해.
+    avatar_seed: int = Field(ge=0, le=4294967295)
+
+
+class PlazaAgentsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    plaza_id: str
+    agents: list[PlazaAgentItem]
+
+
 class PlazaReportResponse(BaseModel):
     """완료된 plaza 의 보고서 응답 — 결정적 집계 + (선택) LLM Markdown 본문.
 
@@ -85,6 +113,8 @@ __all__ = [
     "CreatePlazaRequest",
     "CreatePlazaResponse",
     "HealthResponse",
+    "PlazaAgentItem",
+    "PlazaAgentsResponse",
     "PlazaReportResponse",
     "PlazaStatus",
     "PlazaStatusResponse",

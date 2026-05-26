@@ -86,6 +86,48 @@ pending → running → composing → completed
 - `failed` 일 때만 `error` 가 non-null (`"<ExceptionType>: <message>"`). composing 단계에서 LLM 이 폴백까지 전부 실패해도 `completed` — 본문은 `null` 로 나간다 (`/report` 참고).
 - `404`: DB 에도 존재하지 않는 `plaza_id`.
 
+## `GET /api/plazas/{plaza_id}/agents`
+
+Casting 화면이 슬롯에 띄울 앵커 리스트. plaza 에 묶인 `ontology_a_persona.json`
+(Phase 1 산출) 의 `agents` 를 라우트가 직접 읽어 시각화에 의미 있는 필드만 추려
+돌려준다. plaza 생성 시점에 ontology_a 가 이미 존재하므로 **pending / running**
+에서도 200 으로 떨어진다 — sim 시작 전부터 앵커 슬롯 그릴 수 있다.
+
+응답 200:
+
+```json
+{
+  "plaza_id": "ab12cd34...",
+  "agents": [
+    { "id": "agent_001", "name": "AI 기본법", "role": "AIRegulationPolicy", "ideology": 0.65, "topics": ["AI 규제 기본 원칙"], "avatar_seed": 2853741920 },
+    { "id": "agent_002", "name": "스타트업 협회", "role": "IndustryGroup", "ideology": 0.30, "topics": [...], "avatar_seed": 1937204815 }
+  ]
+}
+```
+
+- `id`: `AgentProfile.agent_id`.
+- `role`: `AgentProfile.entity_type` raw 값 — 백엔드는 enum 으로 안 좁힌다 (새 카테고리 추가될 때마다 백엔드 패치하지 않으려고). 프론트가 아래 매핑 테이블로 `RoleId` 로 좁힌다.
+- `ideology`: 0.0 ~ 1.0. **0.0 = 진보 / 1.0 = 보수** (Phase 1 ontology 추출 단계 의미). 0.5 근처는 중도/판단 보류.
+- `topics`: `AgentProfile.topics`. 자유 문자열 리스트.
+- `avatar_seed`: `sha256(agent_id)[:4]` 의 uint32. 같은 plaza/같은 agent 면 reload·재연결에서도 동일 — 프론트 deterministic avatar 가 안 튄다. 백엔드가 직접 계산하는 이유는 프론트 해시 알고리즘 변경/언어 차이로 시드 어긋나는 걸 막기 위해.
+- `404`: 존재하지 않는 `plaza_id`, 또는 `ontology_a_path` 가 디스크에 없는 경우.
+- `500`: 파일이 있지만 스키마 파싱 실패 — Phase 1 산출이 손상된 경우.
+
+`role` → 프론트 `RoleId` 매핑 (SSoT — 본 문서 기준):
+
+| Phase 1 `entity_type` | 프론트 `RoleId` | 의미 |
+|----------------------|----------------|------|
+| `AIRegulationPolicy` | `policy` | AI 규제/정책 문서·법안 |
+| `Government` | `policy` | 정부 부처·공공기관 |
+| `IndustryGroup` | `industry` | 산업 협회·연합 |
+| `Company` | `industry` | 개별 기업 |
+| `Researcher` | `expert` | 학계·연구 기관·전문가 |
+| `CivicGroup` | `civic` | 시민단체·NGO |
+| `Media` | `media` | 언론사·매체 |
+| (그 외) | `other` | 신규 카테고리 — 백엔드 변경 없이 프론트 fallback 으로 흡수 |
+
+새 `entity_type` 이 Phase 1 에서 도입되면 본 표만 추가하면 된다 — 백엔드 응답 형식은 그대로.
+
 ## `GET /api/plazas/{plaza_id}/report`
 
 결정적 집계 (`DataAggregator.aggregate`) + LLM 본문 (`ReportComposer`). 집계

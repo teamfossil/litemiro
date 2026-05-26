@@ -7,6 +7,7 @@ status 머신: pending → running → completed | failed.
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from collections.abc import Callable, Coroutine
 from pathlib import Path
@@ -18,6 +19,51 @@ from litemiro.api.app import create_app
 from litemiro.api.composer import ComposerOutcome
 from litemiro.api.store import ProgressCallback, RunnerOutcome
 from litemiro.phase1.models import Preset
+
+
+def _write_ontology_a(path: Path, agent_specs: list[tuple[str, str, str, float]]) -> Path:
+    """테스트용 ``ontology_a_persona.json`` 을 만든다.
+
+    ``agent_specs`` 는 ``(agent_id, name, entity_type, ideology)`` 튜플. 라우트가
+    실제 ``OntologyA.model_validate`` 를 거치므로 모든 필수 필드를 채워야 한다.
+    """
+    data = {
+        "version": 1,
+        "seed": 42,
+        "agent_count": len(agent_specs),
+        "preset": "quick",
+        "source_document": "test-doc",
+        "simulation_requirement": "test-req",
+        "generated_at": "2026-05-26T00:00:00+00:00",
+        "ontology": {"entity_types": [], "edge_types": []},
+        "agents": {
+            aid: {
+                "agent_id": aid,
+                "name": name,
+                "entity_type": etype,
+                "origin": "extracted",
+                "derived_from": None,
+                "skeleton": {},
+                "ideology": ideology,
+                "topics": [f"{aid}-topic"],
+                "sensitive_topics": [],
+                "personality": "",
+                "speech_style": "",
+                "background": "",
+                "behavior_tendency": {
+                    "post_rate": 0.5,
+                    "reply_rate": 0.3,
+                    "repost_rate": 0.2,
+                    "controversy_affinity": 0.5,
+                },
+                "initial_following": [],
+            }
+            for (aid, name, etype, ideology) in agent_specs
+        },
+    }
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    return path
+
 
 _RunnerCoro = Callable[..., Coroutine[Any, Any, RunnerOutcome]]
 
@@ -458,3 +504,127 @@ class TestPersistence:
         assert row["status"] == "completed"
         assert row["rounds_done"] == 4
         assert row["rounds_total"] == 4
+
+
+class TestGetAgents:
+    """``GET /api/plazas/{id}/agents`` — Casting 화면용 앵커 리스트."""
+
+    def test_returns_mapped_agents(self, tmp_path: Path) -> None:
+        onto_a = _write_ontology_a(
+            tmp_path / "ontology_a.json",
+            [
+                ("agent_001", "AI 기본법", "AIRegulationPolicy", 0.65),
+                ("agent_002", "스타트업 협회", "IndustryGroup", 0.3),
+                ("agent_003", "시민 연합", "CivicOrganization", 0.8),
+            ],
+        )
+        app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/plazas",
+                json={
+                    "ontology_a_path": str(onto_a),
+                    "ontology_b_path": "/tmp/b.json",
+                    "rounds": 1,
+                    "label": "casting",
+                },
+            ).json()
+            plaza_id = created["plaza_id"]
+            resp = client.get(f"/api/plazas/{plaza_id}/agents")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["plaza_id"] == plaza_id
+        assert len(body["agents"]) == 3
+        by_id = {a["id"]: a for a in body["agents"]}
+        assert by_id["agent_001"]["name"] == "AI 기본법"
+        assert by_id["agent_001"]["role"] == "AIRegulationPolicy"
+        assert by_id["agent_001"]["ideology"] == 0.65
+        assert by_id["agent_001"]["topics"] == ["agent_001-topic"]
+        # avatar_seed 는 결정적 uint32. 라우트 helper 와 같은 알고리즘 (sha256[:4]).
+        seed = by_id["agent_001"]["avatar_seed"]
+        assert isinstance(seed, int)
+        assert 0 <= seed <= 0xFFFFFFFF
+        # raw avatar 필드는 빠진다 — 프론트가 seed 로 deterministic 생성.
+        assert "avatar" not in by_id["agent_001"]
+        # agent_id 가 다르면 seed 도 (충돌 가능성은 무시할 수준 — 2^32 분포).
+        seeds = {a["id"]: a["avatar_seed"] for a in body["agents"]}
+        assert len(set(seeds.values())) == 3
+
+    def test_avatar_seed_deterministic_across_requests(self, tmp_path: Path) -> None:
+        """같은 plaza 를 두 번 fetch 해도 seed 가 같아야 — reload 시 아바타 안 튀는 회귀."""
+        onto_a = _write_ontology_a(
+            tmp_path / "ontology_a.json",
+            [("agent_alpha", "Alpha", "Researcher", 0.4)],
+        )
+        app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/plazas",
+                json={
+                    "ontology_a_path": str(onto_a),
+                    "ontology_b_path": "/tmp/b.json",
+                    "rounds": 1,
+                },
+            ).json()
+            plaza_id = created["plaza_id"]
+            first = client.get(f"/api/plazas/{plaza_id}/agents").json()
+            second = client.get(f"/api/plazas/{plaza_id}/agents").json()
+        assert first["agents"][0]["avatar_seed"] == second["agents"][0]["avatar_seed"]
+
+    def test_available_before_sim_finishes(self, tmp_path: Path) -> None:
+        """plaza 가 pending/running 이어도 ontology_a 만 있으면 200 으로 떨어진다.
+
+        Casting 화면이 sim 시작 전부터 앵커 슬롯을 그리려면 이 보장이 필요하다.
+        """
+        onto_a = _write_ontology_a(tmp_path / "ontology_a.json", [("a", "n", "Role", 0.5)])
+
+        async def _slow_runner(
+            *,
+            plaza_id: str,
+            ontology_a_path: Path,
+            ontology_b_path: Path,
+            rounds: int,
+            event_log_path: Path,
+            checkpoint_dir: Path,
+            on_progress: ProgressCallback,
+        ) -> RunnerOutcome:
+            del plaza_id, ontology_a_path, ontology_b_path, rounds
+            del event_log_path, checkpoint_dir, on_progress
+            await asyncio.sleep(0.3)
+            return RunnerOutcome()
+
+        app = create_app(runner=_slow_runner, base_dir=tmp_path)
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/plazas",
+                json={
+                    "ontology_a_path": str(onto_a),
+                    "ontology_b_path": "/tmp/b.json",
+                    "rounds": 1,
+                },
+            ).json()
+            resp = client.get(f"/api/plazas/{created['plaza_id']}/agents")
+        assert resp.status_code == 200
+        assert len(resp.json()["agents"]) == 1
+
+    def test_404_for_unknown_plaza(self, tmp_path: Path) -> None:
+        app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
+        with TestClient(app) as client:
+            resp = client.get("/api/plazas/does-not-exist/agents")
+        assert resp.status_code == 404
+
+    def test_404_when_ontology_file_missing(self, tmp_path: Path) -> None:
+        """plaza 생성은 path 만 받고 존재 검증 안 하니, 파일이 없으면 404 로 떨어진다."""
+        app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/plazas",
+                json={
+                    "ontology_a_path": "/tmp/definitely-not-here.json",
+                    "ontology_b_path": "/tmp/b.json",
+                    "rounds": 1,
+                },
+            ).json()
+            resp = client.get(f"/api/plazas/{created['plaza_id']}/agents")
+        assert resp.status_code == 404
+        assert "ontology_a" in resp.json()["detail"]
