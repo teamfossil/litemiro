@@ -20,12 +20,16 @@ import structlog
 
 from litemiro.phase1.models import Preset
 from litemiro.phase3.data_aggregator import DataAggregator
-from litemiro.phase3.models import ReportConfig
+from litemiro.phase3.models import AggregationResult, ReportConfig
 from litemiro.phase3.pattern_analyzer import PatternAnalyzer
 from litemiro.phase3.report_composer import ReportComposer
 
 if TYPE_CHECKING:
     from litemiro.interfaces import LLMClient
+
+# Phase 3 `ReportConfig` 의 기본값을 단일 진실의 원천으로 삼는다 — composer 와
+# CLI 가 같은 default slug 를 본다. 여기서 따로 리터럴을 박으면 drift 의 원인.
+_DEFAULTS = ReportConfig()
 
 _logger = structlog.get_logger(__name__)
 
@@ -36,11 +40,16 @@ class ComposerOutcome:
 
     ``markdown`` 이 ``None`` 이면 LLM 단이 전부 실패한 폴백. 통계 응답은
     그대로 떨어지지만 자연어 서술은 비어 있다.
+
+    ``aggregation`` 은 LLM 호출 직전에 컴퓨테한 결정적 집계 — store 가
+    record 에 캐시해서 ``/report`` 매 호출마다 events.jsonl 재집계를 피한다.
+    composer 가 미실행(events 없음) 이거나 캐싱 안 하는 fake 는 ``None``.
     """
 
     markdown: str | None
     tokens_used: int = 0
     fallback_used: bool = False
+    aggregation: AggregationResult | None = None
 
 
 class RealPlazaComposer:
@@ -56,16 +65,18 @@ class RealPlazaComposer:
         *,
         llm_client: LLMClient,
         preset: Preset = Preset.QUICK,
-        analyzer_model: str = "openrouter/qwen/qwen-plus",
-        composer_primary_model: str = "openrouter/anthropic/claude-opus-4.7",
-        composer_fallback_model: str = "openrouter/qwen/qwen-plus",
+        analyzer_model: str | None = None,
+        composer_primary_model: str | None = None,
+        composer_fallback_model: str | None = None,
     ) -> None:
+        # 명시 인자 없으면 `ReportConfig` 의 default 를 그대로 — slug 가 한 곳에서만
+        # 정의되도록.
         self._llm = llm_client
         self._config = ReportConfig(
             preset=preset,
-            analyzer_model=analyzer_model,
-            composer_primary_model=composer_primary_model,
-            composer_fallback_model=composer_fallback_model,
+            analyzer_model=analyzer_model or _DEFAULTS.analyzer_model,
+            composer_primary_model=composer_primary_model or _DEFAULTS.composer_primary_model,
+            composer_fallback_model=composer_fallback_model or _DEFAULTS.composer_fallback_model,
         )
 
     async def __call__(self, *, plaza_id: str, event_log_path: Path) -> ComposerOutcome:
@@ -100,11 +111,13 @@ class RealPlazaComposer:
                 markdown=None,
                 tokens_used=sum(item.tokens_used for item in insights.items),
                 fallback_used=False,
+                aggregation=aggregation,
             )
         return ComposerOutcome(
             markdown=report.markdown,
             tokens_used=sum(item.tokens_used for item in insights.items) + report.tokens_used,
             fallback_used=report.fallback_used,
+            aggregation=aggregation,
         )
 
 

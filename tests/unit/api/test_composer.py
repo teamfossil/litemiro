@@ -18,6 +18,7 @@ from typing import Any
 from litemiro.api.composer import RealPlazaComposer
 from litemiro.interfaces import LLMClient
 from litemiro.models import LLMResponse
+from litemiro.phase3.models import ReportConfig
 
 
 def _make_event(round_num: int, agent_id: str, action_type: str, **action: Any) -> str:
@@ -60,6 +61,9 @@ def test_composer_returns_markdown_with_fake_llm(
     assert outcome.fallback_used is False
     # analyzer tokens (10+20) + composer tokens (30+40) = 100.
     assert outcome.tokens_used == 100
+    # store 가 캐시할 수 있도록 outcome 에 aggregation 이 동봉돼야 한다.
+    assert outcome.aggregation is not None
+    assert outcome.aggregation.n_events == 3
 
 
 def test_composer_returns_none_when_events_missing(
@@ -72,6 +76,30 @@ def test_composer_returns_none_when_events_missing(
     outcome = asyncio.run(composer(plaza_id="abc", event_log_path=missing))
     assert outcome.markdown is None
     assert outcome.tokens_used == 0
+
+
+def test_composer_default_models_match_report_config() -> None:
+    """``RealPlazaComposer`` 의 default slug 가 ``ReportConfig`` 의 default 와 같다.
+
+    두 곳에 리터럴을 박으면 drift 가 조용히 누적된다 (예: phase3 가 새 모델로
+    교체됐는데 API 어댑터는 옛 slug 그대로 → 매 보고서 폴백 발동). 한 곳만
+    바뀌면 본 테스트가 잡는다.
+    """
+    composer = RealPlazaComposer(llm_client=_NoCallLLM())
+    expected = ReportConfig()
+    assert composer._config.analyzer_model == expected.analyzer_model
+    assert composer._config.composer_primary_model == expected.composer_primary_model
+    assert composer._config.composer_fallback_model == expected.composer_fallback_model
+
+
+class _NoCallLLM:
+    """default 검증용 — 실제 호출되면 테스트 의도와 어긋난 것."""
+
+    async def complete(
+        self, *, system: str, user: str, model: str
+    ) -> LLMResponse:  # pragma: no cover
+        del system, user, model
+        raise RuntimeError("LLM 호출이 일어나면 안 되는 테스트입니다")
 
 
 def test_composer_falls_back_to_none_when_composer_dies(

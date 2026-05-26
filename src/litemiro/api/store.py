@@ -19,6 +19,7 @@ from typing import Any, Literal, Protocol
 
 from litemiro.api.composer import ComposerOutcome
 from litemiro.api.models import PlazaStatus
+from litemiro.phase3.models import AggregationResult
 
 # SSE 이벤트의 두 가지 분류 —
 #  * progress: 라운드 진행률 갱신 (rounds_done 증가)
@@ -122,6 +123,10 @@ class PlazaRecord:
     # 그대로 노출.
     report_markdown: str | None = None
     report_fallback_used: bool = False
+    # ``DataAggregator.aggregate`` 결과 캐시. composer 가 한 번 돌면 outcome 을
+    # 통해 채워지고, ``/report`` 가 매 호출마다 events.jsonl 을 재집계하지 않는다.
+    # composer 가 없는 fake 경로는 ``build_report`` 가 lazy 로 채운다.
+    aggregation_cache: AggregationResult | None = field(default=None, repr=False)
 
 
 class PlazaStore:
@@ -246,6 +251,10 @@ class PlazaStore:
                 record.report_markdown = composer_outcome.markdown
                 record.report_fallback_used = composer_outcome.fallback_used
                 record.tokens_used += composer_outcome.tokens_used
+                # composer 가 자기 집계를 outcome 으로 흘려보냈으면 그대로 캐시 —
+                # /report 가 같은 events.jsonl 을 다시 안 본다.
+                if composer_outcome.aggregation is not None:
+                    record.aggregation_cache = composer_outcome.aggregation
             record.status = "completed"
             _emit_status()
 

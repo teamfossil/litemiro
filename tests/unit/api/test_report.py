@@ -204,6 +204,42 @@ def test_report_keeps_markdown_null_when_composer_dies(tmp_path: Path) -> None:
     assert body["tokens_used"] == 777 + 42
 
 
+def test_report_reuses_aggregation_cache_across_calls(tmp_path: Path) -> None:
+    """첫 /report 가 집계 캐시를 채우고, 이후 호출은 events.jsonl 을 안 본다.
+
+    events.jsonl 을 삭제한 뒤에도 같은 응답이 나오는지로 캐시 사용을 검증.
+    runner 가 한 번 쓴 events.jsonl 을 가지고 ``build_report`` 가 record 에
+    캐시 → 두 번째 호출은 fs read 없이 cache hit.
+    """
+    lines = [
+        _make_event(0, "agent_a", "CREATE_POST", content="x"),
+        _make_event(0, "agent_b", "FOLLOW", target_agent_id="agent_a"),
+    ]
+    app = create_app(runner=_writing_runner(lines), base_dir=tmp_path)
+    with TestClient(app) as client:
+        created = client.post(
+            "/api/plazas",
+            json={
+                "ontology_a_path": "/tmp/a.json",
+                "ontology_b_path": "/tmp/b.json",
+                "rounds": 1,
+            },
+        ).json()
+        plaza_id = created["plaza_id"]
+        _wait_completed(client, plaza_id)
+
+        first = client.get(f"/api/plazas/{plaza_id}/report").json()
+        # 캐시가 살아 있는지 확인하려고 events.jsonl 을 지운다 — 캐시 미사용이라면
+        # 두 번째 호출이 빈 집계로 떨어진다.
+        events_path = tmp_path / plaza_id / "events.jsonl"
+        events_path.unlink()
+        second = client.get(f"/api/plazas/{plaza_id}/report").json()
+
+    assert first["n_events"] == 2
+    assert second["n_events"] == 2
+    assert first["categories"] == second["categories"]
+
+
 def test_report_409_while_running(tmp_path: Path) -> None:
     async def _slow_runner(
         *,
