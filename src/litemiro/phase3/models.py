@@ -25,12 +25,43 @@ CATEGORIES: tuple[str, ...] = (
 )
 
 
-class AggregationResult(BaseModel):
-    """`DataAggregator` 산출 — 카테고리별 통계 dict.
+class QaMetrics(BaseModel):
+    """OASIS 등가성 회귀 게이트용 결정적 수치 (#59).
 
-    값은 ``Mapping[str, Any]`` 로 두어 카테고리 별 자유 스키마 허용
-    (네트워크와 시계열의 키가 다르다). 파이프라인 다운스트림이 LLM
+    LLM 분석을 거치지 않는 순수 통계. 보고서는 본 값을 그대로 인용해 회귀 추적
+    한다 (`docs/qa/metrics.md`). 정의 / 정규화 / OASIS 베이스라인 확보 상태는
+    같은 문서 참조.
+
+    * ``action_entropy_normalized`` — Shannon(P(action_type)) / log2(K). K = 6.
+      0 = 한 액션만 / 1 = 균일. 낮으면 행동 다양성 결여 신호.
+    * ``follow_clustering_coefficient`` — FOLLOW 이벤트로 재구성한 (방향성 무시)
+      그래프의 평균 local clustering coefficient. 0 = 별 그래프 / 1 = 완전
+      이웃성. 클러스터 형성이 안 보이면 echo chamber 없는 평탄 네트워크 신호.
+    * ``content_word_entropy_normalized`` — CREATE_POST·QUOTE_POST 의 content 를
+      공백 토크나이즈한 word frequency 의 Shannon / log2(|vocab|). 한국어 형태소
+      분석 없이 어휘 다양성만 근사 — 진짜 토픽 entropy 는 RoundEvent 스키마에
+      ``topics`` 필드 추가 후 별도 PR 에서 정확화.
+
+    OASIS (arXiv:2411.11581) 는 위 3 메트릭에 대한 단일 베이스라인 수치를
+    공개하지 않음 — 등가성 판단은 self-baseline (run-to-run 회귀) 으로 시작하고,
+    OASIS 측 수치 확보 시 직접 비교로 승격 (`docs/qa/metrics.md`).
+    """
+
+    model_config = _FROZEN
+
+    action_entropy_normalized: float = Field(ge=0.0, le=1.0)
+    follow_clustering_coefficient: float = Field(ge=0.0, le=1.0)
+    content_word_entropy_normalized: float = Field(ge=0.0, le=1.0)
+
+
+class AggregationResult(BaseModel):
+    """`DataAggregator` 산출 — 카테고리별 통계 dict + qa_metrics.
+
+    ``categories`` 값은 ``Mapping[str, Any]`` 로 두어 카테고리 별 자유 스키마
+    허용 (네트워크와 시계열의 키가 다르다). 파이프라인 다운스트림이 LLM
     프롬프트로 직렬화할 때 다시 정규화한다.
+
+    ``qa_metrics`` 는 LLM 분석을 안 거치는 결정적 수치 — `QaMetrics` 참고.
     """
 
     model_config = _FROZEN
@@ -39,6 +70,7 @@ class AggregationResult(BaseModel):
     n_agents: int = Field(ge=0)
     n_rounds: int = Field(ge=0)
     categories: Mapping[str, Mapping[str, Any]]
+    qa_metrics: QaMetrics
 
 
 class CategoryInsight(BaseModel):
@@ -91,5 +123,6 @@ __all__ = [
     "AggregationResult",
     "CategoryInsight",
     "PartialInsights",
+    "QaMetrics",
     "ReportConfig",
 ]

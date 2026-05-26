@@ -21,6 +21,7 @@ from litemiro.phase3 import (
     ReportComposer,
     ReportConfig,
 )
+from litemiro.phase3.models import QaMetrics
 
 
 class _FakeLLM:
@@ -57,6 +58,11 @@ def _result() -> AggregationResult:
             "topic_flow": {"n_posts": 1},
             "time_series": {"rounds": [0, 1]},
         },
+        qa_metrics=QaMetrics(
+            action_entropy_normalized=0.0,
+            follow_clustering_coefficient=0.0,
+            content_word_entropy_normalized=0.0,
+        ),
     )
 
 
