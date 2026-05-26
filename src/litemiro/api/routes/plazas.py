@@ -1,6 +1,7 @@
 """Plaza 라이프사이클 라우트.
 
 - ``POST /api/plazas``                — 시뮬레이션 생성 (background task 시작).
+- ``GET  /api/plazas``                — 최신순 plaza 목록 (이력 화면용).
 - ``GET  /api/plazas/{id}/status``    — 진행률/상태 조회.
 - ``GET  /api/plazas/{id}/report``    — 완료 plaza 의 집계 보고서 (결정적).
 - ``GET  /api/plazas/{id}/agents``    — Phase 1 산출의 앵커 리스트 (Casting 화면용).
@@ -13,8 +14,9 @@ import asyncio
 import hashlib
 import json
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import ValidationError
 
 from litemiro.api.layout import compute_layout, plaza_seed
@@ -25,8 +27,11 @@ from litemiro.api.models import (
     PlazaAgentsResponse,
     PlazaLayoutAgentItem,
     PlazaLayoutResponse,
+    PlazaListResponse,
     PlazaReportResponse,
+    PlazaStatus,
     PlazaStatusResponse,
+    PlazaSummaryItem,
 )
 from litemiro.api.report import build_report
 from litemiro.api.sample_fixtures import (
@@ -120,6 +125,48 @@ async def create_plaza(payload: CreatePlazaRequest, request: Request) -> CreateP
         preset=payload.preset,
     )
     return CreatePlazaResponse(plaza_id=record.plaza_id, status=record.status)
+
+
+@router.get("", response_model=PlazaListResponse)
+async def list_plazas(
+    request: Request,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    status_filter: Annotated[PlazaStatus | None, Query(alias="status")] = None,
+) -> PlazaListResponse:
+    """최신순 plaza 카드 리스트. ``?status=`` 로 한 상태만 좁힐 수 있다.
+
+    ``total`` 은 ``status`` 필터 적용 후 전체 개수 — 페이지네이션 위젯의 "총
+    N건" 표시에 그대로. 같은 prefix 라우터의 ``""`` 라 ``/api/plazas`` 자체에
+    매핑된다 (path 변수 라우트가 위로 가지 않게 등록 순서에 신경썼다 — FastAPI
+    는 등록 순으로 매칭하지만 이 라우트는 path 충돌이 없어 사실상 안전).
+    """
+    store = _store(request)
+    summaries, total = await store.list_plazas(
+        limit=limit,
+        offset=offset,
+        status_filter=status_filter,
+    )
+    return PlazaListResponse(
+        plazas=[
+            PlazaSummaryItem(
+                plaza_id=s.plaza_id,
+                status=s.status,
+                rounds_total=s.rounds_total,
+                rounds_done=s.rounds_done,
+                label=s.label,
+                error=s.error,
+                preset=s.preset,
+                tokens_used=s.tokens_used,
+                created_at=s.created_at,
+                updated_at=s.updated_at,
+            )
+            for s in summaries
+        ],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/{plaza_id}/status", response_model=PlazaStatusResponse)

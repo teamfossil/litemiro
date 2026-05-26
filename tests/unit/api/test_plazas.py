@@ -10,18 +10,20 @@ import asyncio
 import json
 import time
 from collections.abc import Callable, Coroutine
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from fastapi.testclient import TestClient
 
+from litemiro.api import db as _db
 from litemiro.api.app import create_app
 from litemiro.api.composer import ComposerOutcome
 from litemiro.api.sample_fixtures import (
     DEFAULT_ONTOLOGY_A_PATH,
     DEFAULT_ONTOLOGY_B_PATH,
 )
-from litemiro.api.store import ProgressCallback, RunnerOutcome
+from litemiro.api.store import PlazaRecord, ProgressCallback, RunnerOutcome
 from litemiro.phase1.models import Preset
 
 
@@ -947,3 +949,157 @@ class TestGetLayout:
             resp = client.get(f"/api/plazas/{plaza_id}/layout")
         assert resp.status_code == 404
         assert "ontology_a" in resp.json()["detail"]
+
+
+class TestListPlazas:
+    def test_empty_store_returns_empty_page(self, tmp_path: Path) -> None:
+        app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
+        with TestClient(app) as client:
+            resp = client.get("/api/plazas")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body == {"plazas": [], "total": 0, "limit": 20, "offset": 0}
+
+    def test_single_completed_plaza_visible(self, tmp_path: Path) -> None:
+        app = create_app(runner=_success_runner(rounds_to_report=2), base_dir=tmp_path)
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/plazas",
+                json={"rounds": 2, "label": "demo", "preset": "standard"},
+            ).json()
+            plaza_id = created["plaza_id"]
+            _wait_until(client, plaza_id, terminal={"completed", "failed"})
+            body = client.get("/api/plazas").json()
+        assert body["total"] == 1
+        assert body["limit"] == 20
+        assert body["offset"] == 0
+        assert len(body["plazas"]) == 1
+        item = body["plazas"][0]
+        assert item["plaza_id"] == plaza_id
+        assert item["status"] == "completed"
+        assert item["rounds_total"] == 2
+        assert item["rounds_done"] == 2
+        assert item["label"] == "demo"
+        assert item["preset"] == "standard"
+        # 작은 본문은 빼두기로 했다 — report_markdown 등이 누설되면 안 됨.
+        assert "report_markdown" not in item
+        # Pydantic 이 UTC datetime 을 ``...Z`` (또는 ``+00:00``) 으로 직렬화한다.
+        # 파싱 가능 + tzinfo 가 UTC 인 것만 확인.
+        assert datetime.fromisoformat(item["created_at"]).utcoffset() is not None
+        assert datetime.fromisoformat(item["updated_at"]).utcoffset() is not None
+
+    def test_ordered_newest_first(self, tmp_path: Path) -> None:
+        app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
+        with TestClient(app) as client:
+            ids: list[str] = []
+            for i in range(3):
+                created = client.post(
+                    "/api/plazas",
+                    json={"rounds": 1, "label": f"p{i}"},
+                ).json()
+                ids.append(created["plaza_id"])
+                _wait_until(client, created["plaza_id"], terminal={"completed", "failed"})
+                # ``created_at`` 정밀도가 second 라 동일 second 에 박히면 정렬이
+                # plaza_id 로 tie-break 된다. 결정적 검증을 위해 second 경계 넘김.
+                time.sleep(1.05)
+            body = client.get("/api/plazas").json()
+        assert body["total"] == 3
+        # 마지막에 만든 plaza 가 위.
+        assert [p["plaza_id"] for p in body["plazas"]] == list(reversed(ids))
+        assert [p["label"] for p in body["plazas"]] == ["p2", "p1", "p0"]
+
+    def test_status_filter_applies_to_total(self, tmp_path: Path) -> None:
+        # success + failure 섞어 만들고 ?status=failed 가 failed 만 / total=1.
+        app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
+        with TestClient(app) as client:
+            ok = client.post("/api/plazas", json={"rounds": 1, "label": "ok"}).json()
+            _wait_until(client, ok["plaza_id"], terminal={"completed", "failed"})
+        # 같은 base_dir 로 새 app — runner 만 failing 으로 바꾼다.
+        app2 = create_app(runner=_failing_runner, base_dir=tmp_path)
+        with TestClient(app2) as client:
+            bad = client.post("/api/plazas", json={"rounds": 1, "label": "bad"}).json()
+            _wait_until(client, bad["plaza_id"], terminal={"completed", "failed"})
+            all_body = client.get("/api/plazas").json()
+            failed_body = client.get("/api/plazas?status=failed").json()
+            completed_body = client.get("/api/plazas?status=completed").json()
+        assert all_body["total"] == 2
+        assert failed_body["total"] == 1
+        assert {p["plaza_id"] for p in failed_body["plazas"]} == {bad["plaza_id"]}
+        assert completed_body["total"] == 1
+        assert {p["plaza_id"] for p in completed_body["plazas"]} == {ok["plaza_id"]}
+
+    def test_limit_and_offset_paginate(self, tmp_path: Path) -> None:
+        app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
+        with TestClient(app) as client:
+            for i in range(4):
+                created = client.post(
+                    "/api/plazas",
+                    json={"rounds": 1, "label": f"p{i}"},
+                ).json()
+                _wait_until(client, created["plaza_id"], terminal={"completed", "failed"})
+            page1 = client.get("/api/plazas?limit=2&offset=0").json()
+            page2 = client.get("/api/plazas?limit=2&offset=2").json()
+        assert page1["total"] == 4
+        assert page2["total"] == 4
+        assert page1["limit"] == 2
+        assert page1["offset"] == 0
+        assert page2["limit"] == 2
+        assert page2["offset"] == 2
+        assert len(page1["plazas"]) == 2
+        assert len(page2["plazas"]) == 2
+        seen = {p["plaza_id"] for p in page1["plazas"]} | {p["plaza_id"] for p in page2["plazas"]}
+        assert len(seen) == 4  # 페이지가 겹치지 않음
+
+    def test_same_second_tie_break_by_plaza_id_desc(self, tmp_path: Path) -> None:
+        # ``created_at`` 초 단위 truncate → 같은 초에 만들어진 두 plaza 가 흔하다.
+        # 2 차 정렬 키 ``plaza_id DESC`` 가 없으면 SQLite 가 동률 행 순서를 보장
+        # 안 해서 ``LIMIT/OFFSET`` 페이지 경계에 걸린 plaza 가 누락/중복될 수
+        # 있다 — db 경로 (SQLite) 와 in-memory 폴백 경로가 일관되게 ``plaza_id``
+        # 큰 쪽이 위로 오는지 확인한다.
+        conn = _db.connect(tmp_path / "plazas.db")
+        try:
+            shared = datetime(2026, 5, 26, 12, 0, 0, tzinfo=UTC)
+            # alphabetic 으로 ``id-b`` > ``id-a``. plaza_id DESC 면 b 가 먼저.
+            for pid in ("id-a", "id-b"):
+                record = PlazaRecord(
+                    plaza_id=pid,
+                    status="completed",
+                    rounds_total=1,
+                    rounds_done=1,
+                    label=pid,
+                    preset=Preset.QUICK,
+                    created_at=shared,
+                    updated_at=shared,
+                )
+                _db.upsert_record(conn, record)
+            summaries, total = _db.list_summary(conn, limit=10, offset=0)
+        finally:
+            conn.close()
+        assert total == 2
+        assert [s.plaza_id for s in summaries] == ["id-b", "id-a"]
+
+    def test_rejects_unknown_status(self, tmp_path: Path) -> None:
+        app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
+        with TestClient(app) as client:
+            resp = client.get("/api/plazas?status=zombie")
+        assert resp.status_code == 422
+
+    def test_rejects_out_of_range_limit(self, tmp_path: Path) -> None:
+        app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
+        with TestClient(app) as client:
+            resp = client.get("/api/plazas?limit=999")
+        assert resp.status_code == 422
+
+    def test_list_persists_across_restart(self, tmp_path: Path) -> None:
+        # ``TestPersistence`` 와 같은 패턴 — 같은 base_dir 의 두 번째 app 이
+        # SQLite 에서 plaza 를 hydrate 해서 list 에 다시 보여야 한다.
+        first_app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
+        with TestClient(first_app) as client:
+            created = client.post("/api/plazas", json={"rounds": 1, "label": "alive"}).json()
+            _wait_until(client, created["plaza_id"], terminal={"completed", "failed"})
+        second_app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
+        with TestClient(second_app) as client:
+            body = client.get("/api/plazas").json()
+        assert body["total"] == 1
+        assert body["plazas"][0]["plaza_id"] == created["plaza_id"]
+        assert body["plazas"][0]["label"] == "alive"
