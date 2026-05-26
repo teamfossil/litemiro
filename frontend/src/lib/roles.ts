@@ -21,6 +21,13 @@ import type { AvatarSpec, Expr, Pose, Prop, RoleId } from '@/data/types';
 const _FALLBACK: RoleId = 'citizen_x';
 
 const ENTITY_TYPE_TO_ROLE_ID: Record<string, RoleId> = {
+  // 실 백엔드 (Phase 1 dev fixture) 가 보내는 짧은 라벨.
+  Journalist: 'broadcast',
+  Academic: 'academic',
+  Citizen: 'citizen_m',
+  Politician: 'politician',
+  Corporation: 'corp',
+  Activist: 'ngo',
   // contract.md "policy" → 정치인
   AIRegulationPolicy: 'politician',
   Government: 'politician',

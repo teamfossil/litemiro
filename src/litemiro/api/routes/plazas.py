@@ -1,6 +1,7 @@
 """Plaza 라이프사이클 라우트.
 
 - ``POST /api/plazas``                — 시뮬레이션 생성 (background task 시작).
+- ``GET  /api/plazas``                — 최신순 plaza 목록 (이력 화면용).
 - ``GET  /api/plazas/{id}/status``    — 진행률/상태 조회.
 - ``GET  /api/plazas/{id}/report``    — 완료 plaza 의 집계 보고서 (결정적).
 - ``GET  /api/plazas/{id}/agents``    — Phase 1 산출의 앵커 리스트 (Casting 화면용).
@@ -13,8 +14,9 @@ import asyncio
 import hashlib
 import json
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from pydantic import ValidationError
 
 from litemiro.api.layout import compute_layout, plaza_seed
@@ -25,8 +27,11 @@ from litemiro.api.models import (
     PlazaAgentsResponse,
     PlazaLayoutAgentItem,
     PlazaLayoutResponse,
+    PlazaListResponse,
     PlazaReportResponse,
+    PlazaStatus,
     PlazaStatusResponse,
+    PlazaSummaryItem,
 )
 from litemiro.api.report import build_report
 from litemiro.api.sample_fixtures import (
@@ -120,6 +125,48 @@ async def create_plaza(payload: CreatePlazaRequest, request: Request) -> CreateP
         preset=payload.preset,
     )
     return CreatePlazaResponse(plaza_id=record.plaza_id, status=record.status)
+
+
+@router.get("", response_model=PlazaListResponse)
+async def list_plazas(
+    request: Request,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    status_filter: Annotated[PlazaStatus | None, Query(alias="status")] = None,
+) -> PlazaListResponse:
+    """최신순 plaza 카드 리스트. ``?status=`` 로 한 상태만 좁힐 수 있다.
+
+    ``total`` 은 ``status`` 필터 적용 후 전체 개수 — 페이지네이션 위젯의 "총
+    N건" 표시에 그대로. 같은 prefix 라우터의 ``""`` 라 ``/api/plazas`` 자체에
+    매핑된다 (path 변수 라우트가 위로 가지 않게 등록 순서에 신경썼다 — FastAPI
+    는 등록 순으로 매칭하지만 이 라우트는 path 충돌이 없어 사실상 안전).
+    """
+    store = _store(request)
+    summaries, total = await store.list_plazas(
+        limit=limit,
+        offset=offset,
+        status_filter=status_filter,
+    )
+    return PlazaListResponse(
+        plazas=[
+            PlazaSummaryItem(
+                plaza_id=s.plaza_id,
+                status=s.status,
+                rounds_total=s.rounds_total,
+                rounds_done=s.rounds_done,
+                label=s.label,
+                error=s.error,
+                preset=s.preset,
+                tokens_used=s.tokens_used,
+                created_at=s.created_at,
+                updated_at=s.updated_at,
+            )
+            for s in summaries
+        ],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/{plaza_id}/status", response_model=PlazaStatusResponse)
@@ -283,6 +330,28 @@ async def get_layout(plaza_id: str, request: Request) -> PlazaLayoutResponse:
         for p in profiles
     ]
     return PlazaLayoutResponse(plaza_id=plaza_id, ready=True, agents=items)
+
+
+@router.delete("/{plaza_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_plaza(plaza_id: str, request: Request) -> Response:
+    """plaza 를 메모리·SQLite·디스크 산출물까지 통째로 정리.
+
+    상태에 관계없이 받아들인다 — 잘못 만든 plaza 를 즉시 치우는 게 흔한 use
+    case 라 ``pending`` / ``running`` / ``composing`` 도 cancel + cleanup 으로
+    수렴시킨다. 자세한 동작은 ``PlazaStore.delete`` doc 참고. 없는 plaza 는 404.
+
+    응답은 204 No Content — body 가 비므로 ``Response`` 를 직접 돌려준다
+    (FastAPI 가 None 반환 시 4xx 가 아닌 한 빈 body 를 채워주긴 하지만, 명시적
+    인 게 의도를 더 잘 드러낸다).
+    """
+    store = _store(request)
+    deleted = await store.delete(plaza_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"plaza {plaza_id!r} not found",
+        )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 __all__ = ["router"]
