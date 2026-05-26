@@ -20,17 +20,42 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
+from pydantic import ValidationError
+
 from litemiro.api import db as _db
 from litemiro.api.composer import ComposerOutcome
 from litemiro.api.models import PlazaStatus
+from litemiro.models import RoundEvent
 from litemiro.phase1.models import Preset
 from litemiro.phase3.models import AggregationResult
 
-# SSE 이벤트의 두 가지 분류 —
+# SSE 이벤트의 세 가지 분류 —
 #  * progress: 라운드 진행률 갱신 (rounds_done 증가)
-#  * status:   상태 머신 전환 (running/completed/failed). status="completed"|"failed"
-#              가 들어오면 스트림 종료 신호로도 같이 쓰인다.
-EventType = Literal["progress", "status"]
+#  * status:   상태 머신 전환 (running/composing/completed/failed). terminal 값
+#              ("completed" / "failed") 가 들어오면 스트림 종료 신호로도 같이 쓰인다.
+#  * action:   events.jsonl 의 한 줄 (한 agent 의 한 액션) — 라이브 부감 뷰 용.
+EventType = Literal["progress", "status", "action"]
+
+# action tail task 의 폴링 간격. EventLogger 가 line flush 라 partial-but-valid 인
+# 끝 라인은 parse 시도조차 안 하지만, 새 라인 검출 latency 가 이 값에 좌우된다.
+# 라운드 wall-clock (수 초) 에 비해 50 ms 면 사실상 즉시. 테스트는 monkeypatch.
+_TAIL_POLL_INTERVAL_SECONDS = 0.05
+
+
+def _read_since(path: Path, offset: int) -> tuple[str, int]:
+    """``offset`` byte 이후의 events.jsonl 본문 + 새 offset.
+
+    파일이 없으면 ``("", offset)`` — tail 시작 직후 한두 tick 은 file 이 없을
+    수 있다 (runner 가 첫 라인 쓰기 전). bytes → str 디코드는 ``errors="replace"``
+    로 — 멀티바이트가 라인 중간에서 잘려도 다음 tick 의 flush 가 도착하면
+    이어 붙은 buffer 에서 정상 라인으로 복구된다.
+    """
+    if not path.exists():
+        return "", offset
+    with path.open("rb") as f:
+        f.seek(offset)
+        data = f.read()
+    return data.decode("utf-8", errors="replace"), offset + len(data)
 
 
 @dataclass
@@ -185,6 +210,75 @@ class PlazaStore:
         for queue in list(record.subscribers):
             queue.put_nowait(event)
 
+    async def _tail_event_log(
+        self, record: PlazaRecord, stop_event: asyncio.Event
+    ) -> None:
+        """events.jsonl 을 폴링하면서 새 라인을 ``action`` SSE 로 broadcast.
+
+        runner Protocol 을 건드리지 않으려고 callback 대신 file tail 로 갔다 —
+        EventLogger 가 line-level flush 라 끝 라인이 잘려도 ``\\n`` 도착 전엔
+        parse 시도조차 안 한다 (partial-but-valid 유지).
+
+        ``stop_event`` 가 set 되면 drain 한 번 더 돌리고 종료 — 호출자가 await
+        해서 terminal status emit 전에 마지막 라인까지 broadcast 됐음을 보장한다.
+
+        ``event_log_path`` 가 None (fake / 비영속 fake 테스트) 이면 즉시 종료.
+        """
+        path = record.event_log_path
+        if path is None:
+            return
+        offset = 0
+        pending = ""
+
+        async def drain() -> None:
+            nonlocal offset, pending
+            try:
+                new_text, offset = await asyncio.to_thread(_read_since, path, offset)
+            except OSError:
+                # 일시적 IO 실패는 다음 tick 에 다시 시도. tail 을 죽이면 라이브
+                # 스트림이 끊겨 사용자 경험이 더 나빠진다.
+                return
+            if not new_text:
+                return
+            pending += new_text
+            while "\n" in pending:
+                line, pending = pending.split("\n", 1)
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    event = RoundEvent.model_validate_json(line)
+                except ValidationError:
+                    # 깨진 라인은 건너뛴다 — 다음 라인은 다시 정상일 수 있다.
+                    continue
+                action = event.action
+                self._broadcast(
+                    record,
+                    PlazaEvent(
+                        type="action",
+                        data={
+                            "round_num": event.round_num,
+                            "agent_id": event.agent_id,
+                            "type": action.type.value,
+                            "target_post_id": action.target_post_id,
+                            "target_agent_id": action.target_agent_id,
+                            "content": action.content,
+                            "timestamp": event.timestamp.isoformat(),
+                        },
+                    ),
+                )
+
+        while not stop_event.is_set():
+            await drain()
+            try:
+                await asyncio.wait_for(
+                    stop_event.wait(), timeout=_TAIL_POLL_INTERVAL_SECONDS
+                )
+            except TimeoutError:
+                continue
+        # final drain — stop 직전 sleep window 안에 막판에 들어온 라인을 회수.
+        await drain()
+
     def _persist(self, record: PlazaRecord) -> None:
         """현재 record 스냅샷을 SQLite 로 흘려보낸다 (db_path=None 이면 no-op).
 
@@ -197,7 +291,10 @@ class PlazaStore:
             return
         _db.upsert_record(self._db, record)
 
-    async def create(
+    async def create(  # noqa: PLR0915 — inner _drive 가 6 단계 상태 머신이라
+        # 통째로 펼친 게 메서드 분리보다 읽기 쉽다. 별도 메서드로 빼려면 closure
+        # (record / plaza_id / 경로 6 개 등) 를 전부 인자로 풀어야 해서 시그니처가
+        # 더 어지러워진다.
         self,
         *,
         ontology_a_path: Path,
@@ -256,51 +353,65 @@ class PlazaStore:
             record.status = "running"
             self._persist(record)
             _emit_status()
+            # action SSE tail — runner 와 같은 lifetime. finally 의 stop+await
+            # 가 terminal status emit 직전 마지막 라인까지 broadcast 를 보장.
+            stop_tail = asyncio.Event()
+            tail_task = asyncio.create_task(
+                self._tail_event_log(record, stop_tail),
+                name=f"plaza-tail-{plaza_id}",
+            )
             try:
-                outcome = await self._runner(
-                    plaza_id=plaza_id,
-                    ontology_a_path=ontology_a_path,
-                    ontology_b_path=ontology_b_path,
-                    rounds=rounds,
-                    event_log_path=event_log_path,
-                    checkpoint_dir=checkpoint_dir,
-                    on_progress=on_progress,
-                )
-            except Exception as exc:
-                record.status = "failed"
-                record.error = f"{type(exc).__name__}: {exc}"
+                try:
+                    outcome = await self._runner(
+                        plaza_id=plaza_id,
+                        ontology_a_path=ontology_a_path,
+                        ontology_b_path=ontology_b_path,
+                        rounds=rounds,
+                        event_log_path=event_log_path,
+                        checkpoint_dir=checkpoint_dir,
+                        on_progress=on_progress,
+                    )
+                except Exception as exc:
+                    record.status = "failed"
+                    record.error = f"{type(exc).__name__}: {exc}"
+                    self._persist(record)
+                    return
+                record.tokens_used = outcome.tokens_used
+                # outcome.rounds_run 이 있으면 그걸 신뢰 (early-exit 인 경우
+                # ``rounds_run < rounds`` 일 수 있음 — 요청한 totals 로 덮으면 안 됨).
+                # 없으면 on_progress 가 마지막으로 보고한 값을 그대로 둔다.
+                if outcome.rounds_run is not None:
+                    record.rounds_done = outcome.rounds_run
+                # step 5 — composer 가 있으면 보고서 생성. 호출 직전
+                # status="composing" 으로 전환해 프론트가 "보고서 합성중" 을
+                # 명시적으로 표시할 수 있게 한다 (이전엔 rounds_done==rounds_total
+                # + running 으로 추론, early-exit 사각 있었음). composer 가 None
+                # 이면 (fake/tests) 곧장 completed.
+                if self._composer is not None:
+                    record.status = "composing"
+                    self._persist(record)
+                    _emit_status()
+                    composer_outcome = await self._composer(
+                        plaza_id=plaza_id,
+                        event_log_path=event_log_path,
+                        preset=record.preset,
+                    )
+                    record.report_markdown = composer_outcome.markdown
+                    record.report_fallback_used = composer_outcome.fallback_used
+                    record.tokens_used += composer_outcome.tokens_used
+                    # composer 가 자기 집계를 outcome 으로 흘려보냈으면 그대로
+                    # 캐시 — /report 가 같은 events.jsonl 을 다시 안 본다.
+                    if composer_outcome.aggregation is not None:
+                        record.aggregation_cache = composer_outcome.aggregation
+                record.status = "completed"
                 self._persist(record)
+            finally:
+                # tail 이 마지막 drain 까지 완료된 뒤 terminal status emit —
+                # 클라이언트 입장에서 마지막 action 이 항상 terminal 보다 먼저.
+                stop_tail.set()
+                with contextlib.suppress(asyncio.CancelledError, Exception):
+                    await tail_task
                 _emit_status()
-                return
-            record.tokens_used = outcome.tokens_used
-            # outcome.rounds_run 이 있으면 그걸 신뢰 (early-exit 인 경우
-            # ``rounds_run < rounds`` 일 수 있음 — 요청한 totals 로 덮으면 안 됨).
-            # 없으면 on_progress 가 마지막으로 보고한 값을 그대로 둔다.
-            if outcome.rounds_run is not None:
-                record.rounds_done = outcome.rounds_run
-            # step 5 — composer 가 있으면 보고서 생성. 호출 직전 status="composing"
-            # 으로 전환해 프론트가 "보고서 합성중" 을 명시적으로 표시할 수 있게 한다
-            # (이전엔 rounds_done==rounds_total + running 으로 추론, early-exit 사각
-            # 있었음). composer 가 None 이면 (fake/tests) 곧장 completed.
-            if self._composer is not None:
-                record.status = "composing"
-                self._persist(record)
-                _emit_status()
-                composer_outcome = await self._composer(
-                    plaza_id=plaza_id,
-                    event_log_path=event_log_path,
-                    preset=record.preset,
-                )
-                record.report_markdown = composer_outcome.markdown
-                record.report_fallback_used = composer_outcome.fallback_used
-                record.tokens_used += composer_outcome.tokens_used
-                # composer 가 자기 집계를 outcome 으로 흘려보냈으면 그대로 캐시 —
-                # /report 가 같은 events.jsonl 을 다시 안 본다.
-                if composer_outcome.aggregation is not None:
-                    record.aggregation_cache = composer_outcome.aggregation
-            record.status = "completed"
-            self._persist(record)
-            _emit_status()
 
         record.task = asyncio.create_task(_drive(), name=f"plaza-{plaza_id}")
         return record

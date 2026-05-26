@@ -10,6 +10,7 @@ import asyncio
 import json
 import time
 from collections.abc import Callable, Coroutine
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -17,10 +18,12 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from litemiro.api import store as store_module
 from litemiro.api.app import create_app
 from litemiro.api.composer import ComposerOutcome
 from litemiro.api.routes import events as events_route
 from litemiro.api.store import ProgressCallback, RunnerOutcome
+from litemiro.models import Action, ActionType, RoundEvent
 from litemiro.phase1.models import Preset
 
 _RunnerCoro = Callable[..., Coroutine[Any, Any, RunnerOutcome]]
@@ -293,3 +296,186 @@ def test_stream_returns_immediately_when_already_completed(tmp_path: Path) -> No
     assert len(events) == 1
     assert events[0][0] == "status"
     assert events[0][1]["status"] == "completed"
+
+
+# ── action SSE (events.jsonl 라이브 tail) ─────────────────────────────────
+
+
+def _round_event(
+    *,
+    round_num: int,
+    agent_id: str,
+    action_type: ActionType,
+    target_post_id: str | None = None,
+    target_agent_id: str | None = None,
+    content: str | None = None,
+) -> RoundEvent:
+    return RoundEvent(
+        round_num=round_num,
+        timestamp=datetime.now(UTC),
+        agent_id=agent_id,
+        action=Action(
+            type=action_type,
+            target_post_id=target_post_id,
+            target_agent_id=target_agent_id,
+            content=content,
+        ),
+    )
+
+
+def _append_line(path: Path, line: str) -> None:
+    """tail 이 같은 path 를 동시에 열어도 안전. 디렉토리는 store 가 미리 만든다."""
+    with path.open("a", encoding="utf-8") as f:
+        f.write(line + "\n")
+
+
+def _event_writing_runner(
+    events: list[RoundEvent], *, between_delay: float = 0.05
+) -> _RunnerCoro:
+    """라운드마다 events.jsonl 한 줄을 append + on_progress 호출.
+
+    ``between_delay`` 는 tail poll 사이클이 새 라인을 한 번이라도 잡아낼 수
+    있게 끼우는 슬립. tail interval 을 monkeypatch 로 더 짧게 줄이면 between
+    은 작게 두어도 안정.
+    """
+
+    async def _run(
+        *,
+        plaza_id: str,
+        ontology_a_path: Path,
+        ontology_b_path: Path,
+        rounds: int,
+        event_log_path: Path,
+        checkpoint_dir: Path,
+        on_progress: ProgressCallback,
+    ) -> RunnerOutcome:
+        del plaza_id, ontology_a_path, ontology_b_path, rounds, checkpoint_dir
+        # SSE 구독자가 붙을 시간 — fake 가 즉시 끝나면 첫 action 이 큐에 들어가기
+        # 전에 stream 이 시작돼 race.
+        await asyncio.sleep(0.05)
+        for i, ev in enumerate(events):
+            await asyncio.to_thread(_append_line, event_log_path, ev.to_jsonl())
+            if between_delay > 0:
+                await asyncio.sleep(between_delay)
+            on_progress(rounds_done=i + 1)
+        return RunnerOutcome(tokens_used=10, rounds_run=len(events))
+
+    return _run
+
+
+def test_stream_emits_action_event_per_logged_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """events.jsonl 의 각 라인이 event: action 으로 흘러나오고 타입별 필드가 매핑된다."""
+    monkeypatch.setattr(store_module, "_TAIL_POLL_INTERVAL_SECONDS", 0.01)
+
+    events = [
+        _round_event(
+            round_num=0,
+            agent_id="a1",
+            action_type=ActionType.CREATE_POST,
+            content="hello",
+        ),
+        _round_event(
+            round_num=1,
+            agent_id="a2",
+            action_type=ActionType.FOLLOW,
+            target_agent_id="a1",
+        ),
+        _round_event(
+            round_num=2,
+            agent_id="a1",
+            action_type=ActionType.LIKE_POST,
+            target_post_id="a1_r0000",
+        ),
+    ]
+    app = create_app(
+        runner=_event_writing_runner(events, between_delay=0.05), base_dir=tmp_path
+    )
+    with TestClient(app) as client:
+        plaza_id = _create_plaza(client, rounds=3)
+        with client.stream("GET", f"/api/plazas/{plaza_id}/events") as resp:
+            body = resp.read().decode("utf-8")
+
+    sse = _parse_sse(body)
+    actions = [data for name, data in sse if name == "action"]
+    assert len(actions) == 3
+
+    # 1: CREATE_POST + content 만 채워짐.
+    assert actions[0]["agent_id"] == "a1"
+    assert actions[0]["type"] == "CREATE_POST"
+    assert actions[0]["content"] == "hello"
+    assert actions[0]["target_post_id"] is None
+    assert actions[0]["target_agent_id"] is None
+    assert actions[0]["round_num"] == 0
+    assert "timestamp" in actions[0]
+
+    # 2: FOLLOW + target_agent_id.
+    assert actions[1]["type"] == "FOLLOW"
+    assert actions[1]["target_agent_id"] == "a1"
+    assert actions[1]["content"] is None
+    assert actions[1]["target_post_id"] is None
+
+    # 3: LIKE_POST + target_post_id.
+    assert actions[2]["type"] == "LIKE_POST"
+    assert actions[2]["target_post_id"] == "a1_r0000"
+    assert actions[2]["target_agent_id"] is None
+    assert actions[2]["content"] is None
+
+    # 마지막은 terminal status — action 보다 뒤에 와야 한다.
+    assert sse[-1][0] == "status"
+    assert sse[-1][1]["status"] == "completed"
+
+
+def test_stream_drains_final_action_before_terminal_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """runner 종료 직전 쓴 마지막 라인이 terminal status 전에 SSE 로 나가야 한다.
+
+    final drain 회귀 — drain 한 번 더 안 돌면 막판 라인이 누락되고 프론트
+    부감 뷰가 1 액션 빠진 상태로 굳는다.
+    """
+    monkeypatch.setattr(store_module, "_TAIL_POLL_INTERVAL_SECONDS", 0.1)
+
+    last_event = _round_event(
+        round_num=0, agent_id="a-final", action_type=ActionType.DO_NOTHING
+    )
+
+    async def _run(
+        *,
+        plaza_id: str,
+        ontology_a_path: Path,
+        ontology_b_path: Path,
+        rounds: int,
+        event_log_path: Path,
+        checkpoint_dir: Path,
+        on_progress: ProgressCallback,
+    ) -> RunnerOutcome:
+        del plaza_id, ontology_a_path, ontology_b_path, rounds, checkpoint_dir
+        # SSE 구독자가 붙을 시간만 양보.
+        await asyncio.sleep(0.05)
+        # poll interval(0.1s) 의 한 사이클 안에 라인 쓰기 + 종료 — drain 한 번
+        # 더 안 돌면 이 라인은 사라진다.
+        await asyncio.to_thread(_append_line, event_log_path, last_event.to_jsonl())
+        on_progress(rounds_done=1)
+        return RunnerOutcome(tokens_used=10, rounds_run=1)
+
+    app = create_app(runner=_run, base_dir=tmp_path)
+    with TestClient(app) as client:
+        plaza_id = _create_plaza(client, rounds=1)
+        with client.stream("GET", f"/api/plazas/{plaza_id}/events") as resp:
+            body = resp.read().decode("utf-8")
+
+    sse = _parse_sse(body)
+    actions = [(i, data) for i, (name, data) in enumerate(sse) if name == "action"]
+    assert len(actions) == 1, f"expected 1 action, got {[n for n, _ in sse]}"
+    assert actions[0][1]["agent_id"] == "a-final"
+
+    # action 이 terminal 보다 먼저.
+    action_idx = actions[0][0]
+    terminal_idx = max(
+        i
+        for i, (n, d) in enumerate(sse)
+        if n == "status" and d.get("status") == "completed"
+    )
+    assert action_idx < terminal_idx

@@ -235,23 +235,23 @@ events.jsonl 이 아직 안정적이지 않으므로 `ready: false` + `agents: [
 
 ## `GET /api/plazas/{plaza_id}/events`
 
-SSE 진행률 스트림. 프론트가 `/status` 를 폴링하지 않고 라운드 단위 progress
-와 상태 머신 전환을 push 로 받는다.
+SSE 진행률 스트림. 프론트가 `/status` 를 폴링하지 않고 라운드 단위 progress,
+상태 머신 전환, 그리고 events.jsonl 의 라이브 액션을 push 로 받는다.
 
-응답 200 (`text/event-stream`). 두 종류의 이벤트:
+응답 200 (`text/event-stream`). 세 종류의 이벤트:
 
 ```
 event: status
 data: {"status":"pending","rounds_done":0,"rounds_total":5,"error":null}
 
+event: action
+data: {"round_num":0,"agent_id":"a1","type":"CREATE_POST","target_post_id":null,"target_agent_id":null,"content":"hello","timestamp":"2026-05-26T12:34:56.789012+00:00"}
+
 event: progress
 data: {"rounds_done":1,"rounds_total":5}
 
-event: status
-data: {"status":"running","rounds_done":0,"rounds_total":5,"error":null}
-
-event: progress
-data: {"rounds_done":5,"rounds_total":5}
+event: action
+data: {"round_num":3,"agent_id":"a2","type":"FOLLOW","target_post_id":null,"target_agent_id":"a1","content":null,"timestamp":"2026-05-26T12:34:58.123456+00:00"}
 
 event: status
 data: {"status":"composing","rounds_done":5,"rounds_total":5,"error":null}
@@ -263,11 +263,12 @@ data: {"status":"completed","rounds_done":5,"rounds_total":5,"error":null}
 - 연결 즉시 현재 status 를 한 번 보낸다 (초기 sync).
 - `event: progress`: 라운드 1건 종료. SSE 단독으로 progress bar 가 갱신된다.
 - `event: status`: 상태 머신 전환 (pending→running, running→composing, composing→completed/failed). `composing` 도 정식 이벤트라 프론트는 sim 종료와 보고서 합성 시작을 분리해서 표시 가능.
+- `event: action`: events.jsonl 의 한 줄 = agent 1 명의 액션 1 건. 부감 뷰가 노드 깜빡임 / 엣지 추가 / 새 포스트 토스트 등에 쓴다. `type` 은 `ActionType` enum (`CREATE_POST` / `LIKE_POST` / `REPOST` / `QUOTE_POST` / `FOLLOW` / `DO_NOTHING`). 타입별로 `target_post_id` / `target_agent_id` / `content` 중 의미 있는 필드만 채워지고 나머지는 `null`.
+- 액션은 events.jsonl 폴링 tail (50 ms 간격) 로 흘려 보낸다 — runner 의 라운드 끝 flush 와 SSE push 사이 latency 가 라운드 wall-clock 에 비해 무시 가능. 서버는 terminal status emit 직전 마지막 drain 을 한 번 더 돌려 마지막 라인 누락을 막는다.
 - `status` 가 **terminal** (`completed` / `failed`) 이면 본 이벤트가 스트림의 마지막 — 서버가 응답을 닫는다. `composing` 은 terminal 아님.
-- 연결 시점에 record 가 이미 terminal 이면 첫 status 이벤트 직후 스트림이 닫힌다.
+- 연결 시점에 record 가 이미 terminal 이면 첫 status 이벤트 직후 스트림이 닫힌다 (action 은 events.jsonl 을 다시 안 읽는다 — 과거 액션은 별도 GET 으로).
 - 큐가 한동안 비면 15 초마다 `: keepalive` SSE comment 가 나간다 (클라 `onmessage` 에는 안 잡힘 — proxy idle timeout 방지용).
 - `404`: 존재하지 않는 `plaza_id`.
-- 라운드 단위 액션 스트림 (events.jsonl 라이브 tail) 은 아직 미포함 — 동일 라우트에 추후 `event: action` 으로 얹는다.
 
 ## 실행
 
