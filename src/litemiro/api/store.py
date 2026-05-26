@@ -19,6 +19,7 @@ from typing import Any, Literal, Protocol
 
 from litemiro.api.composer import ComposerOutcome
 from litemiro.api.models import PlazaStatus
+from litemiro.phase1.models import Preset
 from litemiro.phase3.models import AggregationResult
 
 # SSE 이벤트의 두 가지 분류 —
@@ -90,6 +91,9 @@ class PlazaComposer(Protocol):
     실패 (Opus+Qwen 동시 사망) 도 예외가 아니라 ``markdown=None`` outcome 으로
     표현해 plaza 상태 머신을 깨지 않는다 — sim 은 성공했는데 LLM 만 죽은 경우
     status=failed 로 떨어뜨리면 통계 보고서까지 못 보게 되니까.
+
+    ``preset`` 은 plaza 단위로 호출자가 정한다 (CreatePlazaRequest.preset) —
+    같은 composer 가 여러 plaza 의 quick/standard/full 을 처리한다.
     """
 
     async def __call__(
@@ -97,6 +101,7 @@ class PlazaComposer(Protocol):
         *,
         plaza_id: str,
         event_log_path: Path,
+        preset: Preset,
     ) -> ComposerOutcome: ...
 
 
@@ -109,6 +114,8 @@ class PlazaRecord:
     label: str | None = None
     error: str | None = None
     tokens_used: int = 0
+    # 보고서 합성 단계의 호출 수 / 청킹 결정 — 시뮬레이션 자체와는 직교.
+    preset: Preset = Preset.QUICK
     ontology_a_path: Path | None = None
     ontology_b_path: Path | None = None
     event_log_path: Path | None = None
@@ -171,6 +178,7 @@ class PlazaStore:
         ontology_b_path: Path,
         rounds: int,
         label: str | None,
+        preset: Preset = Preset.QUICK,
     ) -> PlazaRecord:
         plaza_id = uuid.uuid4().hex
         plaza_root = self._base_dir / plaza_id
@@ -183,6 +191,7 @@ class PlazaStore:
             status="pending",
             rounds_total=rounds,
             label=label,
+            preset=preset,
             ontology_a_path=ontology_a_path,
             ontology_b_path=ontology_b_path,
             event_log_path=event_log_path,
@@ -239,14 +248,17 @@ class PlazaStore:
             # 없으면 on_progress 가 마지막으로 보고한 값을 그대로 둔다.
             if outcome.rounds_run is not None:
                 record.rounds_done = outcome.rounds_run
-            # step 4 — composer 가 있으면 보고서 생성. composer 가 None 이면 (fake/
-            # tests) 통계만 떨어뜨린다. composer 가 None 을 돌려도 상태 머신은 안 깬다.
-            # 본 단계에서는 별도 status="composing" 을 두지 않는다 — 프론트는
-            # rounds_done==rounds_total && status==running 으로 추론한다.
+            # step 5 — composer 가 있으면 보고서 생성. 호출 직전 status="composing"
+            # 으로 전환해 프론트가 "보고서 합성중" 을 명시적으로 표시할 수 있게 한다
+            # (이전엔 rounds_done==rounds_total + running 으로 추론, early-exit 사각
+            # 있었음). composer 가 None 이면 (fake/tests) 곧장 completed.
             if self._composer is not None:
+                record.status = "composing"
+                _emit_status()
                 composer_outcome = await self._composer(
                     plaza_id=plaza_id,
                     event_log_path=event_log_path,
+                    preset=record.preset,
                 )
                 record.report_markdown = composer_outcome.markdown
                 record.report_fallback_used = composer_outcome.fallback_used

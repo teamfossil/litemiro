@@ -18,6 +18,7 @@ from typing import Any
 from litemiro.api.composer import RealPlazaComposer
 from litemiro.interfaces import LLMClient
 from litemiro.models import LLMResponse
+from litemiro.phase1.models import Preset
 from litemiro.phase3.models import ReportConfig
 
 
@@ -87,9 +88,12 @@ def test_composer_default_models_match_report_config() -> None:
     """
     composer = RealPlazaComposer(llm_client=_NoCallLLM())
     expected = ReportConfig()
-    assert composer._config.analyzer_model == expected.analyzer_model
-    assert composer._config.composer_primary_model == expected.composer_primary_model
-    assert composer._config.composer_fallback_model == expected.composer_fallback_model
+    # `_config_for` 가 어떤 preset 으로 호출되든 slug 는 모두 ReportConfig default 와
+    # 동일해야 한다 — preset 은 호출 수만 결정, 모델 선택과 무관.
+    config = composer._config_for(Preset.QUICK)
+    assert config.analyzer_model == expected.analyzer_model
+    assert config.composer_primary_model == expected.composer_primary_model
+    assert config.composer_fallback_model == expected.composer_fallback_model
 
 
 class _NoCallLLM:
@@ -100,6 +104,17 @@ class _NoCallLLM:
     ) -> LLMResponse:  # pragma: no cover
         del system, user, model
         raise RuntimeError("LLM 호출이 일어나면 안 되는 테스트입니다")
+
+
+def test_composer_config_threads_through_requested_preset() -> None:
+    """``__call__`` 에서 받은 preset 이 `ReportConfig.preset` 으로 정확히 흐른다.
+
+    preset 은 PatternAnalyzer 의 호출 수를 결정하는 단일 dial 이라 here-string
+    이 어긋나면 quick 으로 시켰는데 standard 가 도는 회귀가 조용히 발생한다.
+    """
+    composer = RealPlazaComposer(llm_client=_NoCallLLM())
+    for preset in (Preset.QUICK, Preset.STANDARD, Preset.FULL):
+        assert composer._config_for(preset).preset is preset
 
 
 def test_composer_falls_back_to_none_when_composer_dies(

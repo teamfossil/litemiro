@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 from litemiro.api.app import create_app
 from litemiro.api.composer import ComposerOutcome
 from litemiro.api.store import ProgressCallback, RunnerOutcome
+from litemiro.phase1.models import Preset
 
 
 def _make_event(round_num: int, agent_id: str, action_type: str, **action: Any) -> str:
@@ -142,8 +143,8 @@ def test_report_404_for_unknown_plaza(tmp_path: Path) -> None:
 def _stub_composer(markdown: str | None, *, tokens: int = 0, fallback: bool = False) -> Any:
     """events.jsonl 은 무시하고 미리 정한 outcome 만 돌려주는 fake composer."""
 
-    async def _compose(*, plaza_id: str, event_log_path: Path) -> ComposerOutcome:
-        del plaza_id, event_log_path
+    async def _compose(*, plaza_id: str, event_log_path: Path, preset: Preset) -> ComposerOutcome:
+        del plaza_id, event_log_path, preset
         return ComposerOutcome(markdown=markdown, tokens_used=tokens, fallback_used=fallback)
 
     return _compose
