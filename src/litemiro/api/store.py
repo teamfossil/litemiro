@@ -1,8 +1,10 @@
-"""``PlazaStore`` — 메모리 상의 시뮬레이션 핸들 레지스트리.
+"""``PlazaStore`` — 시뮬레이션 핸들 레지스트리.
 
 step 2 부터는 plaza 마다 디스크 디렉토리 (``base_dir/{plaza_id}/``) 가 생성되어
-``events.jsonl`` + ``checkpoints/`` 가 저장된다. 메타데이터(상태, 경로, 토큰)
-자체는 아직 in-memory — 영속화는 step 3 SSE 와 함께 본다.
+``events.jsonl`` + ``checkpoints/`` 가 저장된다. 메타데이터(상태, 경로, 토큰,
+markdown) 는 ``base_dir/plazas.db`` (SQLite) 에 영속 — 프로세스 재시작 후에도
+``GET /plazas/{id}/status`` / ``/report`` 가 404 가 아니라 디스크 산출물을 다시
+바라본다. 자세한 컬럼/규칙은 ``api/db.py``.
 
 테스트 격리를 위해 ``PlazaRunner`` Protocol 로 백엔드 호출을 추상화 —
 실 구현은 `run_simulation` 을 호출, 테스트는 즉시 완료/실패하는 fake.
@@ -12,11 +14,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import sqlite3
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
+from litemiro.api import db as _db
 from litemiro.api.composer import ComposerOutcome
 from litemiro.api.models import PlazaStatus
 from litemiro.phase1.models import Preset
@@ -150,6 +154,7 @@ class PlazaStore:
         runner: PlazaRunner,
         base_dir: Path,
         composer: PlazaComposer | None = None,
+        db_path: Path | None = None,
     ) -> None:
         self._runner = runner
         self._composer = composer
@@ -159,6 +164,15 @@ class PlazaStore:
         # record 필드 (status/rounds_done) 와 subscribers 리스트 변경은
         # CPython 단일 루프 atomicity 에 의존 — SSE pub/sub 도 같은 모델.
         self._lock = asyncio.Lock()
+        # ``db_path=None`` 은 비영속 모드 — 단위 테스트에서 격리 위해 유지.
+        # 경로가 주어지면 즉시 hydrate 해서 ``_records`` 를 채운다 — running/
+        # composing/pending 으로 마지막 commit 된 row 는 ``failed`` 로 강제
+        # 마킹돼 들어온다 (``db.load_all`` 참조).
+        self._db: sqlite3.Connection | None = None
+        if db_path is not None:
+            self._db = _db.connect(db_path)
+            for record in _db.load_all(self._db):
+                self._records[record.plaza_id] = record
 
     @staticmethod
     def _broadcast(record: PlazaRecord, event: PlazaEvent) -> None:
@@ -170,6 +184,18 @@ class PlazaStore:
         """
         for queue in list(record.subscribers):
             queue.put_nowait(event)
+
+    def _persist(self, record: PlazaRecord) -> None:
+        """현재 record 스냅샷을 SQLite 로 흘려보낸다 (db_path=None 이면 no-op).
+
+        모든 mutation 직후 호출 — 라운드 단위 progress 까지 영속한다. sqlite
+        write 는 WAL + ``synchronous=NORMAL`` 로 라운드 한 번당 < 1ms 가정 —
+        라운드 wall-clock (수 초) 에 비해 무시 가능. 같은 단일 이벤트 루프
+        스레드에서 호출되므로 ``check_same_thread=False`` 와도 별개로 안전.
+        """
+        if self._db is None:
+            return
+        _db.upsert_record(self._db, record)
 
     async def create(
         self,
@@ -199,6 +225,7 @@ class PlazaStore:
         )
         async with self._lock:
             self._records[plaza_id] = record
+            self._persist(record)
 
         def on_progress(*, rounds_done: int) -> None:
             record.rounds_done = rounds_done
@@ -209,6 +236,7 @@ class PlazaStore:
                     data={"rounds_done": rounds_done, "rounds_total": rounds},
                 ),
             )
+            self._persist(record)
 
         def _emit_status() -> None:
             self._broadcast(
@@ -226,6 +254,7 @@ class PlazaStore:
 
         async def _drive() -> None:
             record.status = "running"
+            self._persist(record)
             _emit_status()
             try:
                 outcome = await self._runner(
@@ -240,6 +269,7 @@ class PlazaStore:
             except Exception as exc:
                 record.status = "failed"
                 record.error = f"{type(exc).__name__}: {exc}"
+                self._persist(record)
                 _emit_status()
                 return
             record.tokens_used = outcome.tokens_used
@@ -254,6 +284,7 @@ class PlazaStore:
             # 있었음). composer 가 None 이면 (fake/tests) 곧장 completed.
             if self._composer is not None:
                 record.status = "composing"
+                self._persist(record)
                 _emit_status()
                 composer_outcome = await self._composer(
                     plaza_id=plaza_id,
@@ -268,6 +299,7 @@ class PlazaStore:
                 if composer_outcome.aggregation is not None:
                     record.aggregation_cache = composer_outcome.aggregation
             record.status = "completed"
+            self._persist(record)
             _emit_status()
 
         record.task = asyncio.create_task(_drive(), name=f"plaza-{plaza_id}")
@@ -300,9 +332,13 @@ class PlazaStore:
                 record.subscribers.remove(queue)
 
     async def shutdown(self) -> None:
-        """프로세스 종료 시 미완료 태스크를 모두 취소한다.
+        """프로세스 종료 시 미완료 태스크를 모두 취소 + SQLite 커넥션을 닫는다.
 
         FastAPI lifespan 의 종료 단계에서 호출 — 테스트는 명시적으로 호출한다.
+        취소된 태스크가 ``_drive`` 안의 ``await self._runner(...)`` 도중이면
+        record.status 는 마지막 commit 된 값으로 디스크에 남는다 (보통
+        ``running`` 또는 ``composing``) — 다음 프로세스 기동 시 hydrate 가
+        그 row 를 ``failed`` 로 강제 마킹한다.
         """
         async with self._lock:
             tasks = [r.task for r in self._records.values() if r.task and not r.task.done()]
@@ -311,6 +347,9 @@ class PlazaStore:
         for t in tasks:
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await t
+        if self._db is not None:
+            self._db.close()
+            self._db = None
 
 
 __all__ = [

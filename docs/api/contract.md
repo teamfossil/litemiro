@@ -84,7 +84,7 @@ pending → running → composing → completed
 
 - `composing`: 시뮬레이션 라운드는 다 끝났고 (`rounds_done == rounds_total`) LLM 보고서를 합성 중인 구간 — terminal 아님. 프론트는 progress 100% + "보고서 합성중" 으로 표시. SSE 의 terminal 판정도 composing 을 끊지 않는다.
 - `failed` 일 때만 `error` 가 non-null (`"<ExceptionType>: <message>"`). composing 단계에서 LLM 이 폴백까지 전부 실패해도 `completed` — 본문은 `null` 로 나간다 (`/report` 참고).
-- `404`: 존재하지 않는 `plaza_id` (프로세스 재시작 후 in-memory 가 비었을 때 포함).
+- `404`: DB 에도 존재하지 않는 `plaza_id`.
 
 ## `GET /api/plazas/{plaza_id}/report`
 
@@ -187,5 +187,13 @@ litemiro-api --host 127.0.0.1 --port 8765 --data-dir ./runs/api
 ## 영속화
 
 - events.jsonl + checkpoints/ 는 `--data-dir` 에 디스크 영속.
-- 그러나 plaza 메타데이터(상태, label, 토큰, preset, markdown) 자체는 현재 in-memory.
-  프로세스 재시작 시 status/report/events 호출은 404. SQLite 영속화는 별도 작업으로 남겨둔다.
+- plaza 메타데이터(상태, label, 토큰, preset, markdown 등) 는 `--data-dir/plazas.db`
+  (SQLite, WAL) 에 영속. 프로세스 재시작 후에도 같은 plaza_id 로 `/status` /
+  `/report` / `/events` 가 디스크 산출물을 다시 바라본다.
+- 라운드 단위 progress 까지 영속 — `on_progress` 콜백마다 upsert 1회. 따라서
+  재시작 시 `rounds_done` 은 마지막 commit 된 라운드 그대로.
+- 재시작 시점에 마지막 commit 된 status 가 `pending` / `running` / `composing`
+  인 row 는 도중에 죽은 것으로 보고 `failed` + `error="process restarted while
+  <prev>"` 로 강제 마킹한다 — checkpoint 기반 자동 재개는 별도 작업.
+- 비 영속 (프로세스 lifetime 한정): asyncio Task, SSE subscriber 큐, `DataAggregator`
+  결과 캐시 (events.jsonl 로 lazy 재집계).
