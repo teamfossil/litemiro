@@ -29,6 +29,10 @@ from litemiro.api.models import (
     PlazaStatusResponse,
 )
 from litemiro.api.report import build_report
+from litemiro.api.sample_fixtures import (
+    DEFAULT_ONTOLOGY_A_PATH,
+    DEFAULT_ONTOLOGY_B_PATH,
+)
 from litemiro.api.store import PlazaStore
 from litemiro.models import ActionType, RoundEvent
 from litemiro.phase1.models import OntologyA
@@ -99,9 +103,18 @@ def _store(request: Request) -> PlazaStore:
 )
 async def create_plaza(payload: CreatePlazaRequest, request: Request) -> CreatePlazaResponse:
     store = _store(request)
+    # 두 경로 모두 생략 가능 — 프론트 Seed 화면 같이 항상 같은 sample 을 쓰는
+    # 호출 측이 dummy path 를 매번 박지 않게 한다. 명시된 경로는 그대로,
+    # ``None`` 은 repo 의 dev fixture 로 폴백 (``sample_fixtures``).
+    ontology_a_path = (
+        Path(payload.ontology_a_path) if payload.ontology_a_path else DEFAULT_ONTOLOGY_A_PATH
+    )
+    ontology_b_path = (
+        Path(payload.ontology_b_path) if payload.ontology_b_path else DEFAULT_ONTOLOGY_B_PATH
+    )
     record = await store.create(
-        ontology_a_path=Path(payload.ontology_a_path),
-        ontology_b_path=Path(payload.ontology_b_path),
+        ontology_a_path=ontology_a_path,
+        ontology_b_path=ontology_b_path,
         rounds=payload.rounds,
         label=payload.label,
         preset=payload.preset,
