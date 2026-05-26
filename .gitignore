@@ -80,6 +80,7 @@ reports_out/
 secrets/
 
 # Tooling working directories
+.codex-worktrees/
 .omc/
 .claude/
 SKILL.md
