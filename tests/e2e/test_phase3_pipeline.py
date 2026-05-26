@@ -52,7 +52,7 @@ async def test_pipeline_produces_markdown_from_sample_jsonl() -> None:
     config = ReportConfig(
         preset=Preset.QUICK,
         analyzer_model="openrouter/qwen/qwen-plus",
-        composer_primary_model="openrouter/anthropic/claude-opus-4",
+        composer_primary_model="openrouter/anthropic/claude-opus-4.7",
         composer_fallback_model="openrouter/qwen/qwen-plus",
     )
 
@@ -65,14 +65,14 @@ async def test_pipeline_produces_markdown_from_sample_jsonl() -> None:
     )
     assert report.markdown.startswith("# Mirofish 시뮬레이션 보고서")
     assert report.fallback_used is False
-    assert report.model == "openrouter/anthropic/claude-opus-4"
+    assert report.model == "openrouter/anthropic/claude-opus-4.7"
 
     # quick 은 분석 1 회 + 컴포저 1 회 = 총 2 회.
     assert len(llm.calls) == 2
     analyzer_models = {c[2] for c in llm.calls if "qwen" in c[2]}
     composer_models = {c[2] for c in llm.calls if "anthropic" in c[2]}
     assert analyzer_models == {"openrouter/qwen/qwen-plus"}
-    assert composer_models == {"openrouter/anthropic/claude-opus-4"}
+    assert composer_models == {"openrouter/anthropic/claude-opus-4.7"}
 
 
 async def test_pipeline_falls_back_when_composer_primary_fails() -> None:
@@ -93,7 +93,7 @@ async def test_pipeline_falls_back_when_composer_primary_fails() -> None:
     config = ReportConfig(
         preset=Preset.QUICK,
         analyzer_model="openrouter/qwen/qwen-plus",
-        composer_primary_model="openrouter/anthropic/claude-opus-4",
+        composer_primary_model="openrouter/anthropic/claude-opus-4.7",
         composer_fallback_model="openrouter/qwen/qwen-plus",
     )
 
