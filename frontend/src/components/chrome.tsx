@@ -54,7 +54,7 @@ export function AppHeader({ plaza, currentScreen, onNavigate, phaseNavLocked = f
     <header className="lm-header">
       <div className="lm-header__left">
         <button type="button" className="lm-header__brand" onClick={() => onNavigate('landing')}>
-          <BrandMark />
+          <BrandMark size="lg" />
         </button>
         {plaza && (
           <div className="lm-header__plaza">
@@ -107,7 +107,7 @@ export function SeedHeader({ onNavigate }: { onNavigate: (id: ScreenId) => void 
     <header className="lm-header">
       <div className="lm-header__left">
         <button type="button" className="lm-header__brand" onClick={() => onNavigate('landing')}>
-          <BrandMark />
+          <BrandMark size="lg" />
         </button>
       </div>
 
