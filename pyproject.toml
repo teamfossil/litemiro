@@ -49,6 +49,11 @@ report = [
   "plotly>=5.20,<7",
   "Jinja2>=3.1,<4",
 ]
+api = [
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.30,<1",
+  "httpx>=0.27,<1",
+]
 dev = [
   "pytest>=8.0,<9",
   "pytest-asyncio>=0.23,<2",
@@ -57,6 +62,9 @@ dev = [
   "ruff>=0.4,<1",
   "mypy>=1.10,<2",
   "types-jsonschema>=4.21,<5",
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.30,<1",
+  "httpx>=0.27,<1",
 ]
 
 [project.scripts]
@@ -64,6 +72,7 @@ litemiro-validate = "litemiro.cli.validate:main"
 litemiro-ontology = "litemiro.cli.ontology:main"
 litemiro-run = "litemiro.cli.run:main"
 litemiro-report = "litemiro.cli.report:main"
+litemiro-api = "litemiro.api.__main__:main"
 
 [project.urls]
 Repository = "https://github.com/teamfossil/litemiro"
@@ -162,6 +171,7 @@ module = [
   "litellm.*",
   "json_repair.*",
   "sentence_transformers.*",
+  "uvicorn.*",
 ]
 ignore_missing_imports = true
 
