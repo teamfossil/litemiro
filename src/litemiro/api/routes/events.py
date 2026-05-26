@@ -106,7 +106,14 @@ async def stream_events(plaza_id: str, request: Request) -> StreamingResponse:
         finally:
             await store.unsubscribe(plaza_id, queue)
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    # nginx 등 reverse proxy 는 기본으로 응답을 버퍼링해서 SSE 가 모이는 즉시
+    # 전달되지 않는다. ``X-Accel-Buffering: no`` 로 nginx 를, ``Cache-Control:
+    # no-cache`` 로 중간 캐시를 끈다 (CDN/브라우저 캐시 포함).
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 __all__ = ["router"]

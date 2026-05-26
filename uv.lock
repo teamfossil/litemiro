@@ -1347,6 +1347,8 @@ dependencies = [
 api = [
     { name = "fastapi" },
     { name = "httpx" },
+    { name = "numpy" },
+    { name = "sentence-transformers" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 dev = [
@@ -1385,6 +1387,7 @@ requires-dist = [
     { name = "litellm", specifier = ">=1.40,<2" },
     { name = "matplotlib", marker = "extra == 'report'", specifier = ">=3.8,<4" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10,<2" },
+    { name = "numpy", marker = "extra == 'api'", specifier = ">=1.26,<3" },
     { name = "numpy", marker = "extra == 'embedding'", specifier = ">=1.26,<3" },
     { name = "openai", specifier = ">=1.30,<2" },
     { name = "plotly", marker = "extra == 'report'", specifier = ">=5.20,<7" },
@@ -1396,6 +1399,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.0,<2" },
     { name = "rfc3339-validator", specifier = ">=0.1,<1" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4,<1" },
+    { name = "sentence-transformers", marker = "extra == 'api'", specifier = ">=2.7,<6" },
     { name = "sentence-transformers", marker = "extra == 'embedding'", specifier = ">=2.7,<6" },
     { name = "structlog", specifier = ">=24.1,<26" },
     { name = "tenacity", specifier = ">=8.2,<10" },
