@@ -43,7 +43,7 @@
   --negative:      #B85138;
 
   /* ---- 0. SCALE — 전역 UI 배율. 1.0 = 디자인 원본 크기. ---- */
-  --scale: 0.67;
+  --scale: 0.8;
 
   /* ---- 6. TYPOGRAPHY ---- */
   --font:  "Pretendard Variable", Pretendard, -apple-system, system-ui, sans-serif;
