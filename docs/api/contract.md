@@ -128,6 +128,60 @@ Casting 화면이 슬롯에 띄울 앵커 리스트. plaza 에 묶인 `ontology_
 
 새 `entity_type` 이 Phase 1 에서 도입되면 본 표만 추가하면 된다 — 백엔드 응답 형식은 그대로.
 
+## `GET /api/plazas/{plaza_id}/layout`
+
+Plaza 부감 뷰 화면이 노드를 배치할 때 쓸 좌표 + 영향력. plaza 의 events.jsonl
+에서 FOLLOW 엣지를 모아 Fruchterman-Reingold force-directed layout 을 돌린다
+(numpy, networkx 불필요). 시드는 `plaza_id` 해시 — 같은 plaza 면 폴링/리로드
+어디서 불러도 좌표가 안 튄다.
+
+`/agents` 와 같은 게이팅 — pending / running 에도 **200** 으로 떨어진다. 단
+events.jsonl 이 아직 안정적이지 않으므로 `ready: false` + `agents: []` 로
+응답해 프론트가 "아직 부감 데이터 없음" UI 를 그릴 수 있게 한다.
+
+응답 200:
+
+```json
+{
+  "plaza_id": "ab12cd34...",
+  "ready": true,
+  "width": 1.0,
+  "height": 1.0,
+  "agents": [
+    {
+      "id": "agent_001", "name": "AI 기본법", "role": "AIRegulationPolicy",
+      "x": 0.42, "y": 0.71,
+      "influence": 1.0, "follower_count": 5,
+      "avatar_seed": 2853741920
+    },
+    {
+      "id": "agent_002", "name": "스타트업 협회", "role": "IndustryGroup",
+      "x": 0.13, "y": 0.55,
+      "influence": 0.4, "follower_count": 2,
+      "avatar_seed": 1937204815
+    }
+  ]
+}
+```
+
+- `ready`: `true` 면 sim 라운드 끝나 events.jsonl 이 안정적 (composing /
+  completed / failed). `false` 면 `agents=[]` — pending / running 인 동안만
+  떨어진다. 프론트는 `ready` 로 부감 뷰 빈 상태 / 채워진 상태를 분기.
+- `x` / `y`: `[0.0, 1.0]` 정규화 좌표. 프론트가 캔버스 크기 곱해 그린다.
+- `follower_count`: events.jsonl 의 FOLLOW 이벤트에서 해당 agent 가 받은
+  follow 수 (절대값).
+- `influence`: 같은 plaza 내 `follower_count` 최댓값으로 정규화한 `[0.0, 1.0]`
+  값. 최댓값을 가진 노드는 1.0, 아무도 안 따른 노드는 0.0. 노드 크기/색
+  매핑에 그대로 곱해 쓰면 된다. 모든 agent 의 `follower_count` 가 0 이면
+  전부 0.0.
+- `avatar_seed`: `/agents` 와 동일한 uint32. 같은 agent 면 두 응답이 같은 값.
+- `width` / `height`: 좌표 박스. 현재 항상 1.0 x 1.0 — 향후 비정방 화면에
+  맞춰 늘릴 여지.
+- `404`: 존재하지 않는 `plaza_id`, 또는 `ontology_a_path` 가 디스크에 없는 경우.
+- `500`: ontology_a 가 있지만 스키마 파싱 실패.
+- events.jsonl 자체가 없으면 (`--fake` 모드 등) 엣지 0 으로 계산 — `ready`
+  는 record status 기준이라 ontology_a 만 있으면 그래도 `true` 로 떨어진다.
+
 ## `GET /api/plazas/{plaza_id}/report`
 
 결정적 집계 (`DataAggregator.aggregate`) + LLM 본문 (`ReportComposer`). 집계

@@ -83,6 +83,43 @@ class PlazaAgentsResponse(BaseModel):
     agents: list[PlazaAgentItem]
 
 
+class PlazaLayoutAgentItem(BaseModel):
+    """Plaza 부감 뷰의 노드 1개. ``compute_layout`` 의 결정적 좌표 + ontology_a
+    의 시각화 메타 (name/role) + events.jsonl 누적의 영향력 (follower count).
+
+    ``x`` / ``y`` 는 ``[0.0, 1.0]`` 정규화 — 프론트가 캔버스 크기 곱해 그린다.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    name: str
+    role: str
+    x: float = Field(ge=0.0, le=1.0)
+    y: float = Field(ge=0.0, le=1.0)
+    # 같은 plaza 내 follower_count 최댓값으로 정규화한 [0.0, 1.0]. 노드 크기/색
+    # 매핑에 그대로 곱해 쓴다. 최댓값 노드 = 1.0. 모두 0 follow 면 전부 0.0.
+    influence: float = Field(ge=0.0, le=1.0)
+    # 받은 follow 수 절대값 — 정규화 전 raw. 노드 호버 툴팁/디버깅 용.
+    follower_count: int = Field(ge=0)
+    # ``/agents`` 와 동일 알고리즘 (sha256(agent_id)[:4]). 두 응답이 같은 값.
+    avatar_seed: int = Field(ge=0, le=4294967295)
+
+
+class PlazaLayoutResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    plaza_id: str
+    # pending/running 동안만 False — events.jsonl 안정 안 됨 → ``agents=[]``.
+    # composing/completed/failed 는 모두 True. 프론트는 ``ready`` 로 빈/채운
+    # 부감 뷰를 분기. ``/agents`` 와 일관된 200 + 게이트 패턴.
+    ready: bool
+    # 좌표 박스. 현재 항상 1.0 x 1.0 — 향후 비정방 화면에 맞춰 늘릴 여지.
+    width: float = 1.0
+    height: float = 1.0
+    agents: list[PlazaLayoutAgentItem]
+
+
 class PlazaReportResponse(BaseModel):
     """완료된 plaza 의 보고서 응답 — 결정적 집계 + (선택) LLM Markdown 본문.
 
@@ -115,6 +152,8 @@ __all__ = [
     "HealthResponse",
     "PlazaAgentItem",
     "PlazaAgentsResponse",
+    "PlazaLayoutAgentItem",
+    "PlazaLayoutResponse",
     "PlazaReportResponse",
     "PlazaStatus",
     "PlazaStatusResponse",
