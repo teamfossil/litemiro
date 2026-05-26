@@ -15,9 +15,15 @@ import contextlib
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Literal, Protocol
 
 from litemiro.api.models import PlazaStatus
+
+# SSE 이벤트의 두 가지 분류 —
+#  * progress: 라운드 진행률 갱신 (rounds_done 증가)
+#  * status:   상태 머신 전환 (running/completed/failed). status="completed"|"failed"
+#              가 들어오면 스트림 종료 신호로도 같이 쓰인다.
+EventType = Literal["progress", "status"]
 
 
 @dataclass
@@ -35,6 +41,19 @@ class RunnerOutcome:
 
 class ProgressCallback(Protocol):
     def __call__(self, *, rounds_done: int) -> None: ...
+
+
+@dataclass(frozen=True)
+class PlazaEvent:
+    """SSE 스트림으로 흘려보낼 단일 이벤트.
+
+    ``data`` 는 SSE wire 포맷에서 JSON 으로 직렬화되므로 JSON-safe 한 dict.
+    상태 머신 전환에서 ``data["status"]`` 가 terminal 값이면 라우트는 이
+    이벤트를 마지막으로 스트림을 닫는다.
+    """
+
+    type: EventType
+    data: dict[str, Any]
 
 
 class PlazaRunner(Protocol):
@@ -75,6 +94,10 @@ class PlazaRecord:
     event_log_path: Path | None = None
     checkpoint_dir: Path | None = None
     task: asyncio.Task[None] | None = field(default=None, repr=False)
+    # SSE 구독자별 큐. ``PlazaStore.subscribe`` 가 큐를 만들어 여기에 등록하고,
+    # 라우트가 종료/disconnect 시 ``unsubscribe`` 로 떼어낸다. 큐는 unbounded —
+    # producer 가 라운드 단위(LLM 호출 사이) 라 사실상 빠르지 않다.
+    subscribers: list[asyncio.Queue[PlazaEvent]] = field(default_factory=list, repr=False)
 
 
 class PlazaStore:
@@ -89,7 +112,21 @@ class PlazaStore:
         self._runner = runner
         self._base_dir = base_dir
         self._records: dict[str, PlazaRecord] = {}
+        # 단일 이벤트 루프 가정 하에 ``_records`` dict 구조 변경만 보호한다.
+        # record 필드 (status/rounds_done) 와 subscribers 리스트 변경은
+        # CPython 단일 루프 atomicity 에 의존 — SSE pub/sub 도 같은 모델.
         self._lock = asyncio.Lock()
+
+    @staticmethod
+    def _broadcast(record: PlazaRecord, event: PlazaEvent) -> None:
+        """모든 subscriber 큐에 이벤트를 push.
+
+        라우트가 종료되기 전에 disconnect 한 경우 큐는 unsubscribe 로 빠지지만,
+        그 사이 짧은 race 로 dead 큐가 남을 수 있다 → ``put_nowait`` 가 unbounded
+        에서는 실패 안 함. snapshot 으로 iterate 해서 중간 unsubscribe 와 안전.
+        """
+        for queue in list(record.subscribers):
+            queue.put_nowait(event)
 
     async def create(
         self,
@@ -120,9 +157,31 @@ class PlazaStore:
 
         def on_progress(*, rounds_done: int) -> None:
             record.rounds_done = rounds_done
+            self._broadcast(
+                record,
+                PlazaEvent(
+                    type="progress",
+                    data={"rounds_done": rounds_done, "rounds_total": rounds},
+                ),
+            )
+
+        def _emit_status() -> None:
+            self._broadcast(
+                record,
+                PlazaEvent(
+                    type="status",
+                    data={
+                        "status": record.status,
+                        "rounds_done": record.rounds_done,
+                        "rounds_total": record.rounds_total,
+                        "error": record.error,
+                    },
+                ),
+            )
 
         async def _drive() -> None:
             record.status = "running"
+            _emit_status()
             try:
                 outcome = await self._runner(
                     plaza_id=plaza_id,
@@ -136,6 +195,7 @@ class PlazaStore:
             except Exception as exc:
                 record.status = "failed"
                 record.error = f"{type(exc).__name__}: {exc}"
+                _emit_status()
                 return
             record.status = "completed"
             record.tokens_used = outcome.tokens_used
@@ -144,6 +204,7 @@ class PlazaStore:
             # 없으면 on_progress 가 마지막으로 보고한 값을 그대로 둔다.
             if outcome.rounds_run is not None:
                 record.rounds_done = outcome.rounds_run
+            _emit_status()
 
         record.task = asyncio.create_task(_drive(), name=f"plaza-{plaza_id}")
         return record
@@ -151,6 +212,28 @@ class PlazaStore:
     async def get(self, plaza_id: str) -> PlazaRecord | None:
         async with self._lock:
             return self._records.get(plaza_id)
+
+    async def subscribe(self, plaza_id: str) -> asyncio.Queue[PlazaEvent] | None:
+        """SSE 라우트용 — 신규 큐를 만들어 ``record.subscribers`` 에 붙인다.
+
+        plaza 가 없으면 ``None``. 반환된 큐는 호출자가 책임지고
+        ``unsubscribe`` 로 떼야 한다 (lifespan = SSE 라우트의 generator).
+        """
+        async with self._lock:
+            record = self._records.get(plaza_id)
+            if record is None:
+                return None
+            queue: asyncio.Queue[PlazaEvent] = asyncio.Queue()
+            record.subscribers.append(queue)
+            return queue
+
+    async def unsubscribe(self, plaza_id: str, queue: asyncio.Queue[PlazaEvent]) -> None:
+        async with self._lock:
+            record = self._records.get(plaza_id)
+            if record is None:
+                return
+            with contextlib.suppress(ValueError):
+                record.subscribers.remove(queue)
 
     async def shutdown(self) -> None:
         """프로세스 종료 시 미완료 태스크를 모두 취소한다.
@@ -167,6 +250,8 @@ class PlazaStore:
 
 
 __all__ = [
+    "EventType",
+    "PlazaEvent",
     "PlazaRecord",
     "PlazaRunner",
     "PlazaStore",
