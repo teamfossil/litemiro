@@ -526,18 +526,24 @@ class PlazaStore:
         DELETE 의 주된 동기라 ``pending`` / ``running`` / ``composing`` 에서 409
         로 막으면 가장 흔한 use case 가 차단된다. 대신 안전하게:
 
-        1) 살아 있는 ``task`` 를 ``cancel`` + ``await`` (shutdown 패턴과 같음).
-           ``_drive`` 의 finally 가 마지막 terminal status emit 까지 끝낸 뒤 task
-           가 종료된다.
-        2) ``_records`` 에서 빼서 그 후 들어오는 ``get`` 이 404 가 되게.
-        3) SQLite row 삭제 — 재시작 후에도 안 보이게.
-        4) ``plaza_root`` 디렉토리 (events.jsonl + checkpoints/) 를 통째로 삭제.
+        1) ``_records`` 에서 pop — 이후 들어오는 ``get`` 은 404. lock 안에서만
+           수행해 ``subscribe`` 와의 race 를 닫는다 (subscribe 도 같은 lock).
+        2) 살아 있는 ``task`` 를 ``cancel`` + ``await`` (shutdown 패턴과 같음).
+           ``_drive`` 의 finally 가 마지막 status emit (취소 시점 record.status =
+           "running") + tail drain 까지 끝낸 뒤 task 가 종료된다.
+        3) **SSE 구독자에게 synthetic terminal status broadcast** — ``status``
+           = ``"failed"`` + ``error`` = ``"deleted"``. ``/events`` 라우트는
+           terminal status 보고 스트림을 닫으므로 구독 중이던 클라가 keepalive
+           무한 반복으로 굳지 않는다. cancel 후에 쏴서 finally 의 "running" 이
+           앞에 / 우리 "failed/deleted" 가 마지막에 들어가게 한다.
+        4) SQLite row 삭제 — 재시작 후에도 안 보이게.
+        5) ``plaza_root`` 디렉토리 (events.jsonl + checkpoints/) 를 통째로 삭제.
            ``ignore_errors=True`` — 디렉토리가 이미 사라졌거나 (테스트 fake) 권한
-           이슈여도 DELETE 응답은 성공으로 떨군다 (idempotent 한 측면 강화).
+           이슈여도 DELETE 응답은 성공으로 떨군다.
 
-        ``subscribers`` 는 큐를 명시적으로 닫지 않는다 — SSE 라우트가 task 종료
-        후 다음 ``record.subscribers.remove`` 시 plaza 가 사라진 걸 보고 빠진다.
-        지금은 SSE 라우트가 아직 없어 lifecycle 만 잡아둔다.
+        ``record.status`` 자체를 ``failed`` 로 바꾸지 않는다 — DB row 가 곧 사라
+        지고, SSE 가 보는 건 event payload 뿐이라 in-memory 상태와의 불일치는
+        없다. ``record`` 객체는 caller 가 잡고 있을 수 있으므로 mutation 도 피함.
         """
         async with self._lock:
             record = self._records.pop(plaza_id, None)
@@ -550,6 +556,18 @@ class PlazaStore:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await task
+        self._broadcast(
+            record,
+            PlazaEvent(
+                type="status",
+                data={
+                    "status": "failed",
+                    "rounds_done": record.rounds_done,
+                    "rounds_total": record.rounds_total,
+                    "error": "deleted",
+                },
+            ),
+        )
         if self._db is not None:
             _db.delete_record(self._db, plaza_id)
         if record.event_log_path is not None:
