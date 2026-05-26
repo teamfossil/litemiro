@@ -628,3 +628,219 @@ class TestGetAgents:
             resp = client.get(f"/api/plazas/{created['plaza_id']}/agents")
         assert resp.status_code == 404
         assert "ontology_a" in resp.json()["detail"]
+
+
+def _follow_jsonl(*follows: tuple[int, str, str]) -> str:
+    """(round_num, follower, followee) 튜플들을 events.jsonl 본문으로 직렬화."""
+    lines = []
+    for round_num, follower, followee in follows:
+        lines.append(
+            json.dumps(
+                {
+                    "round_num": round_num,
+                    "timestamp": "2026-05-26T00:00:00+00:00",
+                    "agent_id": follower,
+                    "action": {"type": "FOLLOW", "target_agent_id": followee},
+                }
+            )
+        )
+    return "\n".join(lines) + "\n"
+
+
+def _follow_writing_runner(follows: list[tuple[int, str, str]]) -> _RunnerCoro:
+    """events.jsonl 에 FOLLOW 라인들을 흘려주고 종료하는 runner."""
+
+    async def _run(
+        *,
+        plaza_id: str,
+        ontology_a_path: Path,
+        ontology_b_path: Path,
+        rounds: int,
+        event_log_path: Path,
+        checkpoint_dir: Path,
+        on_progress: ProgressCallback,
+    ) -> RunnerOutcome:
+        del plaza_id, ontology_a_path, ontology_b_path, checkpoint_dir
+        await asyncio.to_thread(
+            event_log_path.write_text, _follow_jsonl(*follows), encoding="utf-8"
+        )
+        for r in range(rounds):
+            await asyncio.sleep(0)
+            on_progress(rounds_done=r + 1)
+        return RunnerOutcome()
+
+    return _run
+
+
+class TestGetLayout:
+    """``GET /api/plazas/{id}/layout`` — Plaza 부감 뷰 좌표."""
+
+    def test_returns_mapped_layout(self, tmp_path: Path) -> None:
+        onto_a = _write_ontology_a(
+            tmp_path / "ontology_a.json",
+            [
+                ("a01", "A1", "Role", 0.5),
+                ("a02", "A2", "Role", 0.5),
+                ("a03", "A3", "Role", 0.5),
+            ],
+        )
+        app = create_app(
+            runner=_follow_writing_runner(
+                [(0, "a01", "a02"), (0, "a03", "a02"), (1, "a01", "a03")]
+            ),
+            base_dir=tmp_path,
+        )
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/plazas",
+                json={
+                    "ontology_a_path": str(onto_a),
+                    "ontology_b_path": "/tmp/b.json",
+                    "rounds": 2,
+                    "label": "layout",
+                },
+            ).json()
+            plaza_id = created["plaza_id"]
+            _wait_until(client, plaza_id, terminal={"completed", "failed"})
+            resp = client.get(f"/api/plazas/{plaza_id}/layout")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["plaza_id"] == plaza_id
+        assert body["ready"] is True
+        assert body["width"] == 1.0
+        assert body["height"] == 1.0
+        assert len(body["agents"]) == 3
+        by_id = {a["id"]: a for a in body["agents"]}
+        # 좌표 박스 안.
+        for item in body["agents"]:
+            assert 0.0 <= item["x"] <= 1.0
+            assert 0.0 <= item["y"] <= 1.0
+        # follower_count 는 raw 받은 follow 수.
+        # a02 ← a01, a03 (=2); a03 ← a01 (=1); a01 = 0.
+        assert by_id["a02"]["follower_count"] == 2
+        assert by_id["a03"]["follower_count"] == 1
+        assert by_id["a01"]["follower_count"] == 0
+        # influence 는 plaza 내 max 로 정규화 (max=2 → a02=1.0, a03=0.5, a01=0.0).
+        assert by_id["a02"]["influence"] == 1.0
+        assert by_id["a03"]["influence"] == 0.5
+        assert by_id["a01"]["influence"] == 0.0
+        # avatar_seed: /agents 와 같은 uint32 — 두 응답이 같은 값.
+        for item in body["agents"]:
+            assert 0 <= item["avatar_seed"] <= 0xFFFFFFFF
+        # ontology 메타가 그대로.
+        assert by_id["a01"]["name"] == "A1"
+        assert by_id["a01"]["role"] == "Role"
+
+    def test_pending_returns_not_ready(self, tmp_path: Path) -> None:
+        """pending / running 동안엔 200 + ``ready=false`` + ``agents=[]``.
+
+        /agents 와 일관된 게이트 — 409 가 아님. 프론트는 ready 플래그로 부감 뷰
+        빈 상태 / 채운 상태를 분기.
+        """
+        onto_a = _write_ontology_a(tmp_path / "ontology_a.json", [("a", "n", "R", 0.5)])
+
+        async def _slow(
+            *,
+            plaza_id: str,
+            ontology_a_path: Path,
+            ontology_b_path: Path,
+            rounds: int,
+            event_log_path: Path,
+            checkpoint_dir: Path,
+            on_progress: ProgressCallback,
+        ) -> RunnerOutcome:
+            del plaza_id, ontology_a_path, ontology_b_path, rounds
+            del event_log_path, checkpoint_dir, on_progress
+            await asyncio.sleep(0.3)
+            return RunnerOutcome()
+
+        app = create_app(runner=_slow, base_dir=tmp_path)
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/plazas",
+                json={
+                    "ontology_a_path": str(onto_a),
+                    "ontology_b_path": "/tmp/b.json",
+                    "rounds": 1,
+                },
+            ).json()
+            resp = client.get(f"/api/plazas/{created['plaza_id']}/layout")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["ready"] is False
+        assert body["agents"] == []
+
+    def test_works_without_event_log(self, tmp_path: Path) -> None:
+        """events.jsonl 자체가 안 만들어진 (--fake) 케이스도 200, influence=0."""
+        onto_a = _write_ontology_a(
+            tmp_path / "ontology_a.json",
+            [("a", "Alpha", "R", 0.5), ("b", "Beta", "R", 0.5)],
+        )
+        app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/plazas",
+                json={
+                    "ontology_a_path": str(onto_a),
+                    "ontology_b_path": "/tmp/b.json",
+                    "rounds": 1,
+                },
+            ).json()
+            plaza_id = created["plaza_id"]
+            _wait_until(client, plaza_id, terminal={"completed", "failed"})
+            resp = client.get(f"/api/plazas/{plaza_id}/layout")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["ready"] is True
+        assert len(body["agents"]) == 2
+        # max_follow=0 분기 → 전부 0.0 (정규화 분모 0 케이스).
+        assert all(a["influence"] == 0.0 for a in body["agents"])
+        assert all(a["follower_count"] == 0 for a in body["agents"])
+
+    def test_deterministic_across_calls(self, tmp_path: Path) -> None:
+        """plaza_id 시드 고정이라 리로드/폴링 시 좌표가 안 튀어야 한다."""
+        onto_a = _write_ontology_a(
+            tmp_path / "ontology_a.json",
+            [(f"a{i:02d}", f"A{i}", "R", 0.5) for i in range(5)],
+        )
+        app = create_app(
+            runner=_follow_writing_runner([(0, "a00", "a01"), (0, "a02", "a03")]),
+            base_dir=tmp_path,
+        )
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/plazas",
+                json={
+                    "ontology_a_path": str(onto_a),
+                    "ontology_b_path": "/tmp/b.json",
+                    "rounds": 1,
+                },
+            ).json()
+            plaza_id = created["plaza_id"]
+            _wait_until(client, plaza_id, terminal={"completed", "failed"})
+            first = client.get(f"/api/plazas/{plaza_id}/layout").json()
+            second = client.get(f"/api/plazas/{plaza_id}/layout").json()
+        assert first == second
+
+    def test_404_for_unknown_plaza(self, tmp_path: Path) -> None:
+        app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
+        with TestClient(app) as client:
+            resp = client.get("/api/plazas/does-not-exist/layout")
+        assert resp.status_code == 404
+
+    def test_404_when_ontology_missing(self, tmp_path: Path) -> None:
+        app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/plazas",
+                json={
+                    "ontology_a_path": "/tmp/definitely-not-here.json",
+                    "ontology_b_path": "/tmp/b.json",
+                    "rounds": 1,
+                },
+            ).json()
+            plaza_id = created["plaza_id"]
+            _wait_until(client, plaza_id, terminal={"completed", "failed"})
+            resp = client.get(f"/api/plazas/{plaza_id}/layout")
+        assert resp.status_code == 404
+        assert "ontology_a" in resp.json()["detail"]

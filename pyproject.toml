@@ -69,6 +69,8 @@ dev = [
   "fastapi>=0.115,<1",
   "uvicorn[standard]>=0.30,<1",
   "httpx>=0.27,<1",
+  # layout endpoint 의 force-directed 계산용 — [api] extras 와 같은 핀.
+  "numpy>=1.26,<3",
 ]
 
 [project.scripts]
