@@ -93,8 +93,11 @@ async def run_simulation(
     # Section 6.5 persona-memory topic overlap. MVP 는 warning-only 라 진행은
     # 막지 않지만 어디서도 호출이 안 되면 (#21 task 2) 누적 비율 측정이 사장
     # 되므로 RunBootstrap 단에서 한 번 부르고 structlog 로 흘린다.
+    # #58 옵션 B: 임베딩 cosine 으로 어휘공간 분리 (페르소나 LLM 추상 개념 vs
+    # NER 엔티티명) 를 우회. 이미 FeedEngine 용으로 인스턴스화된 ``embedder``
+    # 를 재사용해 모델 로딩을 한 번에 묶는다.
     consistency_warnings = OntologyLoader.validate_consistency(
-        ontology_a=ontology_a, ontology_b=ontology_b
+        ontology_a=ontology_a, ontology_b=ontology_b, embedder=embedder
     )
     if consistency_warnings:
         log.warning(

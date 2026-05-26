@@ -8,12 +8,13 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from jsonschema import Draft7Validator, FormatChecker
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from litemiro.models import Agent
 from litemiro.phase1.models import (
@@ -27,9 +28,16 @@ from litemiro.phase1.models import (
 from litemiro.schemas import ontology_a_schema, ontology_b_schema
 from litemiro.social.graph import SocialGraph
 
+if TYPE_CHECKING:
+    from litemiro.interfaces import EmbedderLike
+
 log = structlog.get_logger(__name__)
 
 _MEMORY_TOP_N = 3
+# §6.5 — 옵션 B (#58) 의 디폴트 cosine 임계값. 실측 calibration 후 hard-error
+# 승격과 함께 재조정 (§8.4). 0.4 는 sentence-transformers all-MiniLM-L6-v2
+# 의 한국어 페르소나-NER 엔티티 짝에서 "의미 매칭 약함" 가드로 시작값.
+_DEFAULT_SIMILARITY_THRESHOLD = 0.4
 
 
 class ConsistencyWarning(BaseModel):
@@ -37,6 +45,10 @@ class ConsistencyWarning(BaseModel):
 
     Contract Section 6.5 에서 hard-error 승격 판단 데이터로 쓰인다 — 이슈 #21
     task 2 의 누적 비율 측정에 ``origin`` 분류가 필요해 함께 보존한다.
+
+    ``max_similarity`` 는 옵션 B (`#58`) 의 임베딩 cosine 경로에서만 채워진다 —
+    legacy set intersection 경로에서는 ``None``. threshold calibration 시 분포를
+    보기 위해 함께 노출.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -45,6 +57,7 @@ class ConsistencyWarning(BaseModel):
     origin: AgentOrigin
     persona_topics: tuple[str, ...]
     memory_topics: tuple[str, ...]
+    max_similarity: float | None = Field(default=None, ge=-1.0, le=1.0)
 
 
 class OntologyLoader:
@@ -106,18 +119,30 @@ class OntologyLoader:
         *,
         ontology_a: OntologyA,
         ontology_b: OntologyB,
+        embedder: EmbedderLike | None = None,
+        similarity_threshold: float = _DEFAULT_SIMILARITY_THRESHOLD,
     ) -> tuple[ConsistencyWarning, ...]:
-        """Section 6.5 페르소나-메모리 모순 검출.
+        """Section 6.5 페르소나-메모리 어휘 정합성 검출.
 
-        각 에이전트의 ``AgentProfile.topics`` 와 ``SemanticMemory.topics`` 합집합
-        교집합이 공집합이면 warning. 빈 ``semantic`` 리스트는 cold start 로 면제.
-        반환은 발견된 warning 의 결정적 튜플 (agent_id 사전순) — 이슈 #21 task 2
-        가 비율을 누적 집계할 수 있게 정량 데이터로 노출한다. 동시에 ``structlog``
-        에 동일 정보를 찍어 운영 로그에서도 추적 가능하게 둔다.
+        각 에이전트의 ``AgentProfile.topics`` 와 ``SemanticMemory.topics`` 합집합을
+        비교한다. 빈 ``semantic`` 리스트는 cold start 로 면제. 반환은 결정적
+        튜플 (agent_id 사전순).
 
-        MVP 는 warning 만 — hard-error 승격은 누적 측정 후 결정 (이슈 #21).
+        비교 방식은 ``embedder`` 유무로 분기 (`#58`):
+
+        * ``embedder`` 가 주어지면 두 토픽 묶음을 임베딩 후 max pairwise cosine 이
+          ``similarity_threshold`` 미만이면 warning. 페르소나 토픽 (LLM 추상 개념)
+          과 메모리 토픽 (NER 엔티티) 이 어휘공간을 달리해도 의미 매칭이 잡힌다.
+        * ``embedder`` 가 없으면 (legacy) set intersection — 어휘 매칭이 안 되는
+          쌍은 의미가 가까워도 모두 warning. 단위 테스트가 임베딩 모델 로딩 없이
+          돌게 두는 백워드 호환 경로.
+
+        MVP 는 warning 만 — hard-error 승격은 옵션 B threshold calibration 측정
+        뒤 결정 (이슈 #21 / contract §8.4).
         """
         warnings: list[ConsistencyWarning] = []
+        embed_cache: dict[str, tuple[float, ...]] = {}
+
         for aid in sorted(ontology_a.agents):
             profile = ontology_a.agents[aid]
             store = ontology_b.stores.get(aid)
@@ -126,13 +151,25 @@ class OntologyLoader:
                 continue
             memory_topics: set[str] = set().union(*(set(m.topics) for m in memories))
             persona_topics = set(profile.topics)
-            if persona_topics & memory_topics:
-                continue
+
+            max_similarity: float | None
+            if embedder is None:
+                if persona_topics & memory_topics:
+                    continue
+                max_similarity = None
+            else:
+                max_similarity = _max_pairwise_cosine(
+                    persona_topics, memory_topics, embedder=embedder, cache=embed_cache
+                )
+                if max_similarity >= similarity_threshold:
+                    continue
+
             warning = ConsistencyWarning(
                 agent_id=aid,
                 origin=profile.origin,
                 persona_topics=tuple(sorted(persona_topics)),
                 memory_topics=tuple(sorted(memory_topics)),
+                max_similarity=max_similarity,
             )
             log.warning(
                 "ontology_loader.persona_memory_mismatch",
@@ -140,6 +177,7 @@ class OntologyLoader:
                 origin=warning.origin.value,
                 persona_topics=warning.persona_topics,
                 memory_topics=warning.memory_topics,
+                max_similarity=warning.max_similarity,
             )
             warnings.append(warning)
         return tuple(warnings)
@@ -226,6 +264,43 @@ def _memory_summary(semantic: list[SemanticMemory]) -> str | None:
         return None
     ordered = sorted(semantic, key=lambda m: (-m.simulation_count, -m.last_relevant_sim, m.id))
     return "; ".join(m.summary for m in ordered[:_MEMORY_TOP_N])
+
+
+def _max_pairwise_cosine(
+    persona_topics: set[str],
+    memory_topics: set[str],
+    *,
+    embedder: EmbedderLike,
+    cache: dict[str, tuple[float, ...]],
+) -> float:
+    """페르소나-메모리 토픽 쌍 중 가장 높은 cosine 유사도.
+
+    한 쪽이 비면 매칭 자체가 불가능하니 0.0 (= "전혀 안 닮음") 으로 떨어진다 —
+    threshold 가 양수면 자동으로 warning 후보가 된다. 임베딩은 ``cache`` 로
+    재사용해 같은 토픽 문자열을 두 번 임베딩하지 않는다.
+    """
+    if not persona_topics or not memory_topics:
+        return 0.0
+
+    def _embed(text: str) -> tuple[float, ...]:
+        if text not in cache:
+            cache[text] = embedder.embed(text)
+        return cache[text]
+
+    persona_vecs = [_embed(t) for t in persona_topics]
+    memory_vecs = [_embed(t) for t in memory_topics]
+    return max(_cosine(pv, mv) for pv in persona_vecs for mv in memory_vecs)
+
+
+def _cosine(a: tuple[float, ...], b: tuple[float, ...]) -> float:
+    """일반 cosine. STEmbedder 는 이미 L2 정규화돼 dot product 와 동치지만
+    fake / 미정규화 embedder 도 같은 함수로 닫기 위해 정의대로 계산한다."""
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(x * x for x in b))
+    if na == 0.0 or nb == 0.0:
+        return 0.0
+    return dot / (na * nb)
 
 
 def _build_agent(profile: AgentProfile, store: MemoryStore | None) -> Agent:
