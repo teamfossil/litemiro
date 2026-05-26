@@ -12,6 +12,9 @@ const API_BASE: string = import.meta.env.VITE_API_BASE ?? '';
 // terminal 아님 — progress bar 100% 로 두고 "보고서 합성중" 표시용.
 export type PlazaStatus = 'pending' | 'running' | 'composing' | 'completed' | 'failed';
 
+// ontology generation 의 상태 — plaza 와 달리 composing 단계가 없다.
+export type OntologyStatus = 'pending' | 'running' | 'completed' | 'failed';
+
 // 보고서 합성 호출 수 — quick=1 / standard=4 / full=8. 시뮬레이션 비용과는 직교.
 export type Preset = 'quick' | 'standard' | 'full';
 
@@ -29,6 +32,9 @@ export interface CreatePlazaRequest {
   // 화면은 자료 업로드 UI 가 없어 항상 같은 sample 호출이라 path 박지 않는다.
   ontology_a_path?: string;
   ontology_b_path?: string;
+  // /api/ontologies 로 만든 결과를 그대로 연결하는 정공 경로. 명시되면
+  // ontology_*_path 보다 우선하고 dev fixture 폴백도 무시된다.
+  ontology_id?: string;
   rounds: number;
   label?: string;
   // 미지정 시 백엔드가 quick 으로 채움 (CreatePlazaRequest.preset default).
@@ -172,6 +178,53 @@ export interface PlazaActionsSnapshotEvent {
   actions: PlazaActionEvent[];
 }
 
+// --------------------------------------------------------------------
+// /documents — 사용자 PDF/TXT 업로드. multipart/form-data 1회로 끝낸다.
+// 백엔드 DocumentResponse / DocumentListResponse 와 1:1 미러.
+// --------------------------------------------------------------------
+export interface DocumentResponse {
+  document_id: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  // 64자 hex — 동일 파일 재업로드 식별용.
+  sha256: string;
+  // ISO 8601 timestamp.
+  created_at: string;
+}
+
+export interface DocumentListResponse {
+  documents: DocumentResponse[];
+}
+
+// --------------------------------------------------------------------
+// /ontologies — Phase 1 generation. POST 즉시 202 + ontology_id, 클라는
+// GET 폴링으로 ready=true 까지 대기. 백엔드 CreateOntologyRequest /
+// OntologyResponse 와 1:1.
+// --------------------------------------------------------------------
+export interface CreateOntologyRequest {
+  document_id: string;
+  // Phase 1 ranking/profile generation 에 그대로 들어가는 한 줄 문맥
+  // (예: "주 4일제 도입에 대한 시민 반응 시뮬"). 1~500자.
+  requirement: string;
+  preset?: Preset;
+}
+
+export interface OntologyResponse {
+  ontology_id: string;
+  document_id: string;
+  status: OntologyStatus;
+  preset: Preset;
+  requirement: string;
+  // status=completed 인 경우에만 채워짐.
+  agent_count: number | null;
+  error: string | null;
+  // status === 'completed' 의 단순 별칭. 폴링 측이 boolean 한 줄로 분기.
+  ready: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export class ApiError extends Error {
   constructor(public readonly status: number, message: string) {
     super(message);
@@ -193,6 +246,36 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   health: () => request<HealthResponse>('/api/health'),
+
+  /**
+   * PDF/TXT 한 건 업로드. ``content-type`` 헤더는 일부러 비운다 —
+   * 브라우저가 multipart boundary 까지 포함해 자동으로 채우게 두는 게 정공.
+   * 직접 application/json 으로 박으면 422 가 떨어진다.
+   */
+  uploadDocument: async (file: File): Promise<DocumentResponse> => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`${API_BASE}/api/documents`, {
+      method: 'POST',
+      body: form,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new ApiError(res.status, text || res.statusText);
+    }
+    return (await res.json()) as DocumentResponse;
+  },
+  getDocument: (documentId: string) =>
+    request<DocumentResponse>(`/api/documents/${encodeURIComponent(documentId)}`),
+
+  createOntology: (body: CreateOntologyRequest) =>
+    request<OntologyResponse>('/api/ontologies', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  getOntology: (ontologyId: string) =>
+    request<OntologyResponse>(`/api/ontologies/${encodeURIComponent(ontologyId)}`),
+
   createPlaza: (body: CreatePlazaRequest) =>
     request<CreatePlazaResponse>('/api/plazas', {
       method: 'POST',
