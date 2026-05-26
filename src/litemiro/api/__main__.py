@@ -18,11 +18,12 @@ from typing import TYPE_CHECKING
 from dotenv import find_dotenv, load_dotenv
 
 from litemiro.api.app import create_app
+from litemiro.api.composer import RealPlazaComposer
 from litemiro.api.runner import RealPlazaRunner
 from litemiro.api.store import RunnerOutcome
 
 if TYPE_CHECKING:
-    from litemiro.api.store import PlazaRunner, ProgressCallback
+    from litemiro.api.store import PlazaComposer, PlazaRunner, ProgressCallback
 
 
 async def _noop_runner(
@@ -77,18 +78,24 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def _build_real_runner(*, llm_model: str) -> PlazaRunner:
-    """실 시뮬레이션 runner — LLM 키 없이는 만들지 말 것."""
-    # cli/run.py 와 동일한 인스턴스화 — embedder 로딩이 무거우므로 모듈 단위가
-    # 아닌 main() 안에서 한 번만 만든다.
+def _build_real_runner_and_composer(*, llm_model: str) -> tuple[PlazaRunner, PlazaComposer]:
+    """실 시뮬레이션 runner + LLM composer — LLM 키 없이는 만들지 말 것.
+
+    embedder / LiteLLM client 로딩이 무거워 모듈 단위가 아닌 main() 안에서
+    한 번만 만든다. composer 는 runner 와 같은 ``LiteLLMClient`` 인스턴스를
+    공유해 OpenRouter 커넥션 풀을 재사용한다.
+    """
     from litemiro.embedding.sentence_transformers import STEmbedder  # noqa: PLC0415
     from litemiro.llm.litellm_client import LiteLLMClient  # noqa: PLC0415
 
-    return RealPlazaRunner(
-        llm_client=LiteLLMClient(),
+    llm_client = LiteLLMClient()
+    runner = RealPlazaRunner(
+        llm_client=llm_client,
         embedder=STEmbedder(),
         llm_model=llm_model,
     )
+    composer = RealPlazaComposer(llm_client=llm_client)
+    return runner, composer
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -98,8 +105,12 @@ def main(argv: list[str] | None = None) -> int:
     origins = tuple(args.cors_origin) if args.cors_origin else ("http://localhost:5173",)
 
     runner: PlazaRunner
+    composer: PlazaComposer | None
     if args.fake:
+        # --fake 는 LLM 키 없이도 닫혀야 한다 — composer 도 함께 비운다.
+        # 통계만 떨어지고 report_markdown 은 None 으로 응답.
         runner = _noop_runner
+        composer = None
     else:
         if not os.environ.get("OPENROUTER_API_KEY"):
             print(
@@ -107,13 +118,13 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 1
-        runner = _build_real_runner(llm_model=args.llm_model)
+        runner, composer = _build_real_runner_and_composer(llm_model=args.llm_model)
 
     # uvicorn 은 ``[api]`` extra 에서만 들어오므로 main 안에서 import — fastapi
     # 만 깔린 테스트 환경에서도 모듈 import 가 깨지지 않도록.
     import uvicorn  # noqa: PLC0415
 
-    app = create_app(runner=runner, base_dir=args.data_dir, cors_origins=origins)
+    app = create_app(runner=runner, base_dir=args.data_dir, composer=composer, cors_origins=origins)
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
     return 0
 

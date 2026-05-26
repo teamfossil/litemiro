@@ -1,8 +1,8 @@
 """``PlazaReport`` 빌더 — events.jsonl → ``PlazaReportResponse``.
 
-``DataAggregator.aggregate`` 결과를 그대로 직렬화한다. LLM 분석
-(``PatternAnalyzer`` / ``ReportComposer``) 은 step 4 에서 합치므로 본
-모듈은 결정적 통계만 다룬다 — 같은 events.jsonl 은 항상 같은 응답.
+``DataAggregator.aggregate`` 결과 + (step 4) ``PlazaStore`` 가 미리 채워둔
+LLM Markdown 본문을 합쳐 응답을 만든다. 같은 events.jsonl + 같은 markdown
+은 항상 같은 응답 (LLM 호출은 본 모듈 바깥에서 이미 끝남 — store 의 _drive).
 """
 
 from __future__ import annotations
@@ -45,6 +45,8 @@ def build_report(record: PlazaRecord) -> PlazaReportResponse:
         # JSON 변환을 단순화하기 위함.
         categories={k: dict(v) for k, v in aggregation.categories.items()},
         qa_metrics=aggregation.qa_metrics.model_dump(),
+        report_markdown=record.report_markdown,
+        report_fallback_used=record.report_fallback_used,
     )
 
 
