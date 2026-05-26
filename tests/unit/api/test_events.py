@@ -433,7 +433,12 @@ def test_stream_drains_final_action_before_terminal_status(
     """
     monkeypatch.setattr(store_module, "_TAIL_POLL_INTERVAL_SECONDS", 0.1)
 
-    last_event = _round_event(round_num=0, agent_id="a-final", action_type=ActionType.DO_NOTHING)
+    last_event = _round_event(
+        round_num=0,
+        agent_id="a-final",
+        action_type=ActionType.CREATE_POST,
+        content="final",
+    )
 
     async def _run(
         *,
@@ -471,3 +476,89 @@ def test_stream_drains_final_action_before_terminal_status(
         i for i, (n, d) in enumerate(sse) if n == "status" and d.get("status") == "completed"
     )
     assert action_idx < terminal_idx
+
+
+def test_stream_skips_do_nothing_actions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """DO_NOTHING 라인은 events.jsonl 에는 남지만 SSE 스트림에는 안 나간다.
+
+    부감 뷰의 의미 있는 액션 (post/follow/like 등) 흐름이 패시브 라운드로
+    가려지지 않게 하기 위한 필터. 집계는 그대로 — events.jsonl 자체엔 그대로
+    쓰여서 /report 와 결정성에 영향 없음.
+    """
+    monkeypatch.setattr(store_module, "_TAIL_POLL_INTERVAL_SECONDS", 0.01)
+
+    events = [
+        _round_event(round_num=0, agent_id="a1", action_type=ActionType.DO_NOTHING),
+        _round_event(round_num=1, agent_id="a2", action_type=ActionType.CREATE_POST, content="hi"),
+        _round_event(round_num=2, agent_id="a1", action_type=ActionType.DO_NOTHING),
+    ]
+    app = create_app(runner=_event_writing_runner(events, between_delay=0.03), base_dir=tmp_path)
+    with TestClient(app) as client:
+        plaza_id = _create_plaza(client, rounds=3)
+        with client.stream("GET", f"/api/plazas/{plaza_id}/events") as resp:
+            body = resp.read().decode("utf-8")
+
+    sse = _parse_sse(body)
+    actions = [data for name, data in sse if name == "action"]
+    assert len(actions) == 1, [data.get("type") for data in actions]
+    assert actions[0]["type"] == "CREATE_POST"
+    assert actions[0]["agent_id"] == "a2"
+
+
+def test_stream_emits_actions_snapshot_on_reconnect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """재연결 시 events.jsonl 누적분이 ``event: actions_snapshot`` 한 번에 나온다.
+
+    같은 plaza 에 두 번째 SSE 연결을 열면 첫 status 직후 snapshot 이 떨어진다.
+    DO_NOTHING 은 snapshot 에서도 제외, 그 외는 시간 오름차순 그대로.
+    """
+    monkeypatch.setattr(store_module, "_TAIL_POLL_INTERVAL_SECONDS", 0.01)
+
+    events = [
+        _round_event(
+            round_num=0, agent_id="a1", action_type=ActionType.CREATE_POST, content="hello"
+        ),
+        _round_event(round_num=1, agent_id="a2", action_type=ActionType.DO_NOTHING),
+        _round_event(
+            round_num=2, agent_id="a2", action_type=ActionType.FOLLOW, target_agent_id="a1"
+        ),
+    ]
+    app = create_app(runner=_event_writing_runner(events, between_delay=0.03), base_dir=tmp_path)
+    with TestClient(app) as client:
+        plaza_id = _create_plaza(client, rounds=3)
+        # 첫 연결로 sim 완주까지 흘려보낸다 — 두 번째 연결이 snapshot 의 대상.
+        with client.stream("GET", f"/api/plazas/{plaza_id}/events") as resp:
+            resp.read()
+
+        # 두 번째 연결 — 이미 terminal 이므로 첫 status + snapshot 만 떨어지고 닫힘.
+        with client.stream("GET", f"/api/plazas/{plaza_id}/events") as resp:
+            body = resp.read().decode("utf-8")
+
+    sse = _parse_sse(body)
+    types = [t for t, _ in sse]
+    assert types[0] == "status"
+    assert "actions_snapshot" in types
+    snapshot_payload = next(data for name, data in sse if name == "actions_snapshot")
+    actions = snapshot_payload["actions"]
+    # DO_NOTHING 제외 — 2 건만, 시간 오름차순.
+    assert [a["type"] for a in actions] == ["CREATE_POST", "FOLLOW"]
+    assert actions[0]["agent_id"] == "a1"
+    assert actions[1]["agent_id"] == "a2"
+    assert actions[1]["target_agent_id"] == "a1"
+
+
+def test_stream_skips_snapshot_when_no_actions(tmp_path: Path) -> None:
+    """events.jsonl 이 비어 있으면 actions_snapshot 이벤트는 아예 안 나간다.
+
+    프론트는 snapshot 없으면 그냥 빈 부감 뷰로 시작 — 굳이 빈 배열 push 할
+    이유 없고, 클라이언트가 actions_snapshot 핸들러를 안 붙였어도 안전하다.
+    """
+    app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
+    with TestClient(app) as client:
+        plaza_id = _create_plaza(client, rounds=1)
+        with client.stream("GET", f"/api/plazas/{plaza_id}/events") as resp:
+            body = resp.read().decode("utf-8")
+
+    sse = _parse_sse(body)
+    assert "actions_snapshot" not in [t for t, _ in sse]

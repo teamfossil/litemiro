@@ -25,16 +25,22 @@ from pydantic import ValidationError
 from litemiro.api import db as _db
 from litemiro.api.composer import ComposerOutcome
 from litemiro.api.models import PlazaStatus
-from litemiro.models import RoundEvent
+from litemiro.models import ActionType, RoundEvent
 from litemiro.phase1.models import Preset
 from litemiro.phase3.models import AggregationResult
 
-# SSE 이벤트의 세 가지 분류 —
-#  * progress: 라운드 진행률 갱신 (rounds_done 증가)
-#  * status:   상태 머신 전환 (running/composing/completed/failed). terminal 값
-#              ("completed" / "failed") 가 들어오면 스트림 종료 신호로도 같이 쓰인다.
-#  * action:   events.jsonl 의 한 줄 (한 agent 의 한 액션) — 라이브 부감 뷰 용.
-EventType = Literal["progress", "status", "action"]
+# SSE 이벤트의 분류 —
+#  * progress:          라운드 진행률 갱신 (rounds_done 증가)
+#  * status:            상태 머신 전환 (running/composing/completed/failed).
+#                       terminal ("completed"/"failed") 가 들어오면 스트림 종료
+#                       신호로도 같이 쓰인다.
+#  * action:            events.jsonl 의 한 줄 (한 agent 의 한 액션) — 라이브 push.
+#  * actions_snapshot:  연결 직후 최근 N 건 액션을 한 번에 — 재연결 시 빈 피드 회피.
+EventType = Literal["progress", "status", "action", "actions_snapshot"]
+
+# 재연결 시 연결 직후 emit 할 최근 액션 수 상한. events.jsonl 마지막에서부터
+# 위로 훑으면서 DO_NOTHING 제외하고 이 수만큼만 모아 보낸다.
+SNAPSHOT_ACTION_LIMIT = 40
 
 # action tail task 의 폴링 간격. EventLogger 가 line flush 라 partial-but-valid 인
 # 끝 라인은 parse 시도조차 안 하지만, 새 라인 검출 latency 가 이 값에 좌우된다.
@@ -56,6 +62,48 @@ def _read_since(path: Path, offset: int) -> tuple[str, int]:
         f.seek(offset)
         data = f.read()
     return data.decode("utf-8", errors="replace"), offset + len(data)
+
+
+def _action_payload(event: RoundEvent) -> dict[str, Any]:
+    """``RoundEvent`` → SSE ``data`` 페이로드 (action / actions_snapshot 공용).
+
+    여기서 한 번에 직렬화 형식을 고정해 라이브 push (``event: action``) 와 재연결
+    스냅샷 (``event: actions_snapshot``) 의 element shape 가 어긋나지 않게 한다.
+    """
+    action = event.action
+    return {
+        "round_num": event.round_num,
+        "agent_id": event.agent_id,
+        "type": action.type.value,
+        "target_post_id": action.target_post_id,
+        "target_agent_id": action.target_agent_id,
+        "content": action.content,
+        "timestamp": event.timestamp.isoformat(),
+    }
+
+
+def _parse_event_log(path: Path) -> list[RoundEvent]:
+    """events.jsonl 을 통째로 읽어 RoundEvent 리스트로. ``load_recent_actions`` 용.
+
+    파일이 없거나 빈 경우 ``[]``. 깨진 라인은 건너뛴다 (last-line truncate /
+    프로세스 사망 직후 partial write). tail 과 같은 관용 — events.jsonl 자체가
+    line-level flush 라 잘린 라인은 끝에만 생긴다.
+
+    파일 끝부터 거꾸로 읽는 게 메모리상 더 좋지만, 시뮬레이션 한 건의
+    events.jsonl 은 라운드 200 x agent 100 ~= 20k 라인 (수 MB) 이라 단순 전부
+    읽기로 충분. 거꾸로 읽기 코드는 깨진 라인 처리가 복잡해 가치가 낮다.
+    """
+    if not path.exists():
+        return []
+    out: list[RoundEvent] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            out.append(RoundEvent.model_validate_json(line))
+        except ValidationError:
+            continue
+    return out
 
 
 @dataclass
@@ -249,21 +297,13 @@ class PlazaStore:
                 except ValidationError:
                     # 깨진 라인은 건너뛴다 — 다음 라인은 다시 정상일 수 있다.
                     continue
-                action = event.action
+                # DO_NOTHING 은 events.jsonl 에는 남기지만 (집계/재현성) SSE
+                # 스트림에서는 노이즈 → 부감 뷰 깜빡임/토스트 의미 없음 → 컷.
+                if event.action.type is ActionType.DO_NOTHING:
+                    continue
                 self._broadcast(
                     record,
-                    PlazaEvent(
-                        type="action",
-                        data={
-                            "round_num": event.round_num,
-                            "agent_id": event.agent_id,
-                            "type": action.type.value,
-                            "target_post_id": action.target_post_id,
-                            "target_agent_id": action.target_agent_id,
-                            "content": action.content,
-                            "timestamp": event.timestamp.isoformat(),
-                        },
-                    ),
+                    PlazaEvent(type="action", data=_action_payload(event)),
                 )
 
         while not stop_event.is_set():
@@ -415,6 +455,31 @@ class PlazaStore:
     async def get(self, plaza_id: str) -> PlazaRecord | None:
         async with self._lock:
             return self._records.get(plaza_id)
+
+    async def load_recent_actions(
+        self,
+        plaza_id: str,
+        *,
+        limit: int = SNAPSHOT_ACTION_LIMIT,
+    ) -> list[dict[str, Any]]:
+        """events.jsonl 의 최근 ``limit`` 건 액션 페이로드 (DO_NOTHING 제외).
+
+        SSE 라우트가 재연결 직후 ``event: actions_snapshot`` 으로 한 번 흘리는 용도.
+        기존 라이브 push 와 같은 element shape (``_action_payload``) 를 쓴다.
+        events.jsonl 자체가 없거나 (fake / 초기) 빈 파일이면 ``[]``.
+
+        파일 IO + 파싱이 동기 비용이라 ``asyncio.to_thread`` 로 떼서 SSE 라우트
+        진입을 막지 않는다. 마지막 N 건은 원래 순서 (시간 오름차순) 로 돌려준다 —
+        프론트가 그대로 위→아래 / 왼→오 로 그리기만 하면 됨.
+        """
+        record = await self.get(plaza_id)
+        if record is None or record.event_log_path is None:
+            return []
+        path = record.event_log_path
+        events = await asyncio.to_thread(_parse_event_log, path)
+        filtered = [e for e in events if e.action.type is not ActionType.DO_NOTHING]
+        tail = filtered[-limit:] if limit > 0 else []
+        return [_action_payload(e) for e in tail]
 
     async def subscribe(self, plaza_id: str) -> asyncio.Queue[PlazaEvent] | None:
         """SSE 라우트용 — 신규 큐를 만들어 ``record.subscribers`` 에 붙인다.
