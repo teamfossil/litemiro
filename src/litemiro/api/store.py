@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
+from litemiro.api.composer import ComposerOutcome
 from litemiro.api.models import PlazaStatus
 
 # SSE 이벤트의 두 가지 분류 —
@@ -80,6 +81,24 @@ class PlazaRunner(Protocol):
     ) -> RunnerOutcome: ...
 
 
+class PlazaComposer(Protocol):
+    """sim 완료 직후 store 가 호출하는 LLM 보고서 어댑터 (step 4).
+
+    실 구현(`RealPlazaComposer`) 은 PatternAnalyzer + ReportComposer 를 묶고,
+    테스트/--fake 는 즉시 stub markdown 또는 ``markdown=None`` 을 돌려준다.
+    실패 (Opus+Qwen 동시 사망) 도 예외가 아니라 ``markdown=None`` outcome 으로
+    표현해 plaza 상태 머신을 깨지 않는다 — sim 은 성공했는데 LLM 만 죽은 경우
+    status=failed 로 떨어뜨리면 통계 보고서까지 못 보게 되니까.
+    """
+
+    async def __call__(
+        self,
+        *,
+        plaza_id: str,
+        event_log_path: Path,
+    ) -> ComposerOutcome: ...
+
+
 @dataclass
 class PlazaRecord:
     plaza_id: str
@@ -98,6 +117,11 @@ class PlazaRecord:
     # 라우트가 종료/disconnect 시 ``unsubscribe`` 로 떼어낸다. 큐는 unbounded —
     # producer 가 라운드 단위(LLM 호출 사이) 라 사실상 빠르지 않다.
     subscribers: list[asyncio.Queue[PlazaEvent]] = field(default_factory=list, repr=False)
+    # step 4 — LLM ReportComposer 가 채우는 Markdown 본문. compose 가 아직
+    # 안 돌았거나 Opus+Qwen 동시 사망으로 폴백된 경우 ``None``. /report 응답이
+    # 그대로 노출.
+    report_markdown: str | None = None
+    report_fallback_used: bool = False
 
 
 class PlazaStore:
@@ -108,8 +132,15 @@ class PlazaStore:
     plaza_id 로 재현되는 경우 없음 — UUID 이라 충돌 사실상 0).
     """
 
-    def __init__(self, *, runner: PlazaRunner, base_dir: Path) -> None:
+    def __init__(
+        self,
+        *,
+        runner: PlazaRunner,
+        base_dir: Path,
+        composer: PlazaComposer | None = None,
+    ) -> None:
         self._runner = runner
+        self._composer = composer
         self._base_dir = base_dir
         self._records: dict[str, PlazaRecord] = {}
         # 단일 이벤트 루프 가정 하에 ``_records`` dict 구조 변경만 보호한다.
@@ -197,13 +228,25 @@ class PlazaStore:
                 record.error = f"{type(exc).__name__}: {exc}"
                 _emit_status()
                 return
-            record.status = "completed"
             record.tokens_used = outcome.tokens_used
             # outcome.rounds_run 이 있으면 그걸 신뢰 (early-exit 인 경우
             # ``rounds_run < rounds`` 일 수 있음 — 요청한 totals 로 덮으면 안 됨).
             # 없으면 on_progress 가 마지막으로 보고한 값을 그대로 둔다.
             if outcome.rounds_run is not None:
                 record.rounds_done = outcome.rounds_run
+            # step 4 — composer 가 있으면 보고서 생성. composer 가 None 이면 (fake/
+            # tests) 통계만 떨어뜨린다. composer 가 None 을 돌려도 상태 머신은 안 깬다.
+            # 본 단계에서는 별도 status="composing" 을 두지 않는다 — 프론트는
+            # rounds_done==rounds_total && status==running 으로 추론한다.
+            if self._composer is not None:
+                composer_outcome = await self._composer(
+                    plaza_id=plaza_id,
+                    event_log_path=event_log_path,
+                )
+                record.report_markdown = composer_outcome.markdown
+                record.report_fallback_used = composer_outcome.fallback_used
+                record.tokens_used += composer_outcome.tokens_used
+            record.status = "completed"
             _emit_status()
 
         record.task = asyncio.create_task(_drive(), name=f"plaza-{plaza_id}")
@@ -250,7 +293,9 @@ class PlazaStore:
 
 
 __all__ = [
+    "ComposerOutcome",
     "EventType",
+    "PlazaComposer",
     "PlazaEvent",
     "PlazaRecord",
     "PlazaRunner",

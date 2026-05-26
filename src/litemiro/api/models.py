@@ -48,12 +48,11 @@ class HealthResponse(BaseModel):
 
 
 class PlazaReportResponse(BaseModel):
-    """step 2 보고서 응답 — 결정적 집계만. LLM 인사이트는 step 4 에서 채운다.
+    """완료된 plaza 의 보고서 응답 — 결정적 집계 + (선택) LLM Markdown 본문.
 
-    프론트엔드는 본 응답 + Phase 1 ontology(앵커 정보) 를 가지고 화면용
-    ``ReportData`` 를 합성한다. 본 단계에서는 LLM-derived 필드 (prediction
-    headline, topic stance 등) 는 의도적으로 비워둔다 — 모의 데이터로 채우면
-    사용자가 진짜 결과로 오해할 수 있음.
+    step 4 에서 ``report_markdown`` 이 합류했다. composer 가 안 붙은 fake
+    서버나 Opus+Qwen 동시 사망 폴백 케이스에는 ``None`` — 클라이언트는
+    통계만 렌더하고 자연어 본문은 비운다.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -70,6 +69,8 @@ class PlazaReportResponse(BaseModel):
     # AggregationResult.categories 의 카테고리 → 자유 dict
     categories: dict[str, dict[str, object]]
     qa_metrics: dict[str, float]
+    report_markdown: str | None = None
+    report_fallback_used: bool = False
 
 
 __all__ = [
