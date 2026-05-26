@@ -78,10 +78,11 @@ class RealPlazaRunner:
             batch_size=self._batch_size,
             cooldown_seconds=self._cooldown_seconds,
         )
-        # SSE 도입 전까지는 종료 시점에 한 번만 진행률을 채운다 — store 도 같은
-        # 안전망(``max(rounds_done, rounds)``) 을 들고 있어서 중복 호출 OK.
+        # SSE 도입 전까지는 종료 시점에 한 번만 진행률을 채운다. ``rounds_run``
+        # 은 early-exit (토큰 예산 소진 등) 으로 ``< rounds`` 일 수 있으므로
+        # store 가 요청 total 로 덮지 않도록 outcome 으로도 같이 넘긴다.
         on_progress(rounds_done=result.rounds_run)
-        return RunnerOutcome(tokens_used=result.tokens_used)
+        return RunnerOutcome(tokens_used=result.tokens_used, rounds_run=result.rounds_run)
 
 
 __all__ = ["RealPlazaRunner"]

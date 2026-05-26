@@ -22,9 +22,15 @@ from litemiro.api.models import PlazaStatus
 
 @dataclass
 class RunnerOutcome:
-    """``PlazaRunner.__call__`` 의 반환 — 결과 메트릭만 담는다."""
+    """``PlazaRunner.__call__`` 의 반환 — 결과 메트릭만 담는다.
+
+    ``rounds_run`` 은 runner 가 실제로 돈 라운드 수. ``None`` 이면 store 는
+    ``on_progress`` 가 마지막으로 보고한 값을 그대로 둔다. 토큰 예산 소진처럼
+    early-exit 으로 ``rounds_run < rounds`` 인 경우를 표현하기 위해 도입.
+    """
 
     tokens_used: int = 0
+    rounds_run: int | None = None
 
 
 class ProgressCallback(Protocol):
@@ -133,8 +139,11 @@ class PlazaStore:
                 return
             record.status = "completed"
             record.tokens_used = outcome.tokens_used
-            # runner 가 진행률을 보고하지 않았으면 종료 시점에 한 번 채워준다.
-            record.rounds_done = max(record.rounds_done, rounds)
+            # outcome.rounds_run 이 있으면 그걸 신뢰 (early-exit 인 경우
+            # ``rounds_run < rounds`` 일 수 있음 — 요청한 totals 로 덮으면 안 됨).
+            # 없으면 on_progress 가 마지막으로 보고한 값을 그대로 둔다.
+            if outcome.rounds_run is not None:
+                record.rounds_done = outcome.rounds_run
 
         record.task = asyncio.create_task(_drive(), name=f"plaza-{plaza_id}")
         return record
