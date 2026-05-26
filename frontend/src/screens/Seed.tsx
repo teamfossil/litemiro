@@ -7,6 +7,7 @@ import { useRef, useState } from 'react';
 import { ScreenHeader } from '@/components/chrome';
 import { Button, ArrowGlyph } from '@/components/atoms';
 import { useScreenNav } from '@/lib/nav';
+import { api, ApiError, type Preset } from '@/api/client';
 
 // --------------------------------------------------------------------
 // 인격 규모 옵션
@@ -183,10 +184,14 @@ export default function Seed() {
   const go = useScreenNav();
   const [file, setFile] = useState<SeedFile | null>(null);
   const [planId, setPlanId] = useState('standard');
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const plan = SEED_PLANS.find((p) => p.id === planId)!;
 
   const handleUpload = (f: File) => {
     // 실 제품: 업로드 → 서버 추출 → entity preview. 프로토타입: 파일명만 받아 샘플로 채움.
+    // 백엔드는 ontology path 가 optional 이라 (#88) 실 파일 전송은 안 하고
+    // sample fixture 폴백을 사용. "업로드" 는 UX 게이트 역할만.
     setFile({
       ...SAMPLE_FILE,
       name: f.name || SAMPLE_FILE.name,
@@ -195,7 +200,25 @@ export default function Seed() {
     });
   };
   const handleReplace = () => setFile(null);
-  const canStart = !!file;
+  const canStart = !!file && !pending;
+
+  const handleStart = async () => {
+    if (!canStart) return;
+    setPending(true);
+    setError(null);
+    try {
+      const res = await api.createPlaza({
+        preset: plan.id as Preset,
+        rounds: plan.rounds,
+      });
+      go('casting', res.plaza_id);
+    } catch (err) {
+      const msg =
+        err instanceof ApiError ? `${err.status} ${err.message}` : (err as Error).message;
+      setError(msg || '광장 생성 중 오류');
+      setPending(false);
+    }
+  };
 
   return (
     <div className="lm-seed">
@@ -237,15 +260,16 @@ export default function Seed() {
                   ₩ {plan.cost.toLocaleString()}
                   <span className="lm-seed__footer-min">· 약 {plan.minutes}분</span>
                 </div>
+                {error && <div className="lm-seed__footer-error">{error}</div>}
               </div>
               <Button
                 kind="primary"
                 size="lg"
                 disabled={!canStart}
-                onClick={() => canStart && go('casting')}
+                onClick={handleStart}
                 trailing={<ArrowGlyph dir="right" />}
               >
-                광장 열기
+                {pending ? '광장 여는 중…' : '광장 열기'}
               </Button>
             </footer>
           </section>
