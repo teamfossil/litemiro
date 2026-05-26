@@ -227,9 +227,7 @@ class PlazaStore:
             record.subscribers.append(queue)
             return queue
 
-    async def unsubscribe(
-        self, plaza_id: str, queue: asyncio.Queue[PlazaEvent]
-    ) -> None:
+    async def unsubscribe(self, plaza_id: str, queue: asyncio.Queue[PlazaEvent]) -> None:
         async with self._lock:
             record = self._records.get(plaza_id)
             if record is None:

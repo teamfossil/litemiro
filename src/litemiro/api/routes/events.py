@@ -92,9 +92,7 @@ async def stream_events(plaza_id: str, request: Request) -> StreamingResponse:
 
             while True:
                 try:
-                    event = await asyncio.wait_for(
-                        queue.get(), timeout=_KEEPALIVE_INTERVAL_SECONDS
-                    )
+                    event = await asyncio.wait_for(queue.get(), timeout=_KEEPALIVE_INTERVAL_SECONDS)
                 except TimeoutError:
                     # 큐가 한동안 비었으면 disconnect 확인 후 keepalive.
                     # ``: ...`` 는 SSE comment — 클라 onmessage 에 안 잡힌다.
@@ -103,10 +101,7 @@ async def stream_events(plaza_id: str, request: Request) -> StreamingResponse:
                     yield ": keepalive\n\n"
                     continue
                 yield _format_sse(event)
-                if (
-                    event.type == "status"
-                    and event.data.get("status") in _TERMINAL_STATUSES
-                ):
+                if event.type == "status" and event.data.get("status") in _TERMINAL_STATUSES:
                     return
         finally:
             await store.unsubscribe(plaza_id, queue)
