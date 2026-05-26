@@ -74,6 +74,10 @@ export interface PlazaReportResponse {
   // 백엔드의 AggregationResult.categories — 카테고리별 자유 dict
   categories: Record<string, Record<string, unknown>>;
   qa_metrics: Record<string, number>;
+  // step 4 — LLM ReportComposer 가 채운 Markdown 본문.
+  // composer 가 안 붙은 fake 서버나 Opus+Qwen 동시 사망 폴백에서는 null.
+  report_markdown: string | null;
+  report_fallback_used: boolean;
 }
 
 export class ApiError extends Error {

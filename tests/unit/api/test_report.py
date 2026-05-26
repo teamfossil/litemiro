@@ -16,6 +16,7 @@ from typing import Any
 from fastapi.testclient import TestClient
 
 from litemiro.api.app import create_app
+from litemiro.api.composer import ComposerOutcome
 from litemiro.api.store import ProgressCallback, RunnerOutcome
 
 
@@ -136,6 +137,71 @@ def test_report_404_for_unknown_plaza(tmp_path: Path) -> None:
     with TestClient(app) as client:
         resp = client.get("/api/plazas/does-not-exist/report")
     assert resp.status_code == 404
+
+
+def _stub_composer(markdown: str | None, *, tokens: int = 0, fallback: bool = False) -> Any:
+    """events.jsonl 은 무시하고 미리 정한 outcome 만 돌려주는 fake composer."""
+
+    async def _compose(*, plaza_id: str, event_log_path: Path) -> ComposerOutcome:
+        del plaza_id, event_log_path
+        return ComposerOutcome(markdown=markdown, tokens_used=tokens, fallback_used=fallback)
+
+    return _compose
+
+
+def test_report_includes_markdown_when_composer_provided(tmp_path: Path) -> None:
+    """step 4 — composer 가 붙어 있으면 /report 에 markdown + 회계 노출."""
+    lines = [_make_event(0, "agent_a", "CREATE_POST", content="hello")]
+    app = create_app(
+        runner=_writing_runner(lines),
+        base_dir=tmp_path,
+        composer=_stub_composer("# 보고서\n본문.", tokens=123, fallback=True),
+    )
+    with TestClient(app) as client:
+        created = client.post(
+            "/api/plazas",
+            json={
+                "ontology_a_path": "/tmp/a.json",
+                "ontology_b_path": "/tmp/b.json",
+                "rounds": 1,
+                "label": "with-composer",
+            },
+        ).json()
+        _wait_completed(client, created["plaza_id"])
+        resp = client.get(f"/api/plazas/{created['plaza_id']}/report")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["report_markdown"] == "# 보고서\n본문."
+    assert body["report_fallback_used"] is True
+    # runner 토큰 (777) + composer 토큰 (123) = 900.
+    assert body["tokens_used"] == 900
+
+
+def test_report_keeps_markdown_null_when_composer_dies(tmp_path: Path) -> None:
+    """composer 가 markdown=None 으로 돌려줘도 /report 는 200 + 통계만 응답."""
+    lines = [_make_event(0, "agent_a", "CREATE_POST", content="hello")]
+    app = create_app(
+        runner=_writing_runner(lines),
+        base_dir=tmp_path,
+        composer=_stub_composer(None, tokens=42),
+    )
+    with TestClient(app) as client:
+        created = client.post(
+            "/api/plazas",
+            json={
+                "ontology_a_path": "/tmp/a.json",
+                "ontology_b_path": "/tmp/b.json",
+                "rounds": 1,
+            },
+        ).json()
+        _wait_completed(client, created["plaza_id"])
+        resp = client.get(f"/api/plazas/{created['plaza_id']}/report")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["report_markdown"] is None
+    assert body["report_fallback_used"] is False
+    assert body["n_events"] == 1
+    assert body["tokens_used"] == 777 + 42
 
 
 def test_report_409_while_running(tmp_path: Path) -> None:
