@@ -358,3 +358,48 @@ hard error 게이트) + **B** (관측 데이터 수집).
 - E2E 스모크: `tests/e2e/test_phase1_to_phase2_smoke.py`,
   `tests/e2e/test_phase1_to_phase2_json_smoke.py`
 - OntologyLoader: `src/litemiro/integration/ontology_loader.py`
+
+## 11. 부록 — 한국어 페르소나 템플릿 예시
+
+발표 / 최종 보고서에서 "한국 환경 적합" 이 추상적으로만 박혀 있다는 지적 (`#62`)
+에 대한 구체 예시. `tests/data/sample_ontology_a.json` 에 들어 있는 3-agent
+quick fixture (Journalist / Academic / Citizen) 외에 풀 100-agent quick 산출에서
+실제로 생성된 derived citizen 한 명을 그대로 인용한다 (`seed=42`):
+
+```json
+{
+  "agent_id": "agent_0097",
+  "name": "시민_agent_0097",
+  "entity_type": "citizen",
+  "origin": "derived",
+  "ideology": 0.23,
+  "topics": ["AI 규제 정책에 대한 이해관계자 입장 시뮬레이션"],
+  "sensitive_topics": [
+    "사용자 경험 저해",
+    "규제로 인한 서비스 접근성 감소"
+  ],
+  "personality": "실용적이고 유연한 문제 해결자. 정책이 실제 생활에 어떻게 작동하는지에 집중.",
+  "speech_style": "친근하고 대화체 중심. '~해보면 어떨까', '우리가 직접 체험해본 건…' 같은 표현 선호.",
+  "background": "경기 지역에서 UX 디자이너 겸 AI 교육 콘텐츠 제작자로 활동 중인 30대 프리랜서.",
+  "behavior_tendency": {
+    "post_rate": 0.38,
+    "reply_rate": 0.69,
+    "repost_rate": 0.55,
+    "controversy_affinity": 0.45
+  },
+  "initial_following": ["agent_0034", "agent_0038", "etri",
+    "seoul_national_university_ai_research_center", "..."]
+}
+```
+
+**왜 한국 환경 적합으로 보는가** — `background` 가 "경기 지역 / 30대 프리랜서 /
+UX 디자이너" 처럼 한국 디지털 노동시장의 실 직군과 지역 분포를 담고 있고,
+`speech_style` 이 영어 번역체가 아닌 구어체 한국어 (`"~해보면 어떨까"`) 로 잡혀
+있다. `initial_following` 의 `etri` /
+`seoul_national_university_ai_research_center` 처럼 OntologyA Entity extraction
+이 뽑아낸 한국 실재 기관이 derived 시민의 팔로우 그래프에 자연스럽게 섞이는 게
+"로컬 컨텍스트" 의 코어. (한 명 → 100 명 산출 전체에서 같은 패턴이 반복된다.)
+
+`ideology=0.23` 은 진보 성향, `controversy_affinity=0.45` 는 양극단을 회피하는
+중도-경향. 이 분포가 `behavior_tendency.post_rate` 와 곱해져 `#21` 의
+`mean(post_rate)=0.408` 측정치를 만든다.
