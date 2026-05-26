@@ -7,6 +7,13 @@ transformers + LiteLLM wiring. issue #53.
 받지 않는다 (Phase 1 산출이 이미 declare 한 값). Topic vocabulary 역시
 ``run_simulation`` 이 ``OntologyA`` 에서 자동 도출하므로 본 CLI 는 인자만
 파싱하고 실 의존 (LLM / Embedder) 만 인스턴스화해 넘긴다.
+
+``--output-dir`` 디폴트는 ``./runs/run-{ISO timestamp}/`` 로 매 실행마다 새
+디렉토리를 만든다 — ``EventLogger`` 가 append 모드라 같은 디렉토리를 재사용
+하면 JSONL 이 누적되어 Phase 3 분석이 오염되는 트랩을 원천 차단. 디스크
+누적은 사용자 책임 (운영에서는 명시적인 경로 지정 권장).
+
+``OPENROUTER_API_KEY`` 는 ``.env`` 파일에서 자동 로드된다 (``python-dotenv``).
 """
 
 from __future__ import annotations
@@ -15,10 +22,12 @@ import argparse
 import asyncio
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import structlog
+from dotenv import find_dotenv, load_dotenv
 
 from litemiro.embedding.sentence_transformers import STEmbedder
 from litemiro.integration.run import run_simulation
@@ -44,8 +53,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("."),
-        help="Output dir for events.jsonl + checkpoints/ (default: current dir)",
+        default=None,
+        help=(
+            "Output dir for events.jsonl + checkpoints/ "
+            "(default: ./runs/run-{ISO timestamp}/ — new directory per run "
+            "to avoid JSONL append accumulation)"
+        ),
     )
     parser.add_argument(
         "--llm-model",
@@ -87,6 +100,16 @@ def _print_result(result: SimulationResult) -> None:
     print(f"Checkpoint dir : {result.checkpoint_dir}")
 
 
+def _default_output_dir() -> Path:
+    """``./runs/run-{ISO timestamp}/`` — 매 실행마다 새 디렉토리.
+
+    timestamp 는 UTC + colon-free 포맷 (Windows 파일명 안전). 마이크로초까지
+    포함해 같은 초에 두 번 호출돼도 충돌하지 않게 한다.
+    """
+    ts = datetime.now().strftime("%Y%m%dT%H%M%S%f")
+    return Path("runs") / f"run-{ts}"
+
+
 async def _run(
     args: argparse.Namespace,
     *,
@@ -96,7 +119,7 @@ async def _run(
     """argparse 결과 + 의존성 → ``run_simulation`` 호출. 테스트가 직접 부르는
     경계로 두어 의존성 주입이 깨끗하다 — main 의 `LiteLLMClient` / `STEmbedder`
     인스턴스화 단계를 우회해 fake 로 닫는다."""
-    output_dir: Path = args.output_dir
+    output_dir: Path = args.output_dir if args.output_dir is not None else _default_output_dir()
     return await run_simulation(
         ontology_a_path=args.ontology_a,
         ontology_b_path=args.ontology_b,
@@ -114,6 +137,12 @@ async def _run(
 
 
 def main(argv: list[str] | None = None) -> int:
+    # `.env` 의 OPENROUTER_API_KEY 등을 환경변수로 자동 로드. 셸 export 가
+    # 이미 있으면 그쪽이 우선 — `.env` 가 production 환경을 덮어쓰지 않음.
+    # ``find_dotenv`` 의 ``usecwd=True`` 가 사용자 cwd 기준 검색을 보장 —
+    # 디폴트 (caller 파일 기준) 면 프로젝트 루트의 ``.env`` 가 우선되어
+    # 사용자가 자신의 작업 디렉토리에 둔 ``.env`` 를 못 찾는다.
+    load_dotenv(find_dotenv(usecwd=True))
     args = _build_parser().parse_args(argv)
     if not os.environ.get("OPENROUTER_API_KEY"):
         # Pre-flight 체크: LiteLLM 호출 시점까지 가지 않고 즉시 실패.

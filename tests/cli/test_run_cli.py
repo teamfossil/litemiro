@@ -74,6 +74,34 @@ def test_parser_defaults_match_spec(tmp_path: Path) -> None:
     assert args.cooldown_seconds == pytest.approx(0.5)
 
 
+def test_parser_output_dir_default_is_none() -> None:
+    """``--output-dir`` 미지정 시 argparse 가 None 을 돌려준다.
+
+    실제 경로 (``runs/run-{ISO}/``) 는 ``_run`` 안에서 ``_default_output_dir``
+    이 채운다 — 매 실행마다 새 timestamp 가 되도록.
+    """
+    args = run_cli._build_parser().parse_args(
+        [
+            "--ontology-a",
+            str(_SAMPLE_A),
+            "--ontology-b",
+            str(_SAMPLE_B),
+        ]
+    )
+    assert args.output_dir is None
+
+
+def test_default_output_dir_is_under_runs_with_timestamp() -> None:
+    """``_default_output_dir`` 는 ``runs/run-{timestamp}/`` 패턴 + 매 호출 다른 값."""
+    a = run_cli._default_output_dir()
+    b = run_cli._default_output_dir()
+    assert a.parent == Path("runs")
+    assert a.name.startswith("run-")
+    assert b.name.startswith("run-")
+    # 마이크로초 포함이라 같은 초에 호출돼도 달라야 한다.
+    assert a != b
+
+
 def test_parser_accepts_custom_concurrency(tmp_path: Path) -> None:
     args = run_cli._build_parser().parse_args(
         _argv_with_paths(
@@ -191,15 +219,46 @@ def test_main_returns_one_and_prints_error_on_failure(
     assert "Error" in captured.err
 
 
+def test_main_loads_dotenv_so_env_file_supplies_api_key(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``.env`` 의 ``OPENROUTER_API_KEY`` 가 main() 의 pre-flight 게이트를 통과시킨다.
+
+    셸 export 없이 ``.env`` 만 있는 사용자도 ``litemiro-run`` 이 동작해야 한다.
+    pre-flight 체크보다 ``load_dotenv()`` 가 먼저 호출되는 순서를 lock-in.
+    """
+    monkeypatch.setattr(run_cli, "LiteLLMClient", _FakeLLM)
+    monkeypatch.setattr(run_cli, "STEmbedder", _FakeEmbedder)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+    env_path = tmp_path / ".env"
+    env_path.write_text("OPENROUTER_API_KEY=test-key-from-dotenv\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = run_cli.main(_argv_with_paths(tmp_path))
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "Error: OPENROUTER_API_KEY" not in captured.err
+    assert "Rounds run     : 3" in captured.out
+
+
 def test_main_returns_one_when_api_key_missing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """OPENROUTER_API_KEY 누락 시 LLM 호출 전에 빠른 실패."""
+    """OPENROUTER_API_KEY 누락 시 LLM 호출 전에 빠른 실패.
+
+    cwd 에 ``.env`` 가 있으면 ``load_dotenv()`` 가 채워버리므로 의도와 어긋남 —
+    cwd 를 빈 tmp_path 로 옮겨 ``.env`` 부재 + env 변수 부재 조건을 보장한다.
+    """
     monkeypatch.setattr(run_cli, "LiteLLMClient", _FakeLLM)
     monkeypatch.setattr(run_cli, "STEmbedder", _FakeEmbedder)
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.chdir(tmp_path)
 
     exit_code = run_cli.main(_argv_with_paths(tmp_path))
 
