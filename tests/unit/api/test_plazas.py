@@ -17,6 +17,10 @@ from fastapi.testclient import TestClient
 
 from litemiro.api.app import create_app
 from litemiro.api.composer import ComposerOutcome
+from litemiro.api.sample_fixtures import (
+    DEFAULT_ONTOLOGY_A_PATH,
+    DEFAULT_ONTOLOGY_B_PATH,
+)
 from litemiro.api.store import ProgressCallback, RunnerOutcome
 from litemiro.phase1.models import Preset
 
@@ -177,6 +181,105 @@ class TestCreatePlaza:
                 },
             )
         assert resp.status_code == 422
+
+    def test_omitted_paths_fall_back_to_sample_fixtures(self, tmp_path: Path) -> None:
+        """두 경로 모두 생략 시 라우트가 repo dev fixture 로 채워야 한다.
+
+        프론트 Seed 화면이 자료 업로드 UI 없이 항상 같은 sample 로 호출하는
+        패턴 — 호출 측이 dummy path 를 박지 않게 한 게 핵심. runner 에 들어간
+        경로가 ``DEFAULT_ONTOLOGY_*_PATH`` 와 일치하는지 직접 잡는다.
+        """
+        captured: dict[str, Path] = {}
+
+        async def _capture_runner(
+            *,
+            plaza_id: str,
+            ontology_a_path: Path,
+            ontology_b_path: Path,
+            rounds: int,
+            event_log_path: Path,
+            checkpoint_dir: Path,
+            on_progress: ProgressCallback,
+        ) -> RunnerOutcome:
+            del plaza_id, event_log_path, checkpoint_dir
+            captured["a"] = ontology_a_path
+            captured["b"] = ontology_b_path
+            for r in range(rounds):
+                await asyncio.sleep(0)
+                on_progress(rounds_done=r + 1)
+            return RunnerOutcome()
+
+        app = create_app(runner=_capture_runner, base_dir=tmp_path)
+        with TestClient(app) as client:
+            resp = client.post("/api/plazas", json={"rounds": 1})
+            assert resp.status_code == 202
+            _wait_until(client, resp.json()["plaza_id"], terminal={"completed", "failed"})
+        assert captured["a"] == DEFAULT_ONTOLOGY_A_PATH
+        assert captured["b"] == DEFAULT_ONTOLOGY_B_PATH
+
+    def test_explicit_path_overrides_default(self, tmp_path: Path) -> None:
+        """한쪽만 명시한 경우, 명시한 쪽은 그대로 / 생략한 쪽만 default 로 폴백."""
+        captured: dict[str, Path] = {}
+
+        async def _capture_runner(
+            *,
+            plaza_id: str,
+            ontology_a_path: Path,
+            ontology_b_path: Path,
+            rounds: int,
+            event_log_path: Path,
+            checkpoint_dir: Path,
+            on_progress: ProgressCallback,
+        ) -> RunnerOutcome:
+            del plaza_id, event_log_path, checkpoint_dir
+            captured["a"] = ontology_a_path
+            captured["b"] = ontology_b_path
+            for r in range(rounds):
+                await asyncio.sleep(0)
+                on_progress(rounds_done=r + 1)
+            return RunnerOutcome()
+
+        app = create_app(runner=_capture_runner, base_dir=tmp_path)
+        with TestClient(app) as client:
+            resp = client.post(
+                "/api/plazas",
+                json={"ontology_a_path": "/tmp/custom-a.json", "rounds": 1},
+            )
+            assert resp.status_code == 202
+            _wait_until(client, resp.json()["plaza_id"], terminal={"completed", "failed"})
+        assert captured["a"] == Path("/tmp/custom-a.json")
+        assert captured["b"] == DEFAULT_ONTOLOGY_B_PATH
+
+    def test_empty_string_path_rejected(self, tmp_path: Path) -> None:
+        """`""` 는 422 — 명시한 경로라면 길이 1 이상이어야 한다.
+
+        omit 가능하다고 ``""`` 를 허용하면 default 폴백 의도와 헷갈리므로
+        Field(min_length=1) 으로 명시적으로 막는다.
+        """
+        app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
+        with TestClient(app) as client:
+            resp = client.post(
+                "/api/plazas",
+                json={"ontology_a_path": "", "rounds": 1},
+            )
+        assert resp.status_code == 422
+
+    def test_default_fixture_resolves_to_real_agents(self, tmp_path: Path) -> None:
+        """경로 omit → 라우트가 채운 default fixture 가 실제로 /agents 로 읽힌다.
+
+        sample_ontology_a.json 의 agents (agent_001..) 가 그대로 노출되는지로
+        패키지 fixture 가 batched export 경로와 정합한지 확인.
+        """
+        app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
+        with TestClient(app) as client:
+            created = client.post("/api/plazas", json={"rounds": 1}).json()
+            plaza_id = created["plaza_id"]
+            agents_resp = client.get(f"/api/plazas/{plaza_id}/agents")
+        assert agents_resp.status_code == 200
+        body = agents_resp.json()
+        ids = {a["id"] for a in body["agents"]}
+        # sample_ontology_a.json 은 agent_001 ~ agent_003. 정확히 일치.
+        assert ids == {"agent_001", "agent_002", "agent_003"}
 
 
 class TestGetStatus:

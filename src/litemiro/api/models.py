@@ -21,8 +21,13 @@ PlazaStatus = Literal["pending", "running", "composing", "completed", "failed"]
 class CreatePlazaRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    ontology_a_path: str = Field(min_length=1)
-    ontology_b_path: str = Field(min_length=1)
+    # 두 경로 모두 optional — 프론트 Seed 화면은 자료 업로드 UI 가 없어 항상
+    # 같은 sample 로 호출하므로 path 박는 게 어색하다. 생략하면 라우트가
+    # ``sample_fixtures.DEFAULT_ONTOLOGY_*_PATH`` (repo 의 dev fixture) 로 채운다.
+    # 빈 문자열은 막아둔다 — JSON 직렬화 사고로 ``""`` 가 들어오는 경우 default
+    # 폴백 의도와 어긋나서 헷갈리니, 명시한 거면 길이 1 이상이어야 한다.
+    ontology_a_path: str | None = Field(default=None, min_length=1)
+    ontology_b_path: str | None = Field(default=None, min_length=1)
     rounds: int = Field(ge=1, le=200)
     label: str | None = Field(default=None, max_length=120)
     # 보고서 합성 시 호출 수를 결정. quick=1 콜 / standard=4 콜 / full=8 콜.
