@@ -73,6 +73,7 @@ async def test_real_runner_forwards_args_and_returns_outcome(
     )
 
     assert outcome.tokens_used == 1234
+    assert outcome.rounds_run == 4
     assert progress_calls == [4]
     assert captured["llm_client"] is llm
     assert captured["embedder"] is embedder
@@ -84,3 +85,45 @@ async def test_real_runner_forwards_args_and_returns_outcome(
     assert captured["rounds"] == 4
     assert captured["event_log_path"] == tmp_path / "events.jsonl"
     assert captured["checkpoint_dir"] == tmp_path / "checkpoints"
+
+
+@pytest.mark.asyncio
+async def test_real_runner_propagates_early_exit_rounds(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """토큰 예산 소진 등으로 ``rounds_run < rounds`` 인 경우, outcome 에 실제 라운드 수가 실려야 한다."""
+
+    async def _early_exit_run(**kwargs: Any) -> SimulationResult:
+        return SimulationResult(
+            rounds_run=2,
+            early_exit=True,
+            event_log_path=kwargs["event_log_path"],
+            checkpoint_dir=kwargs["checkpoint_dir"],
+            tokens_used=999_000,
+        )
+
+    monkeypatch.setattr(runner_mod, "run_simulation", _early_exit_run)
+
+    llm: LLMClient = _DummyLLM()  # type: ignore[assignment]
+    embedder: EmbedderLike = _DummyEmbedder()  # type: ignore[assignment]
+    real = RealPlazaRunner(llm_client=llm, embedder=embedder)
+
+    progress_calls: list[int] = []
+
+    def _on_progress(*, rounds_done: int) -> None:
+        progress_calls.append(rounds_done)
+
+    outcome = await real(
+        plaza_id="early",
+        ontology_a_path=tmp_path / "a.json",
+        ontology_b_path=tmp_path / "b.json",
+        rounds=10,
+        event_log_path=tmp_path / "events.jsonl",
+        checkpoint_dir=tmp_path / "checkpoints",
+        on_progress=_on_progress,
+    )
+
+    assert outcome.rounds_run == 2
+    assert outcome.tokens_used == 999_000
+    # on_progress 도 실제로 돈 라운드 수만 보고해야 한다.
+    assert progress_calls == [2]

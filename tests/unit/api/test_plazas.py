@@ -20,7 +20,15 @@ from litemiro.api.store import ProgressCallback, RunnerOutcome
 _RunnerCoro = Callable[..., Coroutine[Any, Any, RunnerOutcome]]
 
 
-def _success_runner(rounds_to_report: int, *, tokens: int = 0) -> _RunnerCoro:
+def _success_runner(
+    rounds_to_report: int,
+    *,
+    tokens: int = 0,
+    report_rounds_run: bool = False,
+) -> _RunnerCoro:
+    """``report_rounds_run=True`` 면 outcome 에 실 라운드 수를 같이 실어준다 —
+    early-exit 시나리오 모킹용. 기본값(False) 은 기존 동작 유지."""
+
     async def _run(
         *,
         plaza_id: str,
@@ -36,6 +44,8 @@ def _success_runner(rounds_to_report: int, *, tokens: int = 0) -> _RunnerCoro:
         for r in range(rounds_to_report):
             await asyncio.sleep(0)
             on_progress(rounds_done=r + 1)
+        if report_rounds_run:
+            return RunnerOutcome(tokens_used=tokens, rounds_run=rounds_to_report)
         return RunnerOutcome(tokens_used=tokens)
 
     return _run
@@ -163,3 +173,28 @@ class TestGetStatus:
         assert body["error"] is not None
         assert "boom" in body["error"]
         assert body["rounds_done"] == 0
+
+    def test_early_exit_keeps_actual_rounds_done(self, tmp_path: Path) -> None:
+        """outcome.rounds_run 이 요청 total 보다 작으면 그 값을 그대로 유지해야 한다.
+
+        토큰 예산 소진 등으로 ``run_simulation`` 이 ``early_exit=True`` 로 끝낸
+        경우, 상태/보고가 "전부 끝났다" 고 잘못 보고하면 안 된다.
+        """
+        # 10 라운드를 요청했지만 runner 는 3 라운드만 돌고 끝났다고 보고.
+        runner = _success_runner(rounds_to_report=3, report_rounds_run=True)
+        app = create_app(runner=runner, base_dir=tmp_path)
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/plazas",
+                json={
+                    "ontology_a_path": "/tmp/a.json",
+                    "ontology_b_path": "/tmp/b.json",
+                    "rounds": 10,
+                    "label": "early-exit",
+                },
+            ).json()
+            body = _wait_until(client, created["plaza_id"], terminal={"completed", "failed"})
+        assert body["status"] == "completed"
+        assert body["rounds_total"] == 10
+        # 핵심: 요청 10 라운드로 강제 채우지 말고 실제 3 라운드로 남겨야 함.
+        assert body["rounds_done"] == 3
