@@ -321,3 +321,127 @@ class TestGetStatus:
         assert body["rounds_total"] == 10
         # 핵심: 요청 10 라운드로 강제 채우지 말고 실제 3 라운드로 남겨야 함.
         assert body["rounds_done"] == 3
+
+
+class TestPersistence:
+    """``base_dir/plazas.db`` 의 SQLite 영속화 — 프로세스 재시작 후 복원."""
+
+    def test_completed_plaza_visible_after_restart(self, tmp_path: Path) -> None:
+        """완료된 plaza 는 새 app 인스턴스에서도 /status 가 200 으로 떨어진다.
+
+        같은 ``base_dir`` 로 ``create_app`` 을 두 번 호출 — 첫 번째에서 plaza
+        하나 띄우고 완료까지 기다린 뒤 닫고, 두 번째에서 같은 plaza_id 의
+        /status 가 그대로 보이는지.
+        """
+        runner = _success_runner(rounds_to_report=2)
+        first_app = create_app(runner=runner, base_dir=tmp_path)
+        with TestClient(first_app) as client:
+            created = client.post(
+                "/api/plazas",
+                json={
+                    "ontology_a_path": "/tmp/a.json",
+                    "ontology_b_path": "/tmp/b.json",
+                    "rounds": 2,
+                    "label": "survivor",
+                },
+            ).json()
+            plaza_id = created["plaza_id"]
+            _wait_until(client, plaza_id, terminal={"completed", "failed"})
+
+        # 새 app — 메모리 record 는 0 에서 시작. db 에서 hydrate 만 의지.
+        second_app = create_app(runner=runner, base_dir=tmp_path)
+        with TestClient(second_app) as client:
+            resp = client.get(f"/api/plazas/{plaza_id}/status")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "completed"
+        assert body["rounds_total"] == 2
+        assert body["rounds_done"] == 2
+        assert body["label"] == "survivor"
+
+    def test_interrupted_running_plaza_marked_failed_on_restart(self, tmp_path: Path) -> None:
+        """첫 app shutdown 시점에 running 인 plaza 는 재기동 후 failed 로 보여야 한다.
+
+        ``hanging_runner`` 가 영영 안 끝나도록 두고, TestClient 가 닫힐 때
+        ``shutdown`` 이 task 를 취소한다. 그 시점에 db 의 마지막 status 는
+        ``running``. 새 app 이 그걸 ``failed`` + 안내 메시지로 마킹해야 한다.
+        """
+
+        async def _hanging_runner(
+            *,
+            plaza_id: str,
+            ontology_a_path: Path,
+            ontology_b_path: Path,
+            rounds: int,
+            event_log_path: Path,
+            checkpoint_dir: Path,
+            on_progress: ProgressCallback,
+        ) -> RunnerOutcome:
+            del plaza_id, ontology_a_path, ontology_b_path, rounds
+            del event_log_path, checkpoint_dir, on_progress
+            await asyncio.sleep(60)  # 절대 끝나지 않게 — cancel 받기 전까지.
+            return RunnerOutcome()
+
+        first_app = create_app(runner=_hanging_runner, base_dir=tmp_path)
+        with TestClient(first_app) as client:
+            created = client.post(
+                "/api/plazas",
+                json={
+                    "ontology_a_path": "/tmp/a.json",
+                    "ontology_b_path": "/tmp/b.json",
+                    "rounds": 5,
+                    "label": "interrupted",
+                },
+            ).json()
+            plaza_id = created["plaza_id"]
+            # status="running" 으로 commit 될 때까지 기다린다.
+            deadline = time.monotonic() + 1.0
+            while time.monotonic() < deadline:
+                body = client.get(f"/api/plazas/{plaza_id}/status").json()
+                if body["status"] == "running":
+                    break
+                time.sleep(0.01)
+            else:
+                raise AssertionError("plaza never reached running before shutdown")
+
+        # TestClient context exit → shutdown → task cancel → 디스크에는 running 으로 남음.
+        # 새 app 이 hydrate 하며 failed 로 마킹.
+        second_app = create_app(runner=_hanging_runner, base_dir=tmp_path)
+        with TestClient(second_app) as client:
+            body = client.get(f"/api/plazas/{plaza_id}/status").json()
+        assert body["status"] == "failed"
+        assert body["error"] is not None
+        assert "restart" in body["error"].lower()
+
+    def test_per_round_progress_persisted(self, tmp_path: Path) -> None:
+        """``on_progress`` 가 부른 ``rounds_done`` 이 매 라운드 DB 에 영속돼야 한다.
+
+        직접 db 를 읽어 row 의 ``rounds_done`` 이 최종값이랑 일치하는지 본다.
+        progress 마다 commit 이 빠지면 재시작 시 라운드가 뒤로 후퇴한다.
+        """
+        runner = _success_runner(rounds_to_report=4)
+        app = create_app(runner=runner, base_dir=tmp_path)
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/plazas",
+                json={
+                    "ontology_a_path": "/tmp/a.json",
+                    "ontology_b_path": "/tmp/b.json",
+                    "rounds": 4,
+                },
+            ).json()
+            _wait_until(client, created["plaza_id"], terminal={"completed", "failed"})
+
+        import sqlite3  # noqa: PLC0415 — 테스트 전용 직접 검증.
+
+        conn = sqlite3.connect(str(tmp_path / "plazas.db"))
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT status, rounds_done, rounds_total FROM plazas WHERE plaza_id = ?",
+            (created["plaza_id"],),
+        ).fetchone()
+        conn.close()
+        assert row is not None
+        assert row["status"] == "completed"
+        assert row["rounds_done"] == 4
+        assert row["rounds_total"] == 4
