@@ -192,9 +192,7 @@ async def test_run_boundary_respects_preset_call_count(tmp_path: Path) -> None:
     """standard 프리셋 → 4 카테고리, 카테고리당 1 회 = analyzer 가 4 회 호출된다."""
     events = _write_sample_jsonl(tmp_path / "events.jsonl")
     output = tmp_path / "report.md"
-    args = report_cli._build_parser().parse_args(
-        _argv_for(events, output, "--preset", "standard")
-    )
+    args = report_cli._build_parser().parse_args(_argv_for(events, output, "--preset", "standard"))
 
     summary = await report_cli._run(args, llm_client=_FakeLLM())
 
@@ -293,9 +291,7 @@ def test_main_loads_dotenv_so_env_file_supplies_api_key(
     """
     monkeypatch.setattr(report_cli, "LiteLLMClient", _FakeLLM)
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    (tmp_path / ".env").write_text(
-        "OPENROUTER_API_KEY=test-key-from-dotenv\n", encoding="utf-8"
-    )
+    (tmp_path / ".env").write_text("OPENROUTER_API_KEY=test-key-from-dotenv\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
     events = _write_sample_jsonl(tmp_path / "events.jsonl")
     output = tmp_path / "report.md"

@@ -74,8 +74,7 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help=(
-            "Markdown output path "
-            "(default: ./reports/report-{ISO timestamp}.md — new file per run)"
+            "Markdown output path (default: ./reports/report-{ISO timestamp}.md — new file per run)"
         ),
     )
     parser.add_argument(
