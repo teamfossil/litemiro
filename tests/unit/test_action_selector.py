@@ -369,6 +369,28 @@ class TestPromptComposition:
         for at in ActionType:
             assert at.value in system
 
+    async def test_system_prompt_anti_quote_spam_cues_present(self) -> None:
+        # QUOTE_POST 쏠림 (LLM 이 라운드마다 quote-reply 만 고름) 회귀 가드.
+        # 한 번 손본 뒤 누가 무심코 cue 를 빼버리면 분포가 다시 무너지는 게
+        # 비싸서 (15 라운드 풀 sim 한 번이 ~$1), 핵심 표현 두 가지를
+        # 텍스트로 못 박는다 — LIKE 가 routine agreement 의 답이라는 점과
+        # QUOTE 의 self-check 게이트.
+        llm = _FakeLLM(_payload(ActionType.DO_NOTHING))
+        await _selector(llm).select_action("me", _ctx())
+        system = llm.calls[0][0]
+        assert "Most agreement should be a LIKE" in system
+        assert "would a stranger reading my added text learn something" in system
+
+    async def test_system_prompt_keeps_follow_alive(self) -> None:
+        # FOLLOW 가 0 건으로 죽지 않도록 — "shape your network" 와
+        # follow_rate 와의 연결을 명시한 cue 가 빠지면 LLM 이 FOLLOW 를
+        # 완전히 무시한다 (v2 prompt 에서 관측). 사람 손이 cue 를 빼면
+        # 재현되니 텍스트로 잠가둔다.
+        llm = _FakeLLM(_payload(ActionType.DO_NOTHING))
+        await _selector(llm).select_action("me", _ctx())
+        system = llm.calls[0][0]
+        assert "Skipping FOLLOW entirely contradicts your follow_rate" in system
+
 
 class TestPhase1PersonaSchema:
     """Phase 1 (dual-ontology) freezes ten persona keys; the prompt layer
