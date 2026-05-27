@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from litemiro.phase1.models import Preset
 
 PlazaStatus = Literal["pending", "running", "composing", "completed", "failed"]
+OntologyStatus = Literal["pending", "running", "completed", "failed"]
 
 
 class CreatePlazaRequest(BaseModel):
@@ -29,6 +30,10 @@ class CreatePlazaRequest(BaseModel):
     # 폴백 의도와 어긋나서 헷갈리니, 명시한 거면 길이 1 이상이어야 한다.
     ontology_a_path: str | None = Field(default=None, min_length=1)
     ontology_b_path: str | None = Field(default=None, min_length=1)
+    # /api/ontologies 로 생성한 결과를 그대로 plaza 에 연결하는 경로. 명시되면
+    # ``ontology_a_path/b_path`` 보다 우선하며 dev fixture 폴백도 무시한다 —
+    # 사용자 PDF 가 실제로 시뮬에 반영되는 정공 경로.
+    ontology_id: str | None = Field(default=None, min_length=1)
     rounds: int = Field(ge=1, le=200)
     label: str | None = Field(default=None, max_length=120)
     # 보고서 합성 시 호출 수를 결정. quick=1 콜 / standard=4 콜 / full=8 콜.
@@ -195,10 +200,70 @@ class PlazaReportResponse(BaseModel):
     report_fallback_used: bool = False
 
 
+class DocumentResponse(BaseModel):
+    """업로드된 사용자 문서 한 건. ``storage_path`` 는 디스크 위치라 외부 비공개 —
+    응답에선 메타데이터(파일명/MIME/크기/sha256/document_id) 만 노출.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: str
+    filename: str
+    mime_type: str
+    size_bytes: int = Field(ge=0)
+    sha256: str = Field(min_length=64, max_length=64)
+    created_at: datetime
+
+
+class DocumentListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    documents: list[DocumentResponse]
+
+
+class CreateOntologyRequest(BaseModel):
+    """``POST /api/ontologies`` 본문 — 어떤 문서로 어떤 규모/조건의 ontology 를
+    만들지. ``requirement`` 는 Phase 1 의 entity ranking / profile generation 에
+    그대로 전달되는 한 줄 문맥 (예: "아이스라엘 갈등에 대한 시민 반응 시뮬").
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: str = Field(min_length=1)
+    requirement: str = Field(min_length=1, max_length=500)
+    preset: Preset = Preset.QUICK
+
+
+class OntologyResponse(BaseModel):
+    """Phase 1 generation 한 건의 상태. ``status='completed'`` 이면 ``ready=True``
+    + ``agent_count`` 채워짐. 그 외에는 ``ready=False`` 로 두고 프론트는 폴링.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    ontology_id: str
+    document_id: str
+    status: OntologyStatus
+    preset: Preset
+    requirement: str
+    agent_count: int | None = None
+    error: str | None = None
+    # status == 'completed' 의 단순 별칭. 폴링 측이 boolean 한 줄로 분기할 수
+    # 있도록 노출 — plaza 의 ``ready`` 패턴과 같은 의도.
+    ready: bool
+    created_at: datetime
+    updated_at: datetime
+
+
 __all__ = [
+    "CreateOntologyRequest",
     "CreatePlazaRequest",
     "CreatePlazaResponse",
+    "DocumentListResponse",
+    "DocumentResponse",
     "HealthResponse",
+    "OntologyResponse",
+    "OntologyStatus",
     "PlazaAgentItem",
     "PlazaAgentsResponse",
     "PlazaLayoutAgentItem",
