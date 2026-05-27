@@ -54,6 +54,18 @@ const ENTITY_TYPE_TO_ROLE_ID: Record<string, RoleId> = {
   AiPolicyIssue: 'politician',
   RegulatoryInstrument: 'politician',
   PolicyStance: 'ngo',
+  // 노동·정부·기업 분쟁 시뮬에서 ontology 가 만드는 추상 entity_type 들.
+  // 의미 가까운 mock RoleId 로 흡수 — 노조/파업 → 시민단체, 협상/중재/투표 →
+  // 정치인 (정책·중재 영역), 부서/임원/보상제도 → 기업.
+  LaborUnion: 'ngo',
+  StrikeAction: 'ngo',
+  CollectiveBargaining: 'politician',
+  GovernmentMediator: 'politician',
+  LegalInvestigation: 'politician',
+  Vote: 'politician',
+  Department: 'corp',
+  CompanyExecutive: 'corp',
+  CompensationScheme: 'corp',
 };
 
 export function mapBackendRoleToRoleId(entityType: string): RoleId {
