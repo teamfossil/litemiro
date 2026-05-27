@@ -68,7 +68,7 @@ def test_parser_defaults_match_spec(tmp_path: Path) -> None:
     assert args.rounds == 3
     assert args.output_dir == tmp_path
     assert args.llm_model == "openrouter/qwen/qwen-plus"
-    assert args.token_budget == 1_000_000
+    assert args.token_budget == 3_000_000
     assert args.semaphore_limit == 10
     assert args.batch_size == 20
     assert args.cooldown_seconds == pytest.approx(0.5)
