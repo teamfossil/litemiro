@@ -20,8 +20,16 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _FIXTURE_DIR = _REPO_ROOT / "tests" / "data"
 
-DEFAULT_ONTOLOGY_A_PATH: Path = _FIXTURE_DIR / "sample_ontology_a.json"
-DEFAULT_ONTOLOGY_B_PATH: Path = _FIXTURE_DIR / "sample_ontology_b.json"
+# 3-agent sample 은 unit 용으로는 깔끔하지만 dev 폴백으로는 너무 빈약해서
+# 실 시뮬에서 "1 event / 1 agent" 같은 빈약한 리포트가 나온다. 같은 디렉터리의
+# quick preset (100 agents) 을 우선 사용하고, 없으면 작은 sample 로 폴백.
+_QUICK_A = _FIXTURE_DIR / "sample_quick_preset_ontology_a.json"
+_QUICK_B = _FIXTURE_DIR / "sample_quick_preset_ontology_b.json"
+_SMALL_A = _FIXTURE_DIR / "sample_ontology_a.json"
+_SMALL_B = _FIXTURE_DIR / "sample_ontology_b.json"
+
+DEFAULT_ONTOLOGY_A_PATH: Path = _QUICK_A if _QUICK_A.exists() else _SMALL_A
+DEFAULT_ONTOLOGY_B_PATH: Path = _QUICK_B if _QUICK_B.exists() else _SMALL_B
 
 
 __all__ = [

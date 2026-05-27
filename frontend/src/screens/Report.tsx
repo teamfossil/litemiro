@@ -607,6 +607,24 @@ export default function Report() {
   const nAgents = backendReport?.n_agents ?? 312;
   const nRounds = backendReport?.n_rounds ?? total;
 
+  // 다운로드 — markdown 은 Blob, PDF 는 브라우저 print (print dialog 에서 "PDF 로 저장")
+  const baseName = `litemiro-report-${plazaId ?? 'demo'}`;
+  const handleDownloadMarkdown = () => {
+    if (!reportMarkdown) return;
+    const blob = new Blob([reportMarkdown], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${baseName}.md`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+  const handlePrintPdf = () => {
+    window.print();
+  };
+
   return (
     <div className="lm-rep">
       <div className="lm-rep__pad">
@@ -627,8 +645,10 @@ export default function Report() {
             <Button kind="ghost" onClick={() => go('plaza')}>
               광장으로
             </Button>
-            <Button kind="secondary">Markdown</Button>
-            <Button kind="secondary">PDF</Button>
+            <Button kind="secondary" onClick={handleDownloadMarkdown} disabled={!reportMarkdown}>
+              Markdown
+            </Button>
+            <Button kind="secondary" onClick={handlePrintPdf}>PDF</Button>
             <Button kind="primary" trailing={<ArrowGlyph dir="right" />}>
               공유
             </Button>
