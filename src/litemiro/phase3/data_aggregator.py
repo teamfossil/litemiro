@@ -120,9 +120,14 @@ def _network_metrics(events: list[RoundEvent]) -> dict[str, Any]:
 
 
 def _topic_flow(events: list[RoundEvent]) -> dict[str, Any]:
+    """REPOST 가 round_manager 에서 새 Post 를 생성해 store/feed 에 들어가므로
+    "신규 생성된 게시물" 이라는 표현은 CREATE+QUOTE+REPOST 합계가 맞다 (#110).
+    반면 content sample 과 top_posters 는 작성자 인사이트용이라 본문이 있는
+    CREATE/QUOTE 만 센다 — 두 의미를 한 카운터에 욱여넣지 않고 분리한다."""
     samples: list[dict[str, Any]] = []
     posts_per_agent: Counter[str] = Counter()
     posts_per_round: defaultdict[int, int] = defaultdict(int)
+    n_amplifications = 0
     for e in events:
         if e.action.type in (ActionType.CREATE_POST, ActionType.QUOTE_POST):
             posts_per_agent[e.agent_id] += 1
@@ -136,8 +141,23 @@ def _topic_flow(events: list[RoundEvent]) -> dict[str, Any]:
                         "content": e.action.content or "",
                     }
                 )
+        elif e.action.type is ActionType.REPOST:
+            n_amplifications += 1
+    n_content_posts = sum(posts_per_round.values())
     return {
-        "n_posts": sum(posts_per_round.values()),
+        # [DEPRECATED] "n_posts" 가 "총 게시물" 로 오해돼 REPOST 누락 (#110) 원인이
+        # 됐다. 새 코드는 의미가 명확한 n_content_posts / n_amplifications /
+        # total_posts_created 중 하나를 쓰고, 본 키는 구버전 prompt·외부
+        # consumer 호환을 위해서만 유지한다. 다음 마이너에서 제거 후보.
+        "n_posts": n_content_posts,
+        # content 가 있는 게시물 (CREATE_POST + QUOTE_POST) — top_posters /
+        # samples 와 같은 모집단.
+        "n_content_posts": n_content_posts,
+        # REPOST 만 — 본문 없이 인용만 한 amplification.
+        "n_amplifications": n_amplifications,
+        # store/feed 에 새로 등장한 모든 Post 의 합계. ReportComposer 가
+        # "총 게시물 N건" 이라 표현할 때 인용해야 하는 정식 키.
+        "total_posts_created": n_content_posts + n_amplifications,
         "posts_per_round": [
             {"round_num": r, "n": posts_per_round[r]} for r in sorted(posts_per_round)
         ],
@@ -150,6 +170,10 @@ def _topic_flow(events: list[RoundEvent]) -> dict[str, Any]:
 
 
 def _time_series(events: list[RoundEvent]) -> dict[str, Any]:
+    """LLM analyzer 가 series 배열을 직접 세다가 "14/15 라운드에서 0%" 같은
+    환각을 낸 적이 있어서 (#110) round-level 집계는 여기서 미리 계산해 둔다.
+    LLM 은 aggregate 의 사전 합산값을 그대로 인용하면 되고, 더 이상 라운드를
+    세거나 분포를 추정할 필요가 없다."""
     by_round: defaultdict[int, list[RoundEvent]] = defaultdict(list)
     for e in events:
         by_round[e.round_num].append(e)
@@ -168,9 +192,25 @@ def _time_series(events: list[RoundEvent]) -> dict[str, Any]:
                 "n_active_agents": active,
             }
         )
+    n_rounds = len(series)
+    n_rounds_with_do_nothing = sum(1 for s in series if int(s["n_do_nothing"]) > 0)
+    if series:
+        ratios = [float(s["do_nothing_ratio"]) for s in series]
+        avg_do_nothing_ratio = sum(ratios) / n_rounds
+        max_do_nothing_ratio = max(ratios)
+    else:
+        avg_do_nothing_ratio = 0.0
+        max_do_nothing_ratio = 0.0
     return {
         "rounds": rounds,
         "series": series,
+        "aggregate": {
+            "n_rounds": n_rounds,
+            "n_rounds_with_do_nothing": n_rounds_with_do_nothing,
+            "n_rounds_zero_do_nothing": n_rounds - n_rounds_with_do_nothing,
+            "avg_do_nothing_ratio": avg_do_nothing_ratio,
+            "max_do_nothing_ratio": max_do_nothing_ratio,
+        },
     }
 
 
