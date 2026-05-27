@@ -18,20 +18,25 @@ import Casting from '@/screens/Casting';
 import Live from '@/screens/Live';
 import Plaza from '@/screens/Plaza';
 import Report from '@/screens/Report';
+import CastingDemoMock from '@/screens/demo/CastingDemoMock';
+import LiveDemoMock from '@/screens/demo/LiveDemoMock';
+import ReportDemoMock from '@/screens/demo/ReportDemoMock';
 import { ApiStatusBadge } from '@/api/ApiStatusBadge';
 
 // 경로 → 화면 ID 매핑 (헤더 활성 표시 + 헤더 숨김 판단용)
 function screenFromPath(pathname: string): ScreenId {
   if (pathname.startsWith('/seed')) return 'seed';
-  if (pathname.startsWith('/casting')) return 'casting';
-  if (pathname.startsWith('/live')) return 'live';
-  if (pathname.startsWith('/plaza')) return 'plaza';
-  if (pathname.startsWith('/report')) return 'report';
+  if (pathname.startsWith('/demo/casting') || pathname.startsWith('/casting')) return 'casting';
+  if (pathname.startsWith('/demo/live') || pathname.startsWith('/live')) return 'live';
+  if (pathname.startsWith('/demo/plaza') || pathname.startsWith('/plaza')) return 'plaza';
+  if (pathname.startsWith('/demo/report') || pathname.startsWith('/report')) return 'report';
   return 'landing';
 }
 
 // URL pathname 에서 plazaId 분리 — `/live/abc123` 류 경로의 마지막 segment.
+// /demo/* 경로는 plaza_id 가 없는 mock 데모이므로 null.
 function plazaIdFromPath(pathname: string): string | null {
+  if (pathname.startsWith('/demo/')) return null;
   const m = pathname.match(/^\/(casting|live|plaza|report)\/([^/?#]+)/);
   if (!m) return null;
   const id = m[2];
@@ -47,11 +52,17 @@ export default function App() {
   const go = useScreenNav();
   const currentScreen = screenFromPath(location.pathname);
   const plazaId = useMemo(() => plazaIdFromPath(location.pathname), [location.pathname]);
+  const isDemo = location.pathname.startsWith('/demo/');
 
-  // 헤더에 표시할 광장 제목 — URL 의 plaza_id 로 /status 한 번 조회. label 이
-  // null 이면 "광장 #abc12345" 식 단축 ID 로 폴백. plazaId 가 바뀔 때마다 재조회.
+  // 헤더에 표시할 광장 제목 — 데모면 mock SEED 제목, 그 외엔 URL plaza_id 로
+  // /status 한 번 조회. label 이 null 이면 "광장 #abc12345" 단축 ID 로 폴백.
   const [plazaTitle, setPlazaTitle] = useState<string | null>(null);
   useEffect(() => {
+    if (isDemo) {
+      // 동적 import 없이 mock 직접 — 동기. setState 한 번이면 충분.
+      import('@/data/mock').then((m) => setPlazaTitle(m.lm.SEED.title));
+      return;
+    }
     if (!plazaId) {
       setPlazaTitle(null);
       return;
@@ -67,7 +78,7 @@ export default function App() {
         setPlazaTitle(`광장 #${plazaId.slice(0, 8)}`);
       });
     return () => { cancelled = true; };
-  }, [plazaId]);
+  }, [plazaId, isDemo]);
   const plaza = plazaTitle ? { title: plazaTitle } : null;
 
   // Landing 화면은 header 없이 전체 hero.
@@ -102,6 +113,11 @@ export default function App() {
         <Route path="/live/:plazaId" element={<Live />} />
         <Route path="/plaza/:plazaId" element={<Plaza />} />
         <Route path="/report/:plazaId" element={<Report />} />
+        {/* 데모 경로 — 백엔드 호출 없이 mock 데이터로만 시뮬레이션 시연. */}
+        <Route path="/demo/casting" element={<CastingDemoMock />} />
+        <Route path="/demo/live" element={<LiveDemoMock />} />
+        <Route path="/demo/plaza" element={<Plaza />} />
+        <Route path="/demo/report" element={<ReportDemoMock />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <ApiStatusBadge />
