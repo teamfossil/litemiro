@@ -226,9 +226,7 @@ def _format_topic_flow(data: Mapping[str, Any]) -> str:
     n_amp = int(data.get("n_amplifications", 0) or 0)
     total = int(data.get("total_posts_created", n_content + n_amp) or 0)
     top = data.get("top_posters") or []
-    head = (
-        f"본문 있는 포스트 {n_content}건 + 리포스트 {n_amp}건 → 신규 포스트 총 {total}건."
-    )
+    head = f"본문 있는 포스트 {n_content}건 + 리포스트 {n_amp}건 → 신규 포스트 총 {total}건."
     if isinstance(top, list) and top:
         first = top[0]
         aid = first.get("agent_id", "?")
