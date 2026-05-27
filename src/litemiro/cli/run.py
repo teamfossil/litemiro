@@ -68,8 +68,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--token-budget",
         type=int,
-        default=1_000_000,
-        help="Per-simulation token cap (default: 1_000_000)",
+        default=3_000_000,
+        help="Per-simulation token cap (default: 3_000_000)",
     )
     parser.add_argument(
         "--semaphore-limit",
