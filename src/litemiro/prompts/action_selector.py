@@ -45,7 +45,9 @@ _SYSTEM_SCHEMA = (
     "  - LIKE_POST    → target_post_id from your feed.\n"
     "  - REPOST       → target_post_id from your feed.\n"
     "  - QUOTE_POST   → target_post_id from your feed AND non-empty content.\n"
-    "  - FOLLOW       → target_agent_id of an author visible in your feed.\n"
+    "  - FOLLOW       → target_agent_id of an author visible in your feed. "
+    "Use this when an author's stance or topics align with yours and you want "
+    "their future posts to keep surfacing in your feed.\n"
     "  - DO_NOTHING   → omit all targets and content."
 )
 
@@ -67,6 +69,7 @@ _BEHAVIOR_TENDENCY_LABELS: tuple[tuple[str, str], ...] = (
     ("post_rate", "originate posts"),
     ("reply_rate", "reply or quote"),
     ("repost_rate", "repost"),
+    ("follow_rate", "follow others whose stance you find compelling"),
     ("controversy_affinity", "engage with controversy"),
 )
 
