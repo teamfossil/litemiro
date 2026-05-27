@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import statistics
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -153,7 +154,7 @@ class OntologyValidator:
             memory_topics = _normalized_topic_set(
                 topic for memory in store.semantic for topic in memory.topics
             )
-            if persona_topics & memory_topics:
+            if _has_topic_overlap(persona_topics, memory_topics):
                 continue
 
             warnings.append(
@@ -162,8 +163,113 @@ class OntologyValidator:
         return warnings
 
 
+# Persona 토픽은 LLM 이 생성한 다어절 명사구 ("AI 윤리 가이드라인") 인 반면
+# memory 토픽은 `_KEYWORD_RE` 로 추출된 단일 명사 또는 CamelCase entity type
+# ("AI", "AIProduct") 이라 whole-string casefold set 비교로는 사실상 절대
+# 매칭이 안 된다 (run 한 번에 100 중 19 falsy 경고). 두 묶음을 단어 단위
+# 토큰으로 정규화한 뒤 set 교집합으로 비교한다:
+#   1. `\w+` 로 공백·구두점·슬래시·하이픈 단위로 분리
+#   2. 한글 조사/어미 strip — 메모리 측은 이미 하지만 페르소나 측도 보호
+#   3. ASCII 토큰은 CamelCase 분해 ("AIProduct" → "AI", "Product")
+# 길이 1 토큰은 의미 노이즈가 커 제외.
+_TOKEN_RE = re.compile(r"\w+")
+_CAMEL_RE = re.compile(r"[A-Z]+(?=[A-Z][a-z])|[A-Z][a-z]+|[A-Z]+|[a-z]+|\d+")
+_KOREAN_SUFFIXES: tuple[str, ...] = tuple(
+    sorted(
+        (
+            "에서는",
+            "에서도",
+            "한테는",
+            "한테도",
+            "에게는",
+            "에게도",
+            "에서",
+            "에게",
+            "한테",
+            "부터",
+            "까지",
+            "보다",
+            "마저",
+            "처럼",
+            "으로",
+            "라도",
+            "들이",
+            "들은",
+            "들을",
+            "들의",
+            "들도",
+            "들과",
+            "하는",
+            "되는",
+            "이며",
+            "이고",
+            "는",
+            "은",
+            "이",
+            "가",
+            "을",
+            "를",
+            "의",
+            "에",
+            "도",
+            "만",
+            "와",
+            "과",
+            "로",
+            "야",
+        ),
+        key=len,
+        reverse=True,
+    )
+)
+
+
+def _strip_korean_suffix(token: str) -> str:
+    if token.isascii():
+        return token
+    for suffix in _KOREAN_SUFFIXES:
+        if token.endswith(suffix):
+            stem = token[: -len(suffix)]
+            if len(stem) >= 2:
+                return stem
+    return token
+
+
 def _normalized_topic_set(topics: Iterable[str]) -> set[str]:
-    return {topic.strip().casefold() for topic in topics if topic.strip()}
+    tokens: set[str] = set()
+    for topic in topics:
+        cleaned = topic.strip()
+        if not cleaned:
+            continue
+        for raw in _TOKEN_RE.findall(cleaned):
+            stem = _strip_korean_suffix(raw)
+            parts = _CAMEL_RE.findall(stem) if stem.isascii() else [stem]
+            for part in parts:
+                if len(part) >= 2:
+                    tokens.add(part.casefold())
+    return tokens
+
+
+def _has_topic_overlap(persona: set[str], memory: set[str]) -> bool:
+    """Exact 토큰 교집합 우선, 없으면 한국어 합성어용 substring fallback.
+
+    한국어는 ' 개인정보 ' 와 ' 개인정보보호위원회 ' 처럼 단어 경계 없이
+    의미 단위가 합쳐지는 합성어가 흔해 단순 토큰 분리로는 잡히지 않는다
+    (run debug3 의 gdpr_guideline 케이스). 토큰 길이 3 이상에서만 substring
+    을 인정해 두 글자 ASCII 약어 ('ai', 'eu') 의 거짓 양성을 막는다 — 그
+    범주는 이미 CamelCase 분해로 충분히 매칭된다.
+    """
+    if persona & memory:
+        return True
+    for p in persona:
+        if len(p) < 3:
+            continue
+        for m in memory:
+            if len(m) < 3:
+                continue
+            if p in m or m in p:
+                return True
+    return False
 
 
 __all__ = ["OntologyValidator", "ValidationResult"]
