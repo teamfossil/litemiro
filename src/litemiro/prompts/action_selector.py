@@ -185,7 +185,17 @@ def _behavior_hint(context: ActionContext) -> str:
             bits.append(f"{label}: {_LIKE_RATE_FALLBACK}")
     if not bits:
         return ""
-    return "Behavior tendencies (0..1, higher = more likely): " + "; ".join(bits) + "."
+    line = "Behavior tendencies (0..1, higher = more likely): " + "; ".join(bits) + "."
+    # reply_rate 와 like_rate / repost_rate 가 동시에 등장하면 LLM 이 둘을 곱해
+    # 야 할지 (중복 가중) umbrella+subtype 으로 봐야 할지 모호하다 — #120 리뷰.
+    # 의도된 의미를 명시: reply_rate 가 umbrella, 나머지 둘이 그 안에서의 tilt.
+    if "reply_rate" in bt:
+        line += (
+            " Note: 'react to others' posts overall' is the umbrella reaction "
+            "probability — 'press LIKE on aligned posts' and 'repost' tilt "
+            "within that umbrella (not on top of it); whatever remains is QUOTE."
+        )
+    return line
 
 
 def _avoidance_hint(context: ActionContext) -> str:
