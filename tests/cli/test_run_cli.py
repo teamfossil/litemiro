@@ -245,6 +245,90 @@ def test_main_loads_dotenv_so_env_file_supplies_api_key(
     assert "Rounds run     : 3" in captured.out
 
 
+def test_main_aborts_when_event_log_exists_without_opt_in(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """기존 ``events.jsonl`` 발견 시 default 로 abort — Phase 3 오염 footgun 차단.
+
+    같은 ``--output-dir`` 을 재사용하면 EventLogger 가 append 모드라 이전 실행
+    라인이 누적되어 라운드별 액션 분포·posts_created 가 왜곡되는 사례가 있어
+    명시 opt-in 없이는 막는다.
+    """
+    _patch_dependencies(monkeypatch)
+    event_log = tmp_path / "events.jsonl"
+    event_log.write_text('{"prior":"run"}\n', encoding="utf-8")
+
+    exit_code = run_cli.main(_argv_with_paths(tmp_path))
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "already exists" in captured.err
+    assert "double-count" in captured.err
+    assert "--reuse-output-dir" in captured.err
+    # 기존 라인은 보존 — abort 가 데이터를 만지지 않는다.
+    assert event_log.read_text(encoding="utf-8") == '{"prior":"run"}\n'
+
+
+def test_main_aborts_when_checkpoint_dir_is_non_empty(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """events.jsonl 만 비어있어도 checkpoints/ 가 채워져 있으면 abort.
+
+    사용자가 events.jsonl 만 지우고 재실행하는 케이스를 막는다 — stale
+    checkpoint 위에 새 events 가 얹히면 더 미묘한 state mismatch 가 된다.
+    """
+    _patch_dependencies(monkeypatch)
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir()
+    (checkpoint_dir / "checkpoint_round_0001.json").write_text("{}", encoding="utf-8")
+
+    exit_code = run_cli.main(_argv_with_paths(tmp_path))
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "checkpoint" in captured.err
+    assert "--reuse-output-dir" in captured.err
+
+
+def test_main_appends_when_reuse_output_dir_passed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``--reuse-output-dir`` 명시 시 기존 events.jsonl + checkpoints/ 둘 다 재사용."""
+    _patch_dependencies(monkeypatch)
+    event_log = tmp_path / "events.jsonl"
+    event_log.write_text('{"prior":"run"}\n', encoding="utf-8")
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir()
+    (checkpoint_dir / "checkpoint_round_0000.json").write_text("{}", encoding="utf-8")
+
+    exit_code = run_cli.main(_argv_with_paths(tmp_path, "--reuse-output-dir"))
+
+    assert exit_code == 0
+    lines = list(_read_lines(event_log))
+    # 기존 1 줄 + 신규 시뮬레이션 라인 (sample fixture 에서 round 1 의 agent_002 한 줄).
+    assert lines[0] == '{"prior":"run"}'
+    assert len(lines) >= 2
+
+
+def test_main_proceeds_when_output_dir_only_has_empty_event_log(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """크기 0 events.jsonl + 비어있는 checkpoints/ 는 누적 위험 없음 → 진행 허용."""
+    _patch_dependencies(monkeypatch)
+    (tmp_path / "events.jsonl").touch()
+    (tmp_path / "checkpoints").mkdir()
+
+    exit_code = run_cli.main(_argv_with_paths(tmp_path))
+
+    assert exit_code == 0
+
+
 def test_main_returns_one_when_api_key_missing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
