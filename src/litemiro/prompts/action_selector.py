@@ -89,8 +89,10 @@ _BEHAVIOR_TENDENCY_LABELS: tuple[tuple[str, str], ...] = (
 )
 
 # Phase 1 ontology 가 follow_rate 키를 빠뜨려도 LLM 이 가중치 신호를 받게
-# 하는 안전망 (구버전 ontology 호환). Phase 1 의 BehaviorTendency.follow_rate
-# 디폴트와 같은 값으로 맞춘다.
+# 하는 안전망 — Phase 1 신버전은 항상 키를 채우지만 외부에서 직접 박은
+# ontology JSON 이나 구버전 산출물 (#106 이전) 호환을 위해 살려둔다.
+# 값은 ``phase1.models.BehaviorTendency.follow_rate`` 디폴트와 동기 유지 — Phase 1
+# 디폴트를 바꿀 때 같이 갱신해야 silent drift 가 없다.
 _FOLLOW_RATE_FALLBACK = 0.2
 
 
