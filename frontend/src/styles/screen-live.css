@@ -91,6 +91,14 @@
   pointer-events: none;
   transition: opacity var(--dur-3) var(--ease-out);
 }
+.lm-live__canvas-empty {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono);
+  font-size: var(--t-small);
+  letter-spacing: var(--ls-mono);
+  color: var(--ink-4);
+}
 
 /* ---------- FOOTER + PROGRESS ---------- */
 .lm-live__foot {

@@ -154,6 +154,21 @@
 }
 .lm-cast__doc-body p { margin: 0; text-wrap: pretty; position: relative; z-index: 1; }
 
+/* minimal — 본문 텍스트 대신 스캔 라인만 표시 (백엔드가 source 본문 미공개) */
+.lm-cast__doc-body--minimal { justify-content: center; }
+.lm-cast__scan-rows {
+  display: flex; flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4) 0;
+  position: relative; z-index: 1;
+}
+.lm-cast__scan-row {
+  height: calc(10px * var(--scale));
+  background: var(--rule-2);
+  border-radius: var(--r-1);
+  opacity: 0.55;
+}
+
 /* scan line — 문서 위에서 흘러내리는 가로선 */
 .lm-cast__scanline {
   position: absolute; left: calc(-16px * var(--scale)); right: calc(-16px * var(--scale));

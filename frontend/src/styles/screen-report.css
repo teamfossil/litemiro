@@ -701,6 +701,18 @@
 }
 .lm-rep__foot-actions { display: flex; gap: var(--s-3); }
 
+/* ---------- EMPTY STATE — 백엔드 데이터가 sparse 할 때 ---------- */
+.lm-rep__empty {
+  padding: var(--s-5) var(--s-6);
+  background: var(--card);
+  border: 1px dashed var(--rule);
+  border-radius: var(--r-2);
+  font-size: var(--t-small);
+  color: var(--ink-3);
+  text-align: center;
+  letter-spacing: var(--ls-normal);
+}
+
 /* ---------- RESPONSIVE ---------- */
 @media (max-width: 1200px) {
   .lm-rep__sum-grid { grid-template-columns: 1fr; }
