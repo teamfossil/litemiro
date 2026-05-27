@@ -388,7 +388,11 @@ function CastingReal() {
             label: labelParam || undefined,
           });
           if (!cancelled) {
-            navigate(pathForScreen('live', plaza.plaza_id), { replace: true });
+            // ontology 완료 후 곧장 Live 로 안 가고 CastingDemo 거쳐 사용자에게
+            // 추출된 인격 5명 + 성향/토픽을 한 번 보여준 뒤 "광장으로 입장"
+            // 버튼을 누르면 Live 로 이동. /agents 가 실 데이터를 채워주고,
+            // CastingDemo 의 8 초 RAF 애니메이션은 슬롯 풀리는 시각화 용도.
+            navigate(pathForScreen('casting', plaza.plaza_id), { replace: true });
           }
         } catch (e) {
           if (cancelled) return;
