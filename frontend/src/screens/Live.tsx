@@ -8,144 +8,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { lm } from '@/data/mock';
-import type { Action, ActionType, Agent, AgentRegistry, PlazaNode, RoleId } from '@/data/types';
+import type { Action, ActionType, Agent, AgentRegistry, PlazaNode } from '@/data/types';
 import { AvatarSVG, Button, Stat, ArrowGlyph } from '@/components/atoms';
 import { useScreenNav } from '@/lib/nav';
-import { api, type PlazaActionEvent, type PlazaStatus } from '@/api/client';
+import { api, type PlazaActionEvent, type PlazaAgentItem, type PlazaLayoutAgentItem, type PlazaStatus } from '@/api/client';
 import { avatarFromSeed, mapBackendRoleToRoleId } from '@/lib/roles';
 
 // --------------------------------------------------------------------
-// 1) 에이전트 레지스트리
-// --------------------------------------------------------------------
-function buildAgentRegistry(): AgentRegistry {
-  const ANCHORS = lm.ANCHORS;
-  const ROLE_BY_ID = lm.ROLE_BY_ID;
-  const rng = lm.mulberry32(99);
-
-  const agents: Agent[] = ANCHORS.map((a) => ({
-    id: a.id,
-    name: a.name + (a.isOrg ? '' : ' ' + a.title),
-    short: a.name,
-    role: a.role,
-    kind: 'anchor',
-    avatar: a.avatar,
-  }));
-
-  const weights = lm.ROLE_COUNT_WEIGHT;
-  const totalW = Object.values(weights).reduce((s, x) => s + x, 0);
-  for (let i = 0; i < 30; i++) {
-    let pick = rng() * totalW;
-    let roleId: RoleId = 'citizen_m';
-    for (const [id, w] of Object.entries(weights)) {
-      pick -= w;
-      if (pick <= 0) {
-        roleId = id as RoleId;
-        break;
-      }
-    }
-    agents.push({
-      id: `d${i}`,
-      name: `${ROLE_BY_ID[roleId].name} · 익명 #${i + 1}`,
-      short: `익명 #${i + 1}`,
-      role: roleId,
-      kind: 'derived',
-    });
-  }
-
-  agents.push({
-    id: 'viral-47',
-    name: '시민·익명 #47',
-    short: '시민·익명 #47',
-    role: 'citizen_p',
-    kind: 'derived-viral',
-  });
-
-  return {
-    list: agents,
-    byId: Object.fromEntries(agents.map((a) => [a.id, a])),
-  };
-}
-
-// --------------------------------------------------------------------
-// 2) 액션 시퀀스 생성
-// --------------------------------------------------------------------
-const DERIVED_POSTS = [
-  '근로시간 단축은 임금 보전이 없으면 의미가 없어요.',
-  '시범사업 3년치 자료부터 공개해주세요. 결과로 말합시다.',
-  '평균만 보지 말고, 시급제 노동자 사정도 봐야 해요.',
-  '돌봄 노동의 시간 1시간이 한 가족의 저녁을 바꿉니다.',
-  '한국 노동시장 특수성이 OECD 비교에 안 들어가 있어요.',
-  '선언적 도입은 위험합니다. 산업별 트랜지션 설계가 우선.',
-  '오히려 격차가 더 벌어질 위험은 없을까요.',
-  '발의안 핵심은 강제가 아니라 권리 명시라는 점.',
-  '시민 표본이 좁은 거 같습니다. 자영업자 의견도 필요.',
-  '일과 삶의 균형이 결국 본질입니다.',
-  '저는 매일 11시간 일해요. 4일제는 다른 세상 얘기 같아요.',
-  '기업 부담 분담 구조부터 합의돼야 합니다.',
-  '시범 결과는 좋았어요. 만족도 78%, 매출 영향 없음.',
-  '시간 줄이고 단가 그대로면 청구액 폭등할 텐데요.',
-  '아이들 학원 끝나는 시간이랑 안 맞아서 의미 없어요.',
-  '제도 도입 전에 5인 미만 사업장 보호부터 합시다.',
-];
-
-function pickFrom<T>(arr: T[], rng: () => number): T {
-  return arr[Math.floor(rng() * arr.length)];
-}
-
-function generateLiveActions(agents: AgentRegistry, totalRounds = 50): Action[] {
-  const rng = lm.mulberry32(42);
-  const out: Action[] = [];
-
-  // 1) 앵커 핵심 발언 — QUOTES에서 그대로 가져옴.
-  for (const aId of Object.keys(lm.QUOTES)) {
-    const id = aId === 'n-viral-47' ? 'viral-47' : aId;
-    if (!agents.byId[id]) continue;
-    for (const q of lm.QUOTES[aId]) {
-      out.push({
-        round: q.round,
-        agentId: id,
-        type: 'CREATE_POST',
-        content: q.text,
-        citesAccum: q.citations,
-        repostsAccum: q.propagations,
-      });
-    }
-  }
-
-  // 2) 라운드별 derived 액션
-  const anchorIds = lm.ANCHORS.map((a) => a.id);
-  const derivedIds = agents.list.filter((a) => a.kind !== 'anchor').map((a) => a.id);
-
-  for (let r = 1; r <= totalRounds; r++) {
-    const burst = 3 + Math.floor((r / totalRounds) * 4 + rng() * 3);
-    for (let i = 0; i < burst; i++) {
-      const agentId = pickFrom(derivedIds, rng);
-      const targetId = pickFrom(anchorIds, rng);
-      const t = rng();
-
-      if (t < 0.34) {
-        out.push({ round: r, agentId, type: 'LIKE', targetId });
-      } else if (t < 0.56) {
-        out.push({ round: r, agentId, type: 'REPOST', targetId });
-      } else if (t < 0.72) {
-        out.push({ round: r, agentId, type: 'FOLLOW', targetId });
-      } else if (t < 0.88) {
-        out.push({ round: r, agentId, type: 'QUOTE_POST', targetId, content: pickFrom(DERIVED_POSTS, rng) });
-      } else {
-        out.push({ round: r, agentId, type: 'CREATE_POST', content: pickFrom(DERIVED_POSTS, rng) });
-      }
-    }
-  }
-
-  out.forEach((a, i) => {
-    a._i = i;
-  });
-  out.sort((a, b) => (a.round === b.round ? (a._i ?? 0) - (b._i ?? 0) : a.round - b.round));
-  return out;
-}
-
-// --------------------------------------------------------------------
-// 3) Plaza 노드 (force-directed 가라앉음)
+// Plaza 노드 (force-directed 가라앉음).
+// 시작 위치는 agent_id seed 로 결정 — reload 에서도 안 튐.
+// final 위치는 /layout ready 시 백엔드 좌표. 아직이면 ideology 기반 추정.
 // --------------------------------------------------------------------
 interface LiveNode extends PlazaNode {
   startX: number;
@@ -156,18 +28,41 @@ interface LiveNode extends PlazaNode {
   finalInfluence: number;
 }
 
-function generateLiveNodes(): LiveNode[] {
-  const final = lm.generatePlaza({ seed: 42, n: 312 });
-  const rng = lm.mulberry32(99);
-  return final.map((n) => ({
-    ...n,
-    startX: 0.1 + rng() * 0.8,
-    startY: 0.1 + rng() * 0.8,
-    finalX: n.x,
-    finalY: n.y,
-    startInfluence: 0.02 + rng() * 0.05,
-    finalInfluence: n.influence,
-  }));
+function hash01(s: string, salt = 0): number {
+  // 결정적 [0,1) — agent_id 별로 다른 위치 시드.
+  let h = salt;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return (h % 10000) / 10000;
+}
+
+function buildLiveNodes(
+  agents: PlazaAgentItem[],
+  layoutAgents: PlazaLayoutAgentItem[],
+): LiveNode[] {
+  const layoutMap = new Map(layoutAgents.map((la) => [la.id, la]));
+  return agents.map((a) => {
+    const roleId = mapBackendRoleToRoleId(a.role);
+    const la = layoutMap.get(a.id);
+    const finalX = la?.x ?? a.ideology;
+    const finalY = la?.y ?? 0.2 + hash01(a.id, 7) * 0.6;
+    const finalInfluence = la?.influence ?? 0.4;
+    return {
+      id: a.id,
+      name: a.name,
+      role: roleId,
+      kind: 'anchor',
+      color: lm.ROLE_BY_ID[roleId].color,
+      x: 0,
+      y: 0,
+      influence: 0,
+      startX: 0.1 + hash01(a.id, 1) * 0.8,
+      startY: 0.1 + hash01(a.id, 2) * 0.8,
+      startInfluence: 0.04,
+      finalX,
+      finalY,
+      finalInfluence,
+    };
+  });
 }
 function lerp(a: number, b: number, t: number) {
   return a + (b - a) * t;
@@ -467,51 +362,51 @@ function liveStatus(round: number, total: number) {
 export default function Live() {
   const { plazaId } = useParams<{ plazaId: string }>();
   const go = useScreenNav(plazaId);
-  const nodes = useMemo(() => generateLiveNodes(), []);
-  // 에이전트 레지스트리는 mock + 백엔드 /agents 보강. /agents 가 비어도 mock 으로
-  // 사이드바 피드가 빈 칸이 안 됨.
-  const [agents, setAgents] = useState<AgentRegistry>(() => buildAgentRegistry());
 
-  // SSE 구동 상태 — round/total/status/actions 모두 백엔드 이벤트로 갱신.
+  const [rawAgents, setRawAgents] = useState<PlazaAgentItem[]>([]);
+  const [layoutAgents, setLayoutAgents] = useState<PlazaLayoutAgentItem[]>([]);
+
+  // SSE 구동 상태.
   const [round, setRound] = useState(0);
   const [total, setTotal] = useState(50);
   const [phaseStatus, setPhaseStatus] = useState<PlazaStatus>('pending');
   const [liveActions, setLiveActions] = useState<Action[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  // /agents fetch — agent_id → name/role 매핑이 사이드바 피드에 필요.
+  // /agents 한 번만 — 광장 ID 고정이라 갱신 불필요.
   useEffect(() => {
     if (!plazaId) return;
     let cancelled = false;
-    api
-      .getAgents(plazaId)
-      .then((res) => {
-        if (cancelled || res.agents.length === 0) return;
-        setAgents((prev) => {
-          const list = [...prev.list];
-          const byId = { ...prev.byId };
-          for (const a of res.agents) {
-            const ag: Agent = {
-              id: a.id,
-              name: a.name,
-              short: a.name,
-              role: mapBackendRoleToRoleId(a.role),
-              kind: 'anchor',
-              avatar: avatarFromSeed(a.avatar_seed),
-            };
-            if (!byId[ag.id]) list.push(ag);
-            byId[ag.id] = ag;
-          }
-          return { list, byId };
-        });
-      })
-      .catch(() => {
-        // mock 유지.
-      });
-    return () => {
-      cancelled = true;
-    };
+    api.getAgents(plazaId)
+      .then((res) => { if (!cancelled) setRawAgents(res.agents); })
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, [plazaId]);
+
+  // /layout 은 sim 진행 중엔 ready=false 라 status 가 composing/completed 로 바뀔 때 한 번 더.
+  useEffect(() => {
+    if (!plazaId) return;
+    let cancelled = false;
+    api.getLayout(plazaId)
+      .then((res) => { if (!cancelled && res.ready) setLayoutAgents(res.agents); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [plazaId, phaseStatus]);
+
+  // 사이드바 피드에 필요한 agent_id → name/role 매핑.
+  const agents = useMemo<AgentRegistry>(() => {
+    const list: Agent[] = rawAgents.map((a) => ({
+      id: a.id,
+      name: a.name,
+      short: a.name,
+      role: mapBackendRoleToRoleId(a.role),
+      kind: 'anchor',
+      avatar: avatarFromSeed(a.avatar_seed),
+    }));
+    return { list, byId: Object.fromEntries(list.map((a) => [a.id, a])) };
+  }, [rawAgents]);
+
+  const nodes = useMemo<LiveNode[]>(() => buildLiveNodes(rawAgents, layoutAgents), [rawAgents, layoutAgents]);
 
   // SSE — progress / status / action / actions_snapshot.
   useEffect(() => {
@@ -577,12 +472,18 @@ export default function Live() {
         </header>
 
         <div className="lm-live__canvas">
-          <LivePlaza nodes={nodes} settle={settle} />
-          <div className="lm-live__canvas-axis">
-            <span style={{ opacity: Math.max(0, settle - 0.2) }}>← 비판적</span>
-            <span style={{ opacity: Math.max(0, settle - 0.2) }}>중립</span>
-            <span style={{ opacity: Math.max(0, settle - 0.2) }}>우호적 →</span>
-          </div>
+          {nodes.length > 0 ? (
+            <>
+              <LivePlaza nodes={nodes} settle={settle} />
+              <div className="lm-live__canvas-axis">
+                <span style={{ opacity: Math.max(0, settle - 0.2) }}>← 비판적</span>
+                <span style={{ opacity: Math.max(0, settle - 0.2) }}>중립</span>
+                <span style={{ opacity: Math.max(0, settle - 0.2) }}>우호적 →</span>
+              </div>
+            </>
+          ) : (
+            <div className="lm-live__canvas-empty">에이전트 정보를 불러오는 중입니다.</div>
+          )}
         </div>
 
         <footer className="lm-live__foot">

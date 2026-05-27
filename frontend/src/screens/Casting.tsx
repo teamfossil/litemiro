@@ -13,7 +13,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { lm } from '@/data/mock';
-import type { Anchor, Seed } from '@/data/types';
+import type { Anchor } from '@/data/types';
 import { AvatarSVG, Badge, RoleSwatch, Button, ArrowGlyph } from '@/components/atoms';
 import { useScreenNav, pathForScreen } from '@/lib/nav';
 import { api, ApiError, type OntologyResponse, type Preset } from '@/api/client';
@@ -33,46 +33,27 @@ function clamp(v: number, a: number, b: number): number {
 type SlotState = 'pending' | 'extracting' | 'done';
 
 // --------------------------------------------------------------------
-// SeedDocLive — 시드 본문. 추출 진행에 따라 인물 이름이 강조됨.
+// ScanPanel — 자료 스캔 중 표시. 백엔드가 source 본문을 안 줘서 본문 노출
+// 없이 진행 표시만. extractedCount 가 늘 때마다 라인이 그려진다.
 // --------------------------------------------------------------------
-function SeedDocLive({ seed, extractedIds, scanLineY }: { seed: Seed; extractedIds: string[]; scanLineY: number }) {
+function ScanPanel({ extractedCount, totalCount, scanLineY }: { extractedCount: number; totalCount: number; scanLineY: number }) {
   return (
     <article className="lm-cast__doc">
       <header className="lm-cast__doc-head">
-        <span className="lm-cast__doc-tag">SOURCE · 분석 중인 자료</span>
+        <span className="lm-cast__doc-tag">SOURCE · 자료 분석</span>
         <span className="lm-cast__doc-meta">
-          {seed.title.length}자 · {seed.paragraphs.length}단락 · 키워드 {seed.keywords.length}
+          {extractedCount} / {totalCount} 인격 식별
         </span>
       </header>
 
-      <h2 className="lm-cast__doc-title">{seed.title}</h2>
-
-      <div className="lm-cast__doc-body">
+      <div className="lm-cast__doc-body lm-cast__doc-body--minimal">
         <div className="lm-cast__scanline" style={{ top: `${scanLineY * 100}%` }} />
-        {seed.paragraphs.map((para, i) => (
-          <p key={i}>
-            {para.map((tok, j) => {
-              if (!tok.tag) return <span key={j}>{tok.t}</span>;
-              const isAnchor = tok.tag === 'anchor';
-              const isExtracted = isAnchor && !!tok.anchorId && extractedIds.includes(tok.anchorId);
-              const cn = `lm-cast__doc-hl lm-cast__doc-hl--${tok.tag}${isExtracted ? ' is-extracted' : ''}`;
-              return (
-                <span key={j} className={cn}>
-                  {tok.t}
-                </span>
-              );
-            })}
-          </p>
-        ))}
+        <div className="lm-cast__scan-rows">
+          {Array.from({ length: 18 }).map((_, i) => (
+            <div key={i} className="lm-cast__scan-row" style={{ width: `${30 + ((i * 17) % 60)}%` }} />
+          ))}
+        </div>
       </div>
-
-      <footer className="lm-cast__doc-footer">
-        {seed.keywords.map((k) => (
-          <span key={k} className="lm-cast__doc-tag-chip">
-            #{k}
-          </span>
-        ))}
-      </footer>
     </article>
   );
 }
@@ -140,18 +121,18 @@ function AnchorSlot({ anchor, state, index }: { anchor: Anchor; state: SlotState
 }
 
 // --------------------------------------------------------------------
-// DerivedSwarm — derived 군중 생성 시각화.
+// DerivedSwarm — 군중 인격 생성 시각화 (구체 수 미공개).
+// 백엔드가 derived 수를 따로 안 알려줘 진행 표시만.
 // --------------------------------------------------------------------
 function DerivedSwarm({ progress }: { progress: number }) {
   const totalDots = 48;
   const filled = Math.round(progress * totalDots);
-  const realCount = Math.round(progress * 307);
   const colors = ['#B85138', '#C77B4F', '#C9923D', '#A68240', '#8F6B3D', '#6D8FA6', '#4F7591', '#7896A0', '#4F7B6E', '#6E8770', '#8B8170', '#6E6D7D'];
   return (
     <div className="lm-cast__derived-card">
       <div className="lm-cast__derived-head">
-        <span className="lm-cast__derived-tag">+ 군중 인격 (derived)</span>
-        <span className="lm-cast__derived-count">{progress < 1 ? `${realCount} / 307 명 생성 중…` : '307명 군중 인격 준비 완료'}</span>
+        <span className="lm-cast__derived-tag">+ 군중 인격</span>
+        <span className="lm-cast__derived-count">{progress < 1 ? '군중 인격 생성 중…' : '군중 인격 준비 완료'}</span>
       </div>
       <div className="lm-cast__derived-grid">
         {[...Array(totalDots)].map((_, i) => {
@@ -176,11 +157,8 @@ function DerivedSwarm({ progress }: { progress: number }) {
 function CastingDemo() {
   const { plazaId } = useParams<{ plazaId: string }>();
   const go = useScreenNav(plazaId);
-  const seed = lm.SEED;
-  // 문서 본문은 mock (백엔드가 source 문서를 직렬화해 주지 않음) — 슬롯의
-  // 앵커 데이터만 실 백엔드로 교체. lm.ANCHORS fallback 은 plazaId 없을 때 / API
-  // 실패 시 시각이 깨지지 않게.
-  const [anchors, setAnchors] = useState<Anchor[]>(lm.ANCHORS);
+  // 백엔드 /agents 응답으로 채움. 도착 전엔 빈 배열 — 슬롯이 pending 상태로 표시.
+  const [anchors, setAnchors] = useState<Anchor[]>([]);
   // 백엔드 sim 이 실제로 'running' 상태가 됐는지 — 8초 mock 타이머와 별개로
   // 트래킹해서 둘 다 만족할 때 광장 입장 활성.
   const [simStarted, setSimStarted] = useState(false);
@@ -318,7 +296,7 @@ function CastingDemo() {
 
         {/* MAIN GRID */}
         <div className="lm-cast__grid">
-          <SeedDocLive seed={seed} extractedIds={extractedIds} scanLineY={scanLineY} />
+          <ScanPanel extractedCount={extractedIds.length} totalCount={anchors.length} scanLineY={scanLineY} />
 
           <div className="lm-cast__slots">
             <header className="lm-cast__slots-head">
