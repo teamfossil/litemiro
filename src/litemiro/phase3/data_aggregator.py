@@ -228,10 +228,11 @@ def _follow_clustering_coefficient(events: list[RoundEvent]) -> float:
             counted += 1
             continue
         possible = len(nbrs) * (len(nbrs) - 1) / 2
+        sorted_neighbors = sorted(nbrs)
         actual = sum(
             1
-            for i, a in enumerate(sorted(nbrs))
-            for b in sorted(nbrs)[i + 1 :]
+            for i, a in enumerate(sorted_neighbors)
+            for b in sorted_neighbors[i + 1 :]
             if b in neighbors[a]
         )
         total += actual / possible
