@@ -443,14 +443,14 @@
 }
 
 /* ---------- REAL MODE (CastingReal) ---------- */
-.lm-cast__real {
+.lm-cast__loading {
   flex: 1;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: var(--s-4);
   padding: var(--s-7) var(--s-5);
   text-align: center;
 }
-.lm-cast__real-spinner {
+.lm-cast__loading-spinner {
   width: 56px; height: 56px;
   border-radius: 50%;
   border: 3px solid var(--rule);
@@ -460,14 +460,14 @@
 @keyframes lm-cast__spin {
   to { transform: rotate(360deg); }
 }
-.lm-cast__real-hint {
+.lm-cast__loading-hint {
   max-width: 56ch;
   margin: 0;
   font-size: var(--t-body);
   line-height: 1.55;
   color: var(--ink-2);
 }
-.lm-cast__real-progress {
+.lm-cast__loading-progress {
   margin: 0;
   font-family: var(--mono);
   font-size: var(--t-mono);
@@ -475,10 +475,242 @@
   text-transform: uppercase;
   color: var(--ink-3);
 }
-.lm-cast__real-error {
+.lm-cast__loading-error {
   max-width: 56ch;
   margin: 0;
   font-size: var(--t-body);
   line-height: 1.55;
   color: var(--danger, #b85138);
+}
+
+/* ---------- REVEAL — AGENTS GRID (Phase 2, /casting/:plazaId) ---------- */
+.lm-cast__agents {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(220px * var(--scale)), 1fr));
+  gap: var(--s-4);
+  align-content: start;
+  overflow-y: auto;
+  padding-right: var(--s-2);
+  min-height: 0;
+}
+
+.lm-cast__card {
+  background: var(--paper);
+  border: 1px solid var(--rule-2);
+  border-left-width: calc(3px * var(--scale));
+  border-radius: var(--r-2);
+  padding: var(--s-4) var(--s-5);
+  display: flex; flex-direction: column;
+  gap: var(--s-3);
+  min-height: calc(140px * var(--scale));
+  transition: transform var(--dur-1) var(--ease-out), border-color var(--dur-1);
+}
+.lm-cast__card:hover {
+  border-color: var(--ink-3);
+  transform: translateY(calc(-1px * var(--scale)));
+}
+.lm-cast__card-head {
+  display: inline-flex; align-items: center; gap: var(--s-2);
+}
+.lm-cast__card-role-dot {
+  width: calc(10px * var(--scale));
+  height: calc(10px * var(--scale));
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.lm-cast__card-role-name {
+  font-family: var(--mono);
+  font-size: var(--t-mono);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.lm-cast__card-name {
+  font-size: var(--t-h4);
+  font-weight: 600;
+  letter-spacing: var(--ls-tight);
+  color: var(--ink);
+  line-height: 1.25;
+  /* 한국어/영어 혼합 긴 이름이 카드를 튀어나오지 않게 — break-word + anywhere
+     로 단어 중간에서도 줄바꿈 허용. */
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.lm-cast__card-bar {
+  position: relative;
+  height: calc(10px * var(--scale));
+  margin-top: auto;
+}
+.lm-cast__card-bar-track {
+  position: absolute; inset: 0;
+  /* 좌(비판적) 파랑 → 우(우호적) 주황 gradient 로 spectrum 직접 표현. */
+  background: linear-gradient(
+    90deg,
+    var(--r-broadcast, #4F7591) 0%,
+    var(--rule-2) 45%,
+    var(--rule-2) 55%,
+    var(--r-citizen-p, #C77B4F) 100%
+  );
+  border-radius: calc(5px * var(--scale));
+  opacity: 0.7;
+}
+.lm-cast__card-bar-dot {
+  position: absolute; top: 50%;
+  width: calc(16px * var(--scale));
+  height: calc(16px * var(--scale));
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--ink);
+  border: 2px solid var(--paper);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+.lm-cast__card-bar-labels {
+  display: flex; justify-content: space-between;
+  font-family: var(--mono);
+  font-size: var(--t-small);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--ink-2);
+  font-weight: 600;
+}
+.lm-cast__card-topics {
+  display: flex; flex-wrap: wrap; gap: calc(4px * var(--scale));
+}
+.lm-cast__card-topic {
+  font-size: var(--t-small);
+  font-family: var(--mono);
+  letter-spacing: var(--ls-mono);
+  color: var(--ink-3);
+  background: var(--card);
+  padding: calc(2px * var(--scale)) var(--s-2);
+  border-radius: var(--r-1);
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .lm-cast__agents {
+    grid-template-columns: repeat(auto-fill, minmax(calc(180px * var(--scale)), 1fr));
+  }
+}
+
+/* ---------- REVEAL — HORIZONTAL ROWS (Phase 2 alt) ---------- */
+.lm-cast__rows {
+  flex: 1;
+  display: flex; flex-direction: column;
+  gap: var(--s-2);
+  overflow-y: auto;
+  padding-right: var(--s-2);
+  min-height: 0;
+}
+
+.lm-cast__row {
+  display: grid;
+  grid-template-columns: minmax(calc(220px * var(--scale)), 1.2fr) minmax(calc(280px * var(--scale)), 2fr) minmax(calc(240px * var(--scale)), 1.6fr);
+  align-items: center;
+  gap: var(--s-5);
+  background: var(--paper);
+  border: 1px solid var(--rule-2);
+  border-left: calc(4px * var(--scale)) solid var(--rule);
+  border-radius: var(--r-2);
+  padding: var(--s-3) var(--s-5);
+  transition: border-color var(--dur-1), background var(--dur-1);
+}
+.lm-cast__row:hover {
+  background: var(--card);
+  border-color: var(--ink-3);
+}
+
+.lm-cast__row-name {
+  display: flex; flex-direction: column;
+  gap: calc(3px * var(--scale));
+  min-width: 0;
+}
+.lm-cast__row-name-role {
+  display: inline-flex; align-items: center; gap: calc(5px * var(--scale));
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.lm-cast__row-name-role-dot {
+  width: calc(8px * var(--scale));
+  height: calc(8px * var(--scale));
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.lm-cast__row-name-text {
+  font-size: var(--t-h4);
+  font-weight: 600;
+  letter-spacing: var(--ls-tight);
+  color: var(--ink);
+  line-height: 1.25;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.lm-cast__row-bar {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--s-3);
+}
+.lm-cast__row-bar-label {
+  font-family: var(--mono);
+  font-size: var(--t-small);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.lm-cast__row-bar-label--left { color: var(--r-broadcast, #4F7591); }
+.lm-cast__row-bar-label--right { color: var(--r-citizen-p, #C77B4F); }
+.lm-cast__row-bar-track {
+  position: relative;
+  height: calc(10px * var(--scale));
+  background: linear-gradient(
+    90deg,
+    var(--r-broadcast, #4F7591) 0%,
+    var(--rule-2) 45%,
+    var(--rule-2) 55%,
+    var(--r-citizen-p, #C77B4F) 100%
+  );
+  border-radius: calc(5px * var(--scale));
+  opacity: 0.75;
+}
+/* 세로 막대 (tick) — 가로축 위치 명확히 표시. 원보다 가독성 ↑. */
+.lm-cast__row-bar-tick {
+  position: absolute;
+  top: calc(-6px * var(--scale));
+  bottom: calc(-6px * var(--scale));
+  width: calc(4px * var(--scale));
+  background: var(--ink);
+  border-radius: calc(2px * var(--scale));
+  transform: translateX(-50%);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+
+.lm-cast__row-topics {
+  display: flex; flex-wrap: wrap; gap: calc(5px * var(--scale));
+  justify-content: flex-end;
+}
+.lm-cast__row-topic {
+  font-size: var(--t-small);
+  font-family: var(--mono);
+  letter-spacing: var(--ls-mono);
+  color: var(--ink-3);
+  background: var(--card);
+  padding: calc(3px * var(--scale)) var(--s-2);
+  border-radius: var(--r-1);
+  white-space: nowrap;
+}
+
+@media (max-width: 1100px) {
+  .lm-cast__row {
+    grid-template-columns: 1fr;
+    gap: var(--s-3);
+  }
+  .lm-cast__row-topics { justify-content: flex-start; }
 }
