@@ -7,6 +7,7 @@ status 머신: pending → running → completed | failed.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import time
 from collections.abc import Callable, Coroutine
@@ -960,7 +961,13 @@ class TestListPlazas:
             resp = client.get("/api/plazas")
         assert resp.status_code == 200
         body = resp.json()
-        assert body == {"plazas": [], "total": 0, "limit": 20, "offset": 0}
+        assert body == {
+            "plazas": [],
+            "total": 0,
+            "limit": 20,
+            "offset": 0,
+            "next_cursor": None,
+        }
 
     def test_single_completed_plaza_visible(self, tmp_path: Path) -> None:
         app = create_app(runner=_success_runner(rounds_to_report=2), base_dir=tmp_path)
@@ -1074,7 +1081,7 @@ class TestListPlazas:
                     updated_at=shared,
                 )
                 _db.upsert_record(conn, record)
-            summaries, total = _db.list_summary(conn, limit=10, offset=0)
+            summaries, total, _ = _db.list_summary(conn, limit=10, offset=0)
         finally:
             conn.close()
         assert total == 2
@@ -1105,6 +1112,151 @@ class TestListPlazas:
         assert body["total"] == 1
         assert body["plazas"][0]["plaza_id"] == created["plaza_id"]
         assert body["plazas"][0]["label"] == "alive"
+
+
+class TestListPlazasCursor:
+    """``GET /api/plazas?cursor=`` — keyset 페이징.
+
+    offset 모드와 결과 row 순서가 동치인지 / next_cursor 가 끝에서 null 인지 /
+    변조된 cursor 가 422 인지를 본다. 깊은 offset 의 비용을 줄이는 게 도입
+    목적이라 row 수 = 5 정도로 작아도 의미 검증은 동치성에 있다.
+    """
+
+    def _seed_plazas(self, client: TestClient, n: int) -> list[str]:
+        """``n`` 개 plaza 를 만들고 모두 terminal 까지 보낸 뒤 id 리스트 반환.
+
+        ``created_at`` 이 초 단위 truncate 라 같은 초에 잡힌 plaza 가 섞일 수
+        있다 — tie-break (``plaza_id DESC``) 가 인덱스/keyset 모두에 일관되게
+        걸려 있어 순서는 결정적이다.
+        """
+        ids: list[str] = []
+        for i in range(n):
+            created = client.post("/api/plazas", json={"rounds": 1, "label": f"p{i}"}).json()
+            plaza_id = created["plaza_id"]
+            _wait_until(client, plaza_id, terminal={"completed", "failed"})
+            ids.append(plaza_id)
+        return ids
+
+    def test_cursor_paginates_same_order_as_offset(self, tmp_path: Path) -> None:
+        """cursor 모드 (첫 호출은 cursor 없이) 와 offset 모드가 동일 순서의 시퀀스."""
+        app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
+        with TestClient(app) as client:
+            self._seed_plazas(client, 5)
+
+            offset_body = client.get("/api/plazas?limit=100").json()
+            offset_order = [p["plaza_id"] for p in offset_body["plazas"]]
+            assert len(offset_order) == 5
+
+            # 첫 호출은 cursor 없이 = offset 모드지만 응답의 next_cursor 로 keyset 진입.
+            collected: list[str] = []
+            cursor: str | None = None
+            for _ in range(10):
+                url = "/api/plazas?limit=2"
+                if cursor is not None:
+                    url += f"&cursor={cursor}"
+                body = client.get(url).json()
+                collected.extend(p["plaza_id"] for p in body["plazas"])
+                cursor = body["next_cursor"]
+                if cursor is None:
+                    break
+            else:
+                raise AssertionError("cursor loop did not terminate within 10 pages")
+
+        assert collected == offset_order
+
+    def test_cursor_mode_ignores_offset_query(self, tmp_path: Path) -> None:
+        """cursor 가 있으면 ``offset`` 은 무시 + 응답 ``offset`` 은 0 으로 정규화.
+
+        실제 정렬은 ``(created_at DESC, plaza_id DESC)`` — 빠른 테스트에서 세
+        plaza 의 ``created_at`` 이 같은 초로 떨어지면 plaza_id alphanum DESC
+        가 결정해 insertion 순서가 무의미하다. 기대값은 limit 한 번에 다 받은
+        응답을 truth 로 쓴다.
+        """
+        app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
+        with TestClient(app) as client:
+            self._seed_plazas(client, 3)
+            truth = [p["plaza_id"] for p in client.get("/api/plazas?limit=100").json()["plazas"]]
+
+            first = client.get("/api/plazas?limit=1").json()
+            assert [p["plaza_id"] for p in first["plazas"]] == [truth[0]]
+            cursor = first["next_cursor"]
+            assert cursor is not None
+
+            second = client.get(f"/api/plazas?limit=1&cursor={cursor}&offset=999").json()
+            assert [p["plaza_id"] for p in second["plazas"]] == [truth[1]]
+            assert second["offset"] == 0
+
+    def test_last_page_has_null_next_cursor(self, tmp_path: Path) -> None:
+        """마지막 페이지(부분 page) 면 ``next_cursor=null``."""
+        app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
+        with TestClient(app) as client:
+            self._seed_plazas(client, 3)
+            # 3 건을 limit=2 로 끊으면 page1 = 2건 (다음 있음), page2 = 1건 (끝).
+            page1 = client.get("/api/plazas?limit=2").json()
+            assert len(page1["plazas"]) == 2
+            assert page1["next_cursor"] is not None
+            page2 = client.get(f"/api/plazas?limit=2&cursor={page1['next_cursor']}").json()
+            assert len(page2["plazas"]) == 1
+            assert page2["next_cursor"] is None
+
+    def test_exact_limit_then_empty_page_terminates(self, tmp_path: Path) -> None:
+        """정확히 ``limit`` 만큼이고 그게 끝이면, 다음 호출은 빈 페이지 + null cursor.
+
+        keyset 의 정석 — server 가 "끝" 을 미리 알 수 없는 케이스를 한 번 더
+        호출로 닫는다. 이 동작이 없으면 클라가 마지막 페이지를 "다음이 더 있는"
+        것으로 오해할 수 있다.
+        """
+        app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
+        with TestClient(app) as client:
+            self._seed_plazas(client, 2)
+            page1 = client.get("/api/plazas?limit=2").json()
+            assert len(page1["plazas"]) == 2
+            assert page1["next_cursor"] is not None
+            page2 = client.get(f"/api/plazas?limit=2&cursor={page1['next_cursor']}").json()
+            assert page2["plazas"] == []
+            assert page2["next_cursor"] is None
+
+    def test_cursor_respects_status_filter(self, tmp_path: Path) -> None:
+        """cursor + ``?status=`` 조합 — 필터 후 시퀀스만 페이지로 본다.
+
+        같은 상태로 4건 seed → 2건씩 cursor 페이지 → 다음 페이지 → 빈 페이지로
+        끝. 필터가 cursor 페이지 사이에 일관되게 걸려 row 가 누락/중복되지
+        않는지가 핵심.
+        """
+        app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
+        with TestClient(app) as client:
+            self._seed_plazas(client, 4)
+            page1 = client.get("/api/plazas?limit=2&status=completed").json()
+            assert len(page1["plazas"]) == 2
+            assert page1["total"] == 4
+            cursor = page1["next_cursor"]
+            assert cursor is not None
+            page2 = client.get(f"/api/plazas?limit=2&cursor={cursor}&status=completed").json()
+            assert len(page2["plazas"]) == 2
+            assert page2["next_cursor"] is not None  # exact-limit 마지막 → 빈 page 추가.
+            page3 = client.get(
+                f"/api/plazas?limit=2&cursor={page2['next_cursor']}&status=completed"
+            ).json()
+            assert page3["plazas"] == []
+            assert page3["next_cursor"] is None
+
+            seen = [p["plaza_id"] for p in page1["plazas"]] + [
+                p["plaza_id"] for p in page2["plazas"]
+            ]
+            assert len(set(seen)) == 4
+
+    def test_invalid_cursor_returns_422(self, tmp_path: Path) -> None:
+        """변조된 cursor 는 422 — silent 한 빈 페이지로 가지 않게."""
+        app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
+        with TestClient(app) as client:
+            # base64 형식조차 깨진 값.
+            resp = client.get("/api/plazas?cursor=!!!not-base64!!!")
+            assert resp.status_code == 422
+
+            # base64 는 맞지만 payload 가 ``|`` 없는 쓰레기.
+            broken = base64.urlsafe_b64encode(b"garbage").rstrip(b"=").decode()
+            resp2 = client.get(f"/api/plazas?cursor={broken}")
+            assert resp2.status_code == 422
 
 
 class TestDeletePlaza:
@@ -1175,7 +1327,13 @@ class TestDeletePlaza:
         second_app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
         with TestClient(second_app) as client:
             body = client.get("/api/plazas").json()
-            assert body == {"plazas": [], "total": 0, "limit": 20, "offset": 0}
+            assert body == {
+                "plazas": [],
+                "total": 0,
+                "limit": 20,
+                "offset": 0,
+                "next_cursor": None,
+            }
             assert client.get(f"/api/plazas/{plaza_id}/status").status_code == 404
 
     def test_running_plaza_cancelled_and_removed(self, tmp_path: Path) -> None:
