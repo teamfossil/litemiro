@@ -124,6 +124,32 @@ class TestMemoryInitializer:
 
         assert stores["a1"].semantic[0].topics == ["privacy", "Policy", "consumer"]
 
+    def test_seed_memory_topics_strip_korean_particles(self) -> None:
+        """`\\w+` lumps 어절+조사 together so persona topics ('정책') would never
+        overlap memory topics ('정책을'). Strip common 조사/어미 so the JSON-
+        emitted topics match the bare-noun shape personas use."""
+        graph = LocalGraph.build(
+            ExtractionResult(
+                entities=[
+                    Entity(
+                        id="a1",
+                        type="정책",
+                        name="개인정보보호법",
+                        summary="정책을 비판적으로 보도하는 기자",
+                    )
+                ]
+            )
+        )
+        agents = {"a1": _make_profile("a1", topics=["스포츠"])}
+
+        stores = MemoryInitializer(graph=graph, seed=42).initialize(agents)
+
+        topics = stores["a1"].semantic[0].topics
+        assert "정책" in topics
+        assert all(t != "정책을" for t in topics)
+        assert all(t != "기자로" for t in topics)
+        assert all(t != "보도하는" for t in topics)
+
     def test_seed_memory_topics_filter_english_stop_words_from_summary(self) -> None:
         graph = LocalGraph.build(
             ExtractionResult(
