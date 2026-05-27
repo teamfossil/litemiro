@@ -51,6 +51,7 @@
         "post_rate": 0.7,
         "reply_rate": 0.3,
         "repost_rate": 0.2,
+        "follow_rate": 0.2,
         "controversy_affinity": 0.6
       },
       "initial_following": ["agent_002", "agent_001", "agent_999"]
@@ -72,6 +73,7 @@
         "post_rate": 0.4,
         "reply_rate": 0.5,
         "repost_rate": 0.1,
+        "follow_rate": 0.2,
         "controversy_affinity": 0.3
       },
       "initial_following": ["agent_001"]
@@ -93,6 +95,7 @@
         "post_rate": 0.1,
         "reply_rate": 0.4,
         "repost_rate": 0.3,
+        "follow_rate": 0.2,
         "controversy_affinity": 0.4
       },
       "initial_following": []
