@@ -85,6 +85,7 @@ class OntologyValidator:
                 ("post_rate", bt.post_rate),
                 ("reply_rate", bt.reply_rate),
                 ("repost_rate", bt.repost_rate),
+                ("follow_rate", bt.follow_rate),
                 ("controversy_affinity", bt.controversy_affinity),
             ):
                 if not (0.0 <= rate_val <= 1.0):

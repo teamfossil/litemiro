@@ -74,6 +74,7 @@
               "post_rate": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
               "reply_rate": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
               "repost_rate": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+              "follow_rate": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
               "controversy_affinity": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
             }
           },

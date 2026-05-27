@@ -72,7 +72,7 @@ class ProfileGenerator:
                 "각 항목은 반드시 agent_id, personality, speech_style, background, "
                 "ideology (0.0~1.0), topics (list[str]), sensitive_topics (list[str]), "
                 "behavior_tendency (post_rate, reply_rate, repost_rate, "
-                "controversy_affinity) 포함.\n\n"
+                "follow_rate, controversy_affinity) 포함.\n\n"
                 + "\n\n".join(agent_lines)
                 + "\n\ntemperature: 0.5\n출력: JSON 배열만, 마크다운 없이."
             )
@@ -154,6 +154,7 @@ def _parse_profile(item: dict[str, object], seed: AgentSeed) -> AgentProfile:
         post_rate=_float_value(bt_raw.get("post_rate"), 0.5),
         reply_rate=_float_value(bt_raw.get("reply_rate"), 0.3),
         repost_rate=_float_value(bt_raw.get("repost_rate"), 0.2),
+        follow_rate=_float_value(bt_raw.get("follow_rate"), 0.2),
         controversy_affinity=_float_value(bt_raw.get("controversy_affinity"), 0.5),
     )
     entity_name = seed.entity.name if seed.entity else f"시민_{seed.agent_id}"

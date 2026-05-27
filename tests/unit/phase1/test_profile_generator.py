@@ -25,6 +25,7 @@ VALID_PROFILE_RESPONSE = json.dumps(
                 "post_rate": 0.6,
                 "reply_rate": 0.4,
                 "repost_rate": 0.3,
+                "follow_rate": 0.35,
                 "controversy_affinity": 0.7,
             },
         },
@@ -40,6 +41,7 @@ VALID_PROFILE_RESPONSE = json.dumps(
                 "post_rate": 0.3,
                 "reply_rate": 0.2,
                 "repost_rate": 0.1,
+                "follow_rate": 0.15,
                 "controversy_affinity": 0.4,
             },
         },
@@ -61,6 +63,8 @@ async def test_generate_profiles(
     assert profiles[0].personality == "날카로운 분석력과 비판적 시각"
     assert profiles[0].skeleton["source_entity_id"] == "journalist_kim"
     assert profiles[0].topics == ["정치", "경제"]
+    assert profiles[0].behavior_tendency.follow_rate == 0.35
+    assert profiles[1].behavior_tendency.follow_rate == 0.15
 
 
 @pytest.mark.asyncio
@@ -114,3 +118,6 @@ async def test_empty_profile_topics_fall_back(
     gen = ProfileGenerator(llm=llm, model="test")
     profiles = await gen.generate(sample_agent_seeds[:1], "AI 규제 시뮬레이션")
     assert profiles[0].topics == ["Journalist", "김영수"]
+    # behavior_tendency 가 빈 객체일 때 모든 rate 가 default 로 채워진다 —
+    # follow_rate 가 누락되어도 Phase 2 ActionSelector 가 신호를 받을 수 있게.
+    assert profiles[0].behavior_tendency.follow_rate == 0.2
