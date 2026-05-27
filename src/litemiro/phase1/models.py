@@ -101,6 +101,7 @@ class BehaviorTendency(BaseModel):
     post_rate: float = Field(default=0.5, ge=0.0, le=1.0)
     reply_rate: float = Field(default=0.3, ge=0.0, le=1.0)
     repost_rate: float = Field(default=0.2, ge=0.0, le=1.0)
+    follow_rate: float = Field(default=0.2, ge=0.0, le=1.0)
     controversy_affinity: float = Field(default=0.5, ge=0.0, le=1.0)
 
 
