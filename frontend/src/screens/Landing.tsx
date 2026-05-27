@@ -4,6 +4,7 @@
 // =====================================================================
 
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { lm } from '@/data/mock';
 import { BrandMark } from '@/components/chrome';
 import { Button, ArrowGlyph } from '@/components/atoms';
@@ -101,6 +102,7 @@ const RECENT_PAGE_SIZE = 5;
 
 export default function Landing() {
   const go = useScreenNav();
+  const navigate = useNavigate();
   const recent = useRecentPlazas();
 
   return (
@@ -145,7 +147,7 @@ export default function Landing() {
           <Button kind="primary" size="lg" onClick={() => go('seed')} trailing={<ArrowGlyph dir="right" />}>
             시뮬레이션 시작
           </Button>
-          <Button kind="link" onClick={() => go('casting')}>
+          <Button kind="link" onClick={() => navigate('/demo/casting')}>
             예시 시뮬레이션 보기
           </Button>
         </div>
