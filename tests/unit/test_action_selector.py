@@ -441,11 +441,30 @@ class TestPhase1PersonaSchema:
         system = llm.calls[0][0]
         assert "Behavior tendencies" in system
         assert "originate posts: 0.7" in system
-        assert "reply or quote: 0.5" in system
+        assert "react to others' posts overall (LIKE / REPOST / QUOTE): 0.5" in system
         assert "repost: 0.1" in system
         assert "press LIKE on aligned posts: 0.6" in system
         assert "follow others whose stance you find compelling: 0.4" in system
         assert "engage with controversy: 0.2" in system
+        # reply_rate 가 있을 때 umbrella vs subtype 관계가 prompt 에 명시돼야 — #120 리뷰.
+        assert "umbrella reaction probability" in system
+        assert "whatever remains is QUOTE" in system
+
+    async def test_umbrella_note_omitted_when_reply_rate_absent(self) -> None:
+        agent = _agent(
+            "me",
+            persona_traits={
+                "behavior_tendency": {
+                    "post_rate": 0.5,
+                    "repost_rate": 0.2,
+                    "like_rate": 0.6,
+                },
+            },
+        )
+        llm = _FakeLLM(_payload(ActionType.DO_NOTHING))
+        await _selector(llm).select_action("me", _ctx(agent=agent))
+        system = llm.calls[0][0]
+        assert "umbrella reaction probability" not in system
 
     async def test_follow_rate_falls_back_when_ontology_omits_it(self) -> None:
         # 구버전 Phase 1 ontology 가 follow_rate 키를 빠뜨려도 LLM 이 follow

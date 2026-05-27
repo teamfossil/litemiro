@@ -43,7 +43,11 @@ _SYSTEM_SCHEMA = (
     "\n"
     "Choose ONE action. A realistic feed shows a mix of all action types — "
     "no single action should dominate. Match your choice to your actual "
-    "intent this round, not to a generic 'reply to everything' habit.\n"
+    "intent this round, not to a generic 'reply to everything' habit. "
+    "Concretely: if two or more of your recent actions were QUOTE_POST, "
+    "default to LIKE_POST or REPOST this round unless you have genuinely "
+    "new information to add — sustained QUOTE streaks are the single most "
+    "common failure mode in this simulation.\n"
     "\n"
     "Two families:\n"
     "  • POST-REACTIONS (LIKE_POST, REPOST, QUOTE_POST) react to ONE post "
@@ -100,7 +104,11 @@ _PHASE1_PERSONA_KEYS: tuple[str, ...] = (
 
 _BEHAVIOR_TENDENCY_LABELS: tuple[tuple[str, str], ...] = (
     ("post_rate", "originate posts"),
-    ("reply_rate", "reply or quote"),
+    # ``reply_rate`` 는 ActionType 에 REPLY 가 없어서 옛 라벨 "reply or quote"
+    # 가 QUOTE 한 곳으로만 신호를 몰아 debug3 에서 QUOTE 57% 쏠림을 만들었다.
+    # 본 모델의 reaction 은 LIKE / REPOST / QUOTE 셋이므로 라벨도 셋을 모두
+    # 가리키게 풀어 신호를 분산.
+    ("reply_rate", "react to others' posts overall (LIKE / REPOST / QUOTE)"),
     ("repost_rate", "repost"),
     ("like_rate", "press LIKE on aligned posts"),
     ("follow_rate", "follow others whose stance you find compelling"),
@@ -177,7 +185,17 @@ def _behavior_hint(context: ActionContext) -> str:
             bits.append(f"{label}: {_LIKE_RATE_FALLBACK}")
     if not bits:
         return ""
-    return "Behavior tendencies (0..1, higher = more likely): " + "; ".join(bits) + "."
+    line = "Behavior tendencies (0..1, higher = more likely): " + "; ".join(bits) + "."
+    # reply_rate 와 like_rate / repost_rate 가 동시에 등장하면 LLM 이 둘을 곱해
+    # 야 할지 (중복 가중) umbrella+subtype 으로 봐야 할지 모호하다 — #120 리뷰.
+    # 의도된 의미를 명시: reply_rate 가 umbrella, 나머지 둘이 그 안에서의 tilt.
+    if "reply_rate" in bt:
+        line += (
+            " Note: 'react to others' posts overall' is the umbrella reaction "
+            "probability — 'press LIKE on aligned posts' and 'repost' tilt "
+            "within that umbrella (not on top of it); whatever remains is QUOTE."
+        )
+    return line
 
 
 def _avoidance_hint(context: ActionContext) -> str:
