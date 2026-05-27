@@ -252,9 +252,7 @@ class TestCreateOntology:
                     "preset": "quick",
                 },
             ).json()
-            body = _wait_ontology(
-                client, created["ontology_id"], terminal={"completed", "failed"}
-            )
+            body = _wait_ontology(client, created["ontology_id"], terminal={"completed", "failed"})
         assert body["status"] == "failed"
         assert body["ready"] is False
         assert body["error"] is not None

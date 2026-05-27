@@ -84,9 +84,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     # 이면 fallback 비활성, default 는 OpenAI gpt-4o-mini 한 개.
     parser.add_argument(
         "--llm-fallback-models",
-        default=os.environ.get(
-            "LITEMIRO_API_LLM_FALLBACK_MODELS", "openrouter/openai/gpt-4o-mini"
-        ),
+        default=os.environ.get("LITEMIRO_API_LLM_FALLBACK_MODELS", "openrouter/openai/gpt-4o-mini"),
         help="content filter 발동 시 순차 우회할 모델 (콤마 구분, 빈 문자열이면 비활성)",
     )
     return parser.parse_args(argv)
