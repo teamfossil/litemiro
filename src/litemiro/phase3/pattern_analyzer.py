@@ -40,7 +40,12 @@ _OVERVIEW_CATEGORY = "overview"
 _SYSTEM_PROMPT = (
     "당신은 소셜 미디어 시뮬레이션 결과를 분석하는 데이터 분석가다. "
     "주어진 통계만을 근거로 한국어로 2-4 문장 안에 요약하라. "
-    "수치를 그대로 인용하되 통계 밖의 사실을 추측하지 않는다."
+    "수치는 입력 JSON 의 사전 합산값 (`aggregate`, `total`, `n_*`, `total_posts_created` 등) "
+    "을 그대로 인용하라. 라운드를 직접 세거나 series 배열을 합산해서 비율을 추정하지 말라 "
+    "— 필요한 합계와 비율은 모두 `aggregate` 블록에 이미 계산돼 있다. "
+    "'총 게시물' 같은 표현을 쓸 때는 `total_posts_created` (CREATE+QUOTE+REPOST 합) 를 인용하고, "
+    "본문 있는 게시물만 가리킬 때는 `n_content_posts` 를 명시한다. "
+    "통계 밖의 사실은 추측하지 않는다."
 )
 
 _STANDARD_INSTRUCTION = "이 카테고리의 결과를 요약하라."
@@ -217,26 +222,38 @@ def _format_network_metrics(data: Mapping[str, Any]) -> str:
 
 
 def _format_topic_flow(data: Mapping[str, Any]) -> str:
-    n_posts = data.get("n_posts", 0)
+    n_content = int(data.get("n_content_posts", data.get("n_posts", 0)) or 0)
+    n_amp = int(data.get("n_amplifications", 0) or 0)
+    total = int(data.get("total_posts_created", n_content + n_amp) or 0)
     top = data.get("top_posters") or []
+    head = (
+        f"본문 있는 포스트 {n_content}건 + 리포스트 {n_amp}건 → 신규 포스트 총 {total}건."
+    )
     if isinstance(top, list) and top:
         first = top[0]
         aid = first.get("agent_id", "?")
         posts = first.get("posts", 0)
-        return f"포스트 {n_posts}건 발생. 최다 작성자: {aid} ({posts}건)."
-    return f"포스트 {n_posts}건 발생."
+        return f"{head} 최다 작성자: {aid} ({posts}건)."
+    return head
 
 
 def _format_time_series(data: Mapping[str, Any]) -> str:
     rounds = data.get("rounds") or []
     series = data.get("series") or []
+    aggregate = data.get("aggregate") if isinstance(data.get("aggregate"), Mapping) else {}
     if isinstance(series, list) and series:
         total_actions = sum(int(s.get("n_actions", 0) or 0) for s in series)
-        ratios = [float(s.get("do_nothing_ratio", 0.0) or 0.0) for s in series]
-        avg_ratio = sum(ratios) / len(ratios) if ratios else 0.0
+        # 사전 합산값이 있으면 인용하고, 없으면 series 에서 직접 계산 (옛 fixture 호환).
+        if aggregate:
+            n_zero = int(aggregate.get("n_rounds_zero_do_nothing", 0) or 0)
+            avg_ratio = float(aggregate.get("avg_do_nothing_ratio", 0.0) or 0.0)
+        else:
+            n_zero = sum(1 for s in series if int(s.get("n_do_nothing", 0) or 0) == 0)
+            ratios = [float(s.get("do_nothing_ratio", 0.0) or 0.0) for s in series]
+            avg_ratio = sum(ratios) / len(ratios) if ratios else 0.0
         return (
             f"총 {len(rounds)}라운드, 누적 액션 {total_actions}건. "
-            f"평균 DO_NOTHING 비율 {avg_ratio:.2f}."
+            f"DO_NOTHING 0%인 라운드 {n_zero}/{len(rounds)}, 평균 비율 {avg_ratio:.2f}."
         )
     return f"라운드 수 {len(rounds)}."
 

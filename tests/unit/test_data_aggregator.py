@@ -127,6 +127,33 @@ class TestAggregateEvents:
         assert "hello" in contents
         assert "agreed" in contents
 
+    def test_topic_flow_separates_content_posts_from_repost_amplifications(self) -> None:
+        """REPOST 도 round_manager 가 새 Post 를 만들어 feed 에 띄우니까 "신규 포스트"
+        총합엔 들어가야 하지만 (#110), 본문이 있는 게시물 카운트 / 작성자 인사이트는
+        CREATE/QUOTE 만 봐야 한다. 두 의미를 분리한 키가 모두 노출되는지 확인."""
+        events = [
+            _event(round_num=0, agent_id="a", action_type=ActionType.CREATE_POST, content="hi"),
+            _event(
+                round_num=1,
+                agent_id="b",
+                action_type=ActionType.QUOTE_POST,
+                target_post_id="p",
+                content="add",
+            ),
+            _event(round_num=1, agent_id="c", action_type=ActionType.REPOST, target_post_id="p"),
+            _event(round_num=1, agent_id="d", action_type=ActionType.REPOST, target_post_id="p"),
+            _event(round_num=1, agent_id="a", action_type=ActionType.LIKE_POST, target_post_id="p"),
+        ]
+        result = DataAggregator.aggregate_events(events)
+        topic = result.categories[CATEGORY_TOPIC_FLOW]
+        assert topic["n_content_posts"] == 2
+        assert topic["n_posts"] == 2  # 호환 alias
+        assert topic["n_amplifications"] == 2
+        assert topic["total_posts_created"] == 4
+        # 작성자는 본문 있는 게시물 기준 — REPOST 한 c/d 는 작성자 카운트에 들어가지 않음.
+        posters = {row["agent_id"]: row["posts"] for row in topic["top_posters"]}
+        assert posters == {"a": 1, "b": 1}
+
     def test_topic_flow_caps_samples_at_limit(self) -> None:
         events = [
             _event(
@@ -159,6 +186,24 @@ class TestAggregateEvents:
         assert r0["do_nothing_ratio"] == pytest.approx(0.5)
         assert r0["n_active_agents"] == 2
         assert r1["n_active_agents"] == 1  # a 만 active
+
+    def test_time_series_aggregate_exposes_zero_do_nothing_round_count(self) -> None:
+        """analyzer LLM 이 series 를 직접 세서 "14/15 라운드 0%" 같은 환각을 내지
+        않도록 사전 합산값을 노출 (#110). round 0: DO_NOTHING 1/2, round 1: 0/1,
+        round 2: 1/1 → zero 인 라운드는 1 (round 1)."""
+        events = [
+            _event(round_num=0, agent_id="a", action_type=ActionType.CREATE_POST, content="x"),
+            _event(round_num=0, agent_id="b", action_type=ActionType.DO_NOTHING),
+            _event(round_num=1, agent_id="a", action_type=ActionType.LIKE_POST, target_post_id="p"),
+            _event(round_num=2, agent_id="a", action_type=ActionType.DO_NOTHING),
+        ]
+        result = DataAggregator.aggregate_events(events)
+        agg = result.categories[CATEGORY_TIME_SERIES]["aggregate"]
+        assert agg["n_rounds"] == 3
+        assert agg["n_rounds_with_do_nothing"] == 2
+        assert agg["n_rounds_zero_do_nothing"] == 1
+        assert agg["avg_do_nothing_ratio"] == pytest.approx((0.5 + 0.0 + 1.0) / 3)
+        assert agg["max_do_nothing_ratio"] == pytest.approx(1.0)
 
     def test_aggregation_is_deterministic_for_same_input(self) -> None:
         events = [
