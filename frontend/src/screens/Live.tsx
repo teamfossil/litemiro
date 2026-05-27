@@ -5,7 +5,7 @@
 // 실 제품: generateLiveActions() → SSE /stream 의 event:"action" 으로 교체.
 // =====================================================================
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { lm } from '@/data/mock';
 import type { Action, ActionType, Agent, AgentRegistry, PlazaNode } from '@/data/types';
@@ -163,9 +163,10 @@ function AgentChip({ agent, size = 'sm' }: { agent?: Agent; size?: 'sm' | 'lg' }
 }
 
 // --------------------------------------------------------------------
-// ActionItem
+// ActionItem — memo 로 감싸서 새 액션이 들어와도 기존 39개는 리렌더 안 함.
+// agents.byId 가 동일 reference 면 props shallow equal → skip.
 // --------------------------------------------------------------------
-function ActionItem({ action, agents }: { action: Action; agents: AgentRegistry }) {
+const ActionItem = memo(function ActionItem({ action, agents }: { action: Action; agents: AgentRegistry }) {
   const agent = agents.byId[action.agentId];
   const target = action.targetId ? agents.byId[action.targetId] : null;
   const hasContent = action.type === 'CREATE_POST' || action.type === 'QUOTE_POST';
@@ -188,10 +189,13 @@ function ActionItem({ action, agents }: { action: Action; agents: AgentRegistry 
       )}
     </article>
   );
-}
+});
 
 // --------------------------------------------------------------------
-// 메인 통계 계산
+// 메인 통계 계산.
+// 액션 누적 카운트는 별도 state(ActionCounters)로 incremental 하게 유지 —
+// 매 onAction 마다 liveActions 전체를 6번 filter 하던 비용 제거.
+// liveActions 자체는 사이드바 표시용 최근 40개만 cap.
 // --------------------------------------------------------------------
 interface LiveStats {
   round: number;
@@ -208,25 +212,57 @@ interface LiveStats {
   fallbackPct: string;
 }
 
-function computeStats(actions: Action[], round: number, total: number): LiveStats {
-  const upto = actions.filter((a) => a.round <= round);
-  const utterances = upto.filter((a) => a.type === 'CREATE_POST' || a.type === 'QUOTE_POST').length;
-  const likes = upto.filter((a) => a.type === 'LIKE').length;
-  const reposts = upto.filter((a) => a.type === 'REPOST').length;
-  const citations = upto.filter((a) => a.type === 'QUOTE_POST').length;
-  const follows = upto.filter((a) => a.type === 'FOLLOW').length;
-  const settle = round / total;
+interface ActionCounters {
+  total: number;
+  utterances: number;
+  likes: number;
+  reposts: number;
+  citations: number;
+  follows: number;
+}
+
+const ZERO_COUNTERS: ActionCounters = { total: 0, utterances: 0, likes: 0, reposts: 0, citations: 0, follows: 0 };
+
+function bumpCounters(c: ActionCounters, type: ActionType): ActionCounters {
+  const next = { ...c, total: c.total + 1 };
+  if (type === 'CREATE_POST') next.utterances += 1;
+  else if (type === 'QUOTE_POST') {
+    next.utterances += 1;
+    next.citations += 1;
+  } else if (type === 'LIKE') next.likes += 1;
+  else if (type === 'REPOST') next.reposts += 1;
+  else if (type === 'FOLLOW') next.follows += 1;
+  return next;
+}
+
+function countActions(actions: Action[]): ActionCounters {
+  const c: ActionCounters = { ...ZERO_COUNTERS };
+  for (const a of actions) {
+    c.total += 1;
+    if (a.type === 'CREATE_POST') c.utterances += 1;
+    else if (a.type === 'QUOTE_POST') {
+      c.utterances += 1;
+      c.citations += 1;
+    } else if (a.type === 'LIKE') c.likes += 1;
+    else if (a.type === 'REPOST') c.reposts += 1;
+    else if (a.type === 'FOLLOW') c.follows += 1;
+  }
+  return c;
+}
+
+function computeStats(counters: ActionCounters, round: number, total: number): LiveStats {
+  const settle = round / Math.max(total, 1);
   return {
     round,
-    utterances,
-    likes,
-    reposts,
-    citations,
-    follows,
-    followers: 1240 + Math.round(follows * 0.78),
+    utterances: counters.utterances,
+    likes: counters.likes,
+    reposts: counters.reposts,
+    citations: counters.citations,
+    follows: counters.follows,
+    followers: 1240 + Math.round(counters.follows * 0.78),
     activeAgents: Math.min(312, 96 + Math.round(settle * 216)),
-    feedSize: upto.length,
-    tokens: upto.length * 180 + round * 220,
+    feedSize: counters.total,
+    tokens: counters.total * 180 + round * 220,
     latency: (1.05 + 0.35 * Math.sin(round / 4) + 0.15 * (1 - settle)).toFixed(2),
     fallbackPct: Math.max(0, 4.2 - settle * 2.4).toFixed(1),
   };
@@ -250,12 +286,9 @@ function LiveSidebar({
   stats: LiveStats;
   onClose: () => void;
 }) {
-  const recent = useMemo(() => {
-    return actions
-      .filter((a) => a.round <= round)
-      .slice(-40)
-      .reverse();
-  }, [actions, round]);
+  // actions 는 이미 상위에서 최근 40개로 cap 됨 — filter/slice 없이 reverse 만.
+  // round dep 제거 → 라운드 진행만으로 재계산 안 됨.
+  const recent = useMemo(() => [...actions].reverse(), [actions]);
 
   return (
     <aside className="lm-live__sidebar">
@@ -370,7 +403,9 @@ export default function Live() {
   const [round, setRound] = useState(0);
   const [total, setTotal] = useState(50);
   const [phaseStatus, setPhaseStatus] = useState<PlazaStatus>('pending');
+  // liveActions 는 사이드바 표시용 최근 40개만. 누적 카운트는 counters 로 분리.
   const [liveActions, setLiveActions] = useState<Action[]>([]);
+  const [counters, setCounters] = useState<ActionCounters>(ZERO_COUNTERS);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   // /agents 한 번만 — 광장 ID 고정이라 갱신 불필요.
@@ -429,10 +464,14 @@ export default function Live() {
         setTotal(e.rounds_total);
       },
       onAction: (e) => {
-        setLiveActions((prev) => [...prev.slice(-39), toAction(e)]);
+        const act = toAction(e);
+        setLiveActions((prev) => (prev.length >= 40 ? [...prev.slice(1), act] : [...prev, act]));
+        setCounters((c) => bumpCounters(c, act.type));
       },
       onActionsSnapshot: (e) => {
-        setLiveActions(e.actions.map(toAction));
+        const all = e.actions.map(toAction);
+        setLiveActions(all.slice(-40));
+        setCounters(countActions(all));
       },
     });
     return () => stream.close();
@@ -447,7 +486,7 @@ export default function Live() {
     ? { tag: '광장 종료', text: '결과를 확인하세요.' }
     : liveStatus(round, total);
   const isCompleted = phaseStatus === 'completed';
-  const stats = useMemo(() => computeStats(liveActions, round, total), [liveActions, round, total]);
+  const stats = useMemo(() => computeStats(counters, round, total), [counters, round, total]);
 
   return (
     <div className={`lm-live ${sidebarOpen ? 'is-sidebar-open' : ''}`}>
