@@ -119,5 +119,6 @@ async def test_empty_profile_topics_fall_back(
     profiles = await gen.generate(sample_agent_seeds[:1], "AI 규제 시뮬레이션")
     assert profiles[0].topics == ["Journalist", "김영수"]
     # behavior_tendency 가 빈 객체일 때 모든 rate 가 default 로 채워진다 —
-    # follow_rate 가 누락되어도 Phase 2 ActionSelector 가 신호를 받을 수 있게.
+    # follow_rate / like_rate 가 누락되어도 Phase 2 ActionSelector 가 신호를 받을 수 있게.
     assert profiles[0].behavior_tendency.follow_rate == 0.2
+    assert profiles[0].behavior_tendency.like_rate == 0.4
