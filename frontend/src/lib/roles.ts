@@ -25,21 +25,27 @@ const ENTITY_TYPE_TO_ROLE_ID: Record<string, RoleId> = {
   Journalist: 'broadcast',
   Academic: 'academic',
   Citizen: 'citizen_m',
+  citizen: 'citizen_m',
   Politician: 'politician',
   Corporation: 'corp',
   Activist: 'ngo',
   // contract.md "policy" → 정치인
   AIRegulationPolicy: 'politician',
   Government: 'politician',
+  GovernmentAgency: 'politician',
   // contract.md "industry" → 기업
   IndustryGroup: 'corp',
+  IndustryActor: 'corp',
   Company: 'corp',
   // contract.md "expert" → 학자
   Researcher: 'academic',
+  AcademicInstitution: 'academic',
   // contract.md "civic" → 시민단체
   CivicGroup: 'ngo',
+  CivilSocietyOrganization: 'ngo',
   // contract.md "media" → 방송기자 (mock 의 media 그룹 중 가장 일반적)
   Media: 'broadcast',
+  MediaOutlet: 'broadcast',
 };
 
 export function mapBackendRoleToRoleId(entityType: string): RoleId {
