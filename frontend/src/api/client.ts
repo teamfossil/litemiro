@@ -49,6 +49,39 @@ export interface PlazaStatusResponse {
   error: string | null;
 }
 
+// `GET /api/plazas` 목록 한 줄. `report_markdown` 같은 큰 본문이 빠져 있어
+// 카드 리스트 그리기 가볍다. 백엔드 `PlazaSummaryItem` 과 1:1.
+export interface PlazaSummaryItem {
+  plaza_id: string;
+  status: PlazaStatus;
+  rounds_total: number;
+  rounds_done: number;
+  label: string | null;
+  error: string | null;
+  preset: Preset;
+  tokens_used: number;
+  // ISO 8601.
+  created_at: string;
+  updated_at: string;
+}
+
+// `GET /api/plazas` 응답. `next_cursor` 가 채워져 있으면 다음 페이지 있을
+// 가능성, `null` 이면 마지막. 첫 호출은 cursor 없이 보내고 두 번째 호출부터
+// `cursor=next_cursor` 로 keyset 모드 갈아탈 수 있다.
+export interface PlazaListResponse {
+  plazas: PlazaSummaryItem[];
+  total: number;
+  limit: number;
+  offset: number;
+  next_cursor: string | null;
+}
+
+export interface ListPlazasParams {
+  limit?: number;
+  cursor?: string;
+  status?: PlazaStatus;
+}
+
 // SSE — /api/plazas/{id}/events 가 흘려보내는 두 종의 페이로드.
 // 백엔드 routes/events.py 와 1:1 미러.
 export interface PlazaProgressEvent {
@@ -198,6 +231,14 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  listPlazas: (params?: ListPlazasParams) => {
+    const search = new URLSearchParams();
+    if (params?.limit !== undefined) search.set('limit', String(params.limit));
+    if (params?.cursor !== undefined) search.set('cursor', params.cursor);
+    if (params?.status !== undefined) search.set('status', params.status);
+    const q = search.toString();
+    return request<PlazaListResponse>(`/api/plazas${q ? `?${q}` : ''}`);
+  },
   getStatus: (plazaId: string) =>
     request<PlazaStatusResponse>(`/api/plazas/${encodeURIComponent(plazaId)}/status`),
   getReport: (plazaId: string) =>

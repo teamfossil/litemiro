@@ -184,6 +184,10 @@
   color: var(--ink-4);
   white-space: nowrap;
 }
+.lm-landing__recent-error {
+  font-size: var(--t-small);
+  color: var(--negative);
+}
 
 /* ---------- RIGHT — HERO PLAZA ---------- */
 .lm-landing__right {
