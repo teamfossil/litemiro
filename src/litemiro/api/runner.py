@@ -39,7 +39,7 @@ class RealPlazaRunner:
         llm_client: LLMClient,
         embedder: EmbedderLike,
         llm_model: str = "openrouter/qwen/qwen-plus",
-        token_budget: int = 1_000_000,
+        token_budget: int = 3_000_000,
         semaphore_limit: int = 10,
         batch_size: int = 20,
         cooldown_seconds: float = 0.5,
