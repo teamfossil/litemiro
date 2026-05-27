@@ -5,7 +5,7 @@
 // 실 제품: generateLiveActions() → SSE /stream 의 event:"action" 으로 교체.
 // =====================================================================
 
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { lm } from '@/data/mock';
 import type { Action, ActionType, Agent, AgentRegistry, PlazaNode } from '@/data/types';
@@ -15,79 +15,41 @@ import { api, type PlazaActionEvent, type PlazaAgentItem, type PlazaLayoutAgentI
 import { avatarFromSeed, mapBackendRoleToRoleId } from '@/lib/roles';
 
 // --------------------------------------------------------------------
-// Plaza 노드 (force-directed 가라앉음).
-// 시작 위치는 agent_id seed 로 결정 — reload 에서도 안 튐.
-// final 위치는 /layout ready 시 백엔드 좌표. 아직이면 ideology 기반 추정.
+// Plaza 노드 — /layout ready 일 때만 백엔드 좌표로 표시.
+// 백엔드가 좌표를 안 줄 땐 frontend 가 채우지 않고 empty state 로 처리.
 // --------------------------------------------------------------------
-interface LiveNode extends PlazaNode {
-  startX: number;
-  startY: number;
-  finalX: number;
-  finalY: number;
-  startInfluence: number;
-  finalInfluence: number;
-}
-
-function hash01(s: string, salt = 0): number {
-  // 결정적 [0,1) — agent_id 별로 다른 위치 시드.
-  let h = salt;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return (h % 10000) / 10000;
-}
-
 function buildLiveNodes(
   agents: PlazaAgentItem[],
   layoutAgents: PlazaLayoutAgentItem[],
-): LiveNode[] {
-  const layoutMap = new Map(layoutAgents.map((la) => [la.id, la]));
-  return agents.map((a) => {
-    const roleId = mapBackendRoleToRoleId(a.role);
-    const la = layoutMap.get(a.id);
-    const finalX = la?.x ?? a.ideology;
-    const finalY = la?.y ?? 0.2 + hash01(a.id, 7) * 0.6;
-    const finalInfluence = la?.influence ?? 0.4;
-    return {
-      id: a.id,
-      name: a.name,
-      role: roleId,
-      kind: 'anchor',
-      color: lm.ROLE_BY_ID[roleId].color,
-      x: 0,
-      y: 0,
-      influence: 0,
-      startX: 0.1 + hash01(a.id, 1) * 0.8,
-      startY: 0.1 + hash01(a.id, 2) * 0.8,
-      startInfluence: 0.04,
-      finalX,
-      finalY,
-      finalInfluence,
-    };
-  });
-}
-function lerp(a: number, b: number, t: number) {
-  return a + (b - a) * t;
-}
-function easeInOut(t: number) {
-  return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+): PlazaNode[] {
+  if (layoutAgents.length === 0) return [];
+  const agentMap = new Map(agents.map((a) => [a.id, a]));
+  return layoutAgents
+    .map((la): PlazaNode | null => {
+      const a = agentMap.get(la.id);
+      if (!a) return null;
+      const roleId = mapBackendRoleToRoleId(a.role);
+      return {
+        id: a.id,
+        name: a.name,
+        role: roleId,
+        kind: 'anchor',
+        color: lm.ROLE_BY_ID[roleId].color,
+        x: la.x,
+        y: la.y,
+        influence: la.influence,
+      };
+    })
+    .filter((n): n is PlazaNode => n !== null);
 }
 
 // --------------------------------------------------------------------
-// LivePlaza — 광장 캔버스
+// LivePlaza — 광장 캔버스 (백엔드 좌표 그대로 그림)
 // --------------------------------------------------------------------
-function LivePlaza({ nodes, settle }: { nodes: LiveNode[]; settle: number }) {
+function LivePlaza({ nodes }: { nodes: PlazaNode[] }) {
   const W = 1680;
   const H = 920;
-  const sNodes = useMemo(() => {
-    const e = easeInOut(settle);
-    return nodes.map((n) => {
-      const x = lerp(n.startX, n.finalX, e);
-      const y = lerp(n.startY, n.finalY, e);
-      const infRise = Math.max(0, (settle - 0.3) / 0.7);
-      const inf = lerp(n.startInfluence, n.finalInfluence, easeInOut(infRise));
-      return { ...n, _x: x, _y: y, _inf: inf };
-    });
-  }, [nodes, settle]);
-  const sorted = useMemo(() => [...sNodes].sort((a, b) => a._inf - b._inf), [sNodes]);
+  const sorted = useMemo(() => [...nodes].sort((a, b) => a.influence - b.influence), [nodes]);
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="lm-live__svg" preserveAspectRatio="xMidYMid meet">
@@ -101,16 +63,16 @@ function LivePlaza({ nodes, settle }: { nodes: LiveNode[]; settle: number }) {
           stroke="#C9C1AD"
           strokeWidth="1"
           strokeDasharray="3 8"
-          opacity={Math.max(0, settle - 0.2) * (p === 0.5 ? 0.6 : 0.4)}
+          opacity={p === 0.5 ? 0.6 : 0.4}
         />
       ))}
       {sorted.map((n) => {
-        const cx = n._x * W;
-        const cy = n._y * (H - 100) + 40;
-        const r = lm.nodeRadius(n._inf, 1.6, 32);
+        const cx = n.x * W;
+        const cy = n.y * (H - 100) + 40;
+        const r = lm.nodeRadius(n.influence, 1.6, 32);
         return (
           <g key={n.id}>
-            {n._inf > 0.3 && <circle className="lm-live__node-shadow" cx={cx} cy={cy + 1.6} r={r * 1.02} fill="#000" opacity="0.08" />}
+            {n.influence > 0.3 && <circle className="lm-live__node-shadow" cx={cx} cy={cy + 1.6} r={r * 1.02} fill="#000" opacity="0.08" />}
             <circle className="lm-live__node" cx={cx} cy={cy} r={r} fill={n.color} opacity="0.92" />
           </g>
         );
@@ -204,12 +166,7 @@ interface LiveStats {
   reposts: number;
   citations: number;
   follows: number;
-  followers: number;
-  activeAgents: number;
   feedSize: number;
-  tokens: number;
-  latency: string;
-  fallbackPct: string;
 }
 
 interface ActionCounters {
@@ -250,8 +207,7 @@ function countActions(actions: Action[]): ActionCounters {
   return c;
 }
 
-function computeStats(counters: ActionCounters, round: number, total: number): LiveStats {
-  const settle = round / Math.max(total, 1);
+function computeStats(counters: ActionCounters, round: number): LiveStats {
   return {
     round,
     utterances: counters.utterances,
@@ -259,12 +215,7 @@ function computeStats(counters: ActionCounters, round: number, total: number): L
     reposts: counters.reposts,
     citations: counters.citations,
     follows: counters.follows,
-    followers: 1240 + Math.round(counters.follows * 0.78),
-    activeAgents: Math.min(312, 96 + Math.round(settle * 216)),
     feedSize: counters.total,
-    tokens: counters.total * 180 + round * 220,
-    latency: (1.05 + 0.35 * Math.sin(round / 4) + 0.15 * (1 - settle)).toFixed(2),
-    fallbackPct: Math.max(0, 4.2 - settle * 2.4).toFixed(1),
   };
 }
 
@@ -305,17 +256,13 @@ function LiveSidebar({
         </button>
       </header>
 
-      {/* STATS PANEL */}
+      {/* STATS PANEL — 백엔드가 직접 카운트하는 실수치만 표시 */}
       <section className="lm-live__stats-grid">
         <div className="lm-live__stat">
           <span className="lm-live__stat-k">라운드</span>
           <span className="lm-live__stat-v">
             {stats.round} <small>/ {total}</small>
           </span>
-        </div>
-        <div className="lm-live__stat">
-          <span className="lm-live__stat-k">활성 에이전트</span>
-          <span className="lm-live__stat-v">{stats.activeAgents}</span>
         </div>
         <div className="lm-live__stat">
           <span className="lm-live__stat-k">피드 크기</span>
@@ -340,22 +287,6 @@ function LiveSidebar({
         <div className="lm-live__stat">
           <span className="lm-live__stat-k">팔로우 변화</span>
           <span className="lm-live__stat-v">+{stats.follows.toLocaleString()}</span>
-        </div>
-        <div className="lm-live__stat">
-          <span className="lm-live__stat-k">팔로워</span>
-          <span className="lm-live__stat-v">{stats.followers.toLocaleString()}</span>
-        </div>
-        <div className="lm-live__stat lm-live__stat--micro">
-          <span className="lm-live__stat-k">토큰</span>
-          <span className="lm-live__stat-v lm-live__stat-v--mono">{stats.tokens.toLocaleString()}</span>
-        </div>
-        <div className="lm-live__stat lm-live__stat--micro">
-          <span className="lm-live__stat-k">LLM 지연</span>
-          <span className="lm-live__stat-v lm-live__stat-v--mono">{stats.latency}s</span>
-        </div>
-        <div className="lm-live__stat lm-live__stat--micro">
-          <span className="lm-live__stat-k">fallback</span>
-          <span className="lm-live__stat-v lm-live__stat-v--mono">{stats.fallbackPct}%</span>
         </div>
       </section>
 
@@ -441,15 +372,18 @@ export default function Live() {
     return { list, byId: Object.fromEntries(list.map((a) => [a.id, a])) };
   }, [rawAgents]);
 
-  const nodes = useMemo<LiveNode[]>(() => buildLiveNodes(rawAgents, layoutAgents), [rawAgents, layoutAgents]);
+  const nodes = useMemo<PlazaNode[]>(() => buildLiveNodes(rawAgents, layoutAgents), [rawAgents, layoutAgents]);
 
   // SSE — progress / status / action / actions_snapshot.
   useEffect(() => {
     if (!plazaId) return;
+    // 백엔드 ActionType ('LIKE_POST') 와 frontend mock ActionType ('LIKE') 의 wire
+    // 차이를 여기서 정규화. ACTION_LABELS / computeStats 가 mock 키만 보므로
+    // SSE 의 'LIKE_POST' 를 매핑 안 하면 ActionItem 렌더에서 undefined.tone throw.
     const toAction = (e: PlazaActionEvent): Action => ({
       round: e.round_num,
       agentId: e.agent_id,
-      type: e.type as ActionType,
+      type: (e.type === 'LIKE_POST' ? 'LIKE' : e.type) as ActionType,
       content: e.content ?? undefined,
       targetId: e.target_agent_id ?? undefined,
     });
@@ -486,7 +420,7 @@ export default function Live() {
     ? { tag: '광장 종료', text: '결과를 확인하세요.' }
     : liveStatus(round, total);
   const isCompleted = phaseStatus === 'completed';
-  const stats = useMemo(() => computeStats(counters, round, total), [counters, round, total]);
+  const stats = useMemo(() => computeStats(counters, round), [counters, round]);
 
   return (
     <div className={`lm-live ${sidebarOpen ? 'is-sidebar-open' : ''}`}>
@@ -501,7 +435,6 @@ export default function Live() {
           <div className="lm-live__head-right">
             <Stat label="라운드" value={`${round} / ${total}`} align="right" />
             <Stat label="발언" value={stats.utterances.toLocaleString()} align="right" />
-            <Stat label="활성 에이전트" value={stats.activeAgents} align="right" />
             {!sidebarOpen && (
               <Button kind="secondary" onClick={() => setSidebarOpen(true)}>
                 활동 피드 열기
@@ -511,17 +444,19 @@ export default function Live() {
         </header>
 
         <div className="lm-live__canvas">
-          {nodes.length > 0 ? (
+          {rawAgents.length === 0 ? (
+            <div className="lm-live__canvas-empty">에이전트 정보를 불러오는 중입니다.</div>
+          ) : nodes.length === 0 ? (
+            <div className="lm-live__canvas-empty">광장 좌표를 계산 중입니다. 시뮬레이션이 끝나면 표시돼요.</div>
+          ) : (
             <>
-              <LivePlaza nodes={nodes} settle={settle} />
+              <LivePlaza nodes={nodes} />
               <div className="lm-live__canvas-axis">
-                <span style={{ opacity: Math.max(0, settle - 0.2) }}>← 비판적</span>
-                <span style={{ opacity: Math.max(0, settle - 0.2) }}>중립</span>
-                <span style={{ opacity: Math.max(0, settle - 0.2) }}>우호적 →</span>
+                <span>← 비판적</span>
+                <span>중립</span>
+                <span>우호적 →</span>
               </div>
             </>
-          ) : (
-            <div className="lm-live__canvas-empty">에이전트 정보를 불러오는 중입니다.</div>
           )}
         </div>
 

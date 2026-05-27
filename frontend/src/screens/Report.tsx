@@ -274,10 +274,13 @@ export default function Report() {
 
   const reportMarkdown = backendReport?.report_markdown ?? null;
   const reportFallbackUsed = backendReport?.report_fallback_used ?? false;
-  const nAgents = backendReport?.n_agents ?? 312;
+  const nAgents = backendReport?.n_agents ?? 0;
   const nRounds = backendReport?.n_rounds ?? 0;
   const nEvents = backendReport?.n_events ?? 0;
   const tokensUsed = backendReport?.tokens_used ?? 0;
+  const roundsDone = backendReport?.rounds_done ?? 0;
+  const roundsTotal = backendReport?.rounds_total ?? 0;
+  const reportStatus = backendReport?.status ?? null;
 
   // 백엔드 categories 에서 안전하게 뽑기. shape 가 자유 dict 라 타입 단언 후 가드.
   const cats = (backendReport?.categories ?? {}) as Record<string, Record<string, unknown>>;
@@ -292,7 +295,7 @@ export default function Report() {
   const hasBackend = !!backendReport;
 
   // 다운로드 — markdown 은 Blob, PDF 는 브라우저 print (print dialog 에서 "PDF 로 저장")
-  const baseName = `litemiro-report-${plazaId ?? 'demo'}`;
+  const baseName = `litemiro-report-${plazaId ?? 'unknown'}`;
   const handleDownloadMarkdown = () => {
     if (!reportMarkdown) return;
     const blob = new Blob([reportMarkdown], { type: 'text/markdown;charset=utf-8' });
@@ -316,7 +319,7 @@ export default function Report() {
         <header className="lm-rep__head">
           <div className="lm-rep__head-left">
             <div className="lm-rep__head-eyebrow">
-              Phase 6 · 결과 리포트 · R{nRounds}/{nRounds}
+              Phase 6 · 결과 리포트 · R{roundsDone}/{roundsTotal}
             </div>
             <h1 className="lm-rep__head-title">시뮬레이션 결과 리포트</h1>
             <div className="lm-rep__head-meta">
@@ -333,9 +336,6 @@ export default function Report() {
               Markdown
             </Button>
             <Button kind="secondary" onClick={handlePrintPdf}>PDF</Button>
-            <Button kind="primary" trailing={<ArrowGlyph dir="right" />}>
-              공유
-            </Button>
           </div>
         </header>
 
@@ -381,7 +381,7 @@ export default function Report() {
             <div className="lm-rep__sum-side">
               <div className="lm-rep__sum-stats">
                 <Stat label="참여 인격" value={nAgents} />
-                <Stat label="라운드" value={`${nRounds}/${nRounds}`} />
+                <Stat label="라운드" value={`${roundsDone}/${roundsTotal}`} />
                 <Stat label="총 이벤트" value={nEvents.toLocaleString()} />
                 <Stat label="총 행동" value={actionTotal.toLocaleString()} />
                 <Stat label="게시물" value={(topicFlow.n_posts ?? 0).toLocaleString()} />
@@ -500,18 +500,15 @@ export default function Report() {
           <CostPanel tokens={tokensUsed} qa={qaMetrics} nAgents={nAgents} nRounds={nRounds} />
         </ReportSection>
 
-        {/* FOOTER */}
-        <footer className="lm-rep__foot">
-          <div className="lm-rep__foot-meta">
-            <span>LiteMiro v3.4 · 생성 시각 2026-05-23 18:42 KST</span>
-          </div>
-          <div className="lm-rep__foot-actions">
-            <Button kind="secondary">새 시드로 다시 시뮬레이션</Button>
-            <Button kind="primary" trailing={<ArrowGlyph dir="right" />}>
-              이 리포트 저장
-            </Button>
-          </div>
-        </footer>
+        {/* FOOTER — 백엔드가 주는 status / fallback 표시만 */}
+        {reportStatus && (
+          <footer className="lm-rep__foot">
+            <div className="lm-rep__foot-meta">
+              <span>광장 상태 · {reportStatus}</span>
+              {reportFallbackUsed && <span>· 본문 합성 폴백 사용</span>}
+            </div>
+          </footer>
+        )}
       </div>
     </div>
   );
