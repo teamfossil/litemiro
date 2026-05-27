@@ -225,12 +225,17 @@ function CastingDemo() {
     };
   }, []);
 
-  // anchors 길이가 ANCHOR_TIMES(5)와 달라도 (백엔드 quick=3 등) 안전하게.
-  const anchorTimes = useMemo(() => ANCHOR_TIMES.slice(0, anchors.length), [anchors.length]);
+  // 슬롯에는 ANCHOR_TIMES(5) 만큼만 노출 — 100~500 명의 ontology 라도 화면엔
+  // 대표 5명만. 나머지는 DerivedSwarm 으로 표현. anchors 가 5 미만이면 그 수만큼.
+  const featuredAnchors = useMemo(
+    () => anchors.slice(0, Math.min(anchors.length, ANCHOR_TIMES.length)),
+    [anchors],
+  );
+  const anchorTimes = useMemo(() => ANCHOR_TIMES.slice(0, featuredAnchors.length), [featuredAnchors.length]);
 
   const extractedIds = useMemo(() => {
-    return anchorTimes.map((at, i) => (t >= at ? anchors[i].id : null)).filter(Boolean) as string[];
-  }, [t, anchors, anchorTimes]);
+    return anchorTimes.map((at, i) => (t >= at ? featuredAnchors[i].id : null)).filter(Boolean) as string[];
+  }, [t, featuredAnchors, anchorTimes]);
 
   const extractingIdx = useMemo(() => {
     for (let i = 0; i < anchorTimes.length; i++) {
@@ -251,7 +256,7 @@ function CastingDemo() {
     if (done) return { tag: '준비 완료', text: '광장이 곧 열립니다.' };
     if (t < 0.05) return { tag: '01 문서 분석', text: '자료를 읽고 있어요.' };
     if (t < DERIVED_START) {
-      const justExtracted = anchors.find((a) => extractedIds[extractedIds.length - 1] === a.id);
+      const justExtracted = featuredAnchors.find((a) => extractedIds[extractedIds.length - 1] === a.id);
       return { tag: '02 인격 추출', text: justExtracted ? `${justExtracted.name} · 추출 완료` : '인물을 찾고 있어요.' };
     }
     return { tag: '03 군중 생성', text: '익명 시민·전문가 인격을 만들고 있어요.' };
@@ -296,18 +301,18 @@ function CastingDemo() {
 
         {/* MAIN GRID */}
         <div className="lm-cast__grid">
-          <ScanPanel extractedCount={extractedIds.length} totalCount={anchors.length} scanLineY={scanLineY} />
+          <ScanPanel extractedCount={extractedIds.length} totalCount={featuredAnchors.length} scanLineY={scanLineY} />
 
           <div className="lm-cast__slots">
             <header className="lm-cast__slots-head">
-              <span className="lm-cast__slots-tag">CAST · 추출된 인격</span>
+              <span className="lm-cast__slots-tag">CAST · 핵심 인격 {featuredAnchors.length}명</span>
               <span className="lm-cast__slots-count">
-                {extractedIds.length} / {anchors.length} 명
+                {extractedIds.length} / {featuredAnchors.length} 명
               </span>
             </header>
 
             <div className="lm-cast__slots-list">
-              {anchors.map((a, i) => {
+              {featuredAnchors.map((a, i) => {
                 const state: SlotState = extractedIds.includes(a.id) ? 'done' : extractingIdx === i ? 'extracting' : 'pending';
                 return <AnchorSlot key={a.id} anchor={a} state={state} index={i} />;
               })}
@@ -388,7 +393,9 @@ function CastingReal() {
             label: labelParam || undefined,
           });
           if (!cancelled) {
-            navigate(pathForScreen('live', plaza.plaza_id), { replace: true });
+            // CastingDemo 의 슬롯 애니메이션을 한 번 보여준 뒤 Live 로 가게 한다.
+            // CastingDemo 가 8 초 뒤 자동으로 /live/{plazaId} 로 navigate.
+            navigate(pathForScreen('casting', plaza.plaza_id), { replace: true });
           }
         } catch (e) {
           if (cancelled) return;

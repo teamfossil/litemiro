@@ -366,9 +366,9 @@ export default function Live() {
   const [rawAgents, setRawAgents] = useState<PlazaAgentItem[]>([]);
   const [layoutAgents, setLayoutAgents] = useState<PlazaLayoutAgentItem[]>([]);
 
-  // SSE 구동 상태.
+  // SSE 구동 상태. total 초기 0 — SSE 첫 status/progress 가 실 rounds_total 로 덮어쓴다.
   const [round, setRound] = useState(0);
-  const [total, setTotal] = useState(50);
+  const [total, setTotal] = useState(0);
   const [phaseStatus, setPhaseStatus] = useState<PlazaStatus>('pending');
   const [liveActions, setLiveActions] = useState<Action[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
