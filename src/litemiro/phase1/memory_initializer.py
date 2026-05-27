@@ -29,6 +29,61 @@ _ALLY_TYPES = {"COLLEAGUES", "ALLIES", "WORKS_FOR", "BELONGS_TO"}
 _BIDIRECTIONAL_TYPES = {"COLLEAGUES", "ALLIES"}
 _MAX_MEMORY_TOPICS = 3
 _KEYWORD_RE = re.compile(r"\w+")
+
+# Korean 조사/어미 suffixes to strip from raw `\w+` tokens. The regex matches
+# 어절+조사 as a single token (e.g. "정책을", "기자로", "보도하는"), so the
+# JSON-emitted topic ends up tied to a grammatical form that never overlaps
+# the persona's bare-noun `topics` list. Stripping is conservative: we only
+# remove a suffix when the remaining stem is ≥ 2 chars, and we never touch
+# ASCII tokens. Sorted longest-first so that "에서는" wins over "는".
+_KOREAN_SUFFIXES: tuple[str, ...] = tuple(
+    sorted(
+        (
+            "에서는",
+            "에서도",
+            "한테는",
+            "한테도",
+            "에게는",
+            "에게도",
+            "에서",
+            "에게",
+            "한테",
+            "부터",
+            "까지",
+            "보다",
+            "마저",
+            "처럼",
+            "으로",
+            "라도",
+            "들이",
+            "들은",
+            "들을",
+            "들의",
+            "들도",
+            "들과",
+            "하는",
+            "되는",
+            "이며",
+            "이고",
+            "는",
+            "은",
+            "이",
+            "가",
+            "을",
+            "를",
+            "의",
+            "에",
+            "도",
+            "만",
+            "와",
+            "과",
+            "로",
+            "야",
+        ),
+        key=len,
+        reverse=True,
+    )
+)
 _ENGLISH_STOP_WORDS = {
     "a",
     "an",
@@ -286,7 +341,19 @@ def _topic_values(value: object) -> list[str]:
 
 
 def _keywords_from_text(text: str) -> list[str]:
-    return [token for token in _KEYWORD_RE.findall(text) if _is_topic_token(token)]
+    tokens = (_strip_korean_suffix(token) for token in _KEYWORD_RE.findall(text))
+    return [token for token in tokens if _is_topic_token(token)]
+
+
+def _strip_korean_suffix(token: str) -> str:
+    if token.isascii():
+        return token
+    for suffix in _KOREAN_SUFFIXES:
+        if token.endswith(suffix):
+            stem = token[: -len(suffix)]
+            if len(stem) >= 2:
+                return stem
+    return token
 
 
 def _is_topic_token(token: str) -> bool:
