@@ -7,7 +7,7 @@
 // =====================================================================
 
 import { useEffect, useMemo, useState } from 'react';
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AppShell, type ScreenId } from '@/components/chrome';
 import { useScreenNav } from '@/lib/nav';
 import { api } from '@/api/client';
@@ -49,10 +49,20 @@ const REPORT_REACHED_KEY = 'lm:reportReached';
 
 export default function App() {
   const location = useLocation();
-  const go = useScreenNav();
+  const navigate = useNavigate();
   const currentScreen = screenFromPath(location.pathname);
   const plazaId = useMemo(() => plazaIdFromPath(location.pathname), [location.pathname]);
   const isDemo = location.pathname.startsWith('/demo/');
+
+  // AppShell header phase-nav 가 호출하는 navigator. App 컴포넌트는 route 위에
+  // 있어서 useParams 가 비어 useScreenNav() 의 폴백이 DEMO_PLAZA_ID 로 떨어진다 —
+  // 사용자가 Report 에서 "광장" 탭 누르면 /plaza/demo 로 가버려 404 cascade.
+  // plazaId 를 URL 에서 직접 추출해 명시적으로 넘긴다. /demo/* 경로는 /demo/{target}
+  // 으로 라우팅해 production 흐름과 섞이지 않게 한다.
+  const baseGo = useScreenNav(plazaId ?? undefined);
+  const go = isDemo
+    ? (id: ScreenId) => navigate(id === 'landing' ? '/' : `/demo/${id}`)
+    : baseGo;
 
   // 헤더에 표시할 광장 제목 — 데모면 mock SEED 제목, 그 외엔 URL plaza_id 로
   // /status 한 번 조회. label 이 null 이면 "광장 #abc12345" 단축 ID 로 폴백.

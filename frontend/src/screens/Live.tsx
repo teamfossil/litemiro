@@ -446,10 +446,14 @@ export default function Live() {
   // SSE — progress / status / action / actions_snapshot.
   useEffect(() => {
     if (!plazaId) return;
+    // 백엔드 ActionType ('LIKE_POST') 와 frontend mock ActionType ('LIKE') 의 wire
+    // name 차이를 여기서 정규화. ACTION_LABELS / computeStats 가 mock 키 ('LIKE') 를
+    // 보므로 SSE 의 'LIKE_POST' 를 매핑 안 하면 ActionItem 렌더에서
+    // `ACTION_LABELS[type].tone` → undefined.tone access → 화면 통째 throw.
     const toAction = (e: PlazaActionEvent): Action => ({
       round: e.round_num,
       agentId: e.agent_id,
-      type: e.type as ActionType,
+      type: (e.type === 'LIKE_POST' ? 'LIKE' : e.type) as ActionType,
       content: e.content ?? undefined,
       targetId: e.target_agent_id ?? undefined,
     });
