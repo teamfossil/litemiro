@@ -150,6 +150,31 @@ class TestMemoryInitializer:
         assert all(t != "기자로" for t in topics)
         assert all(t != "보도하는" for t in topics)
 
+    def test_seed_memory_topics_strip_korean_particles_from_mixed_tokens(self) -> None:
+        """`AI를`, `LLM의` 처럼 영문 명사 + 한국어 조사가 붙은 혼합 토큰도
+        조사를 떼고 영문 stem 을 유지해야 persona.topics(`AI`) ↔ memory.topics
+        매칭이 살아난다."""
+        graph = LocalGraph.build(
+            ExtractionResult(
+                entities=[
+                    Entity(
+                        id="a1",
+                        type="Researcher",
+                        name="AI Lab",
+                        summary="AI를 연구하는 LLM의 도입을 다룬다",
+                    )
+                ]
+            )
+        )
+        agents = {"a1": _make_profile("a1", topics=["sports"])}
+
+        stores = MemoryInitializer(graph=graph, seed=42).initialize(agents)
+
+        topics = stores["a1"].semantic[0].topics
+        assert "AI" in topics
+        assert all(t != "AI를" for t in topics)
+        assert all(t != "LLM의" for t in topics)
+
     def test_seed_memory_topics_filter_english_stop_words_from_summary(self) -> None:
         graph = LocalGraph.build(
             ExtractionResult(
