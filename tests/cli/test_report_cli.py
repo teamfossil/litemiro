@@ -23,6 +23,12 @@ from litemiro.phase1.models import Preset
 class _FakeLLM:
     """모든 호출 성공 — Composer 가 primary 모델로 끝낸다."""
 
+    def __init__(self, **_: object) -> None:
+        # ``LiteLLMClient`` 의 키워드 인자 (``timeout_seconds`` 등) 를 흡수해
+        # ``monkeypatch.setattr(report_cli, "LiteLLMClient", _FakeLLM)`` 가
+        # 동작하도록 한다.
+        ...
+
     async def complete(self, *, system: str, user: str, model: str) -> LLMResponse:
         return LLMResponse(
             content=f"# 보고서\n## {model}\n요약 문장.",

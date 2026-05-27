@@ -99,6 +99,15 @@ def _build_parser() -> argparse.ArgumentParser:
         default="openrouter/qwen/qwen-plus",
         help="Composer fallback model (default: openrouter/qwen/qwen-plus)",
     )
+    parser.add_argument(
+        "--llm-timeout-seconds",
+        type=float,
+        default=120.0,
+        help=(
+            "Per-call LLM timeout (default: 120.0). Composer 가 카테고리 raw 통계와 "
+            "QaMetrics 까지 받아 풍부한 보고서를 생성하므로 응답이 30s 디폴트보다 길다."
+        ),
+    )
     return parser
 
 
@@ -173,7 +182,7 @@ def main(argv: list[str] | None = None) -> int:
         print("Error: OPENROUTER_API_KEY is not set", file=sys.stderr)
         return 1
     try:
-        llm_client = LiteLLMClient()
+        llm_client = LiteLLMClient(timeout_seconds=args.llm_timeout_seconds)
         summary = asyncio.run(_run(args, llm_client=llm_client))
         _write_output(summary)
     except Exception as exc:
