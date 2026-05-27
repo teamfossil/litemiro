@@ -441,7 +441,7 @@ class TestPhase1PersonaSchema:
         system = llm.calls[0][0]
         assert "Behavior tendencies" in system
         assert "originate posts: 0.7" in system
-        assert "reply or quote: 0.5" in system
+        assert "react to others' posts overall (LIKE / REPOST / QUOTE): 0.5" in system
         assert "repost: 0.1" in system
         assert "press LIKE on aligned posts: 0.6" in system
         assert "follow others whose stance you find compelling: 0.4" in system
