@@ -408,6 +408,7 @@ class TestPhase1PersonaSchema:
                     "post_rate": 0.7,
                     "reply_rate": 0.5,
                     "repost_rate": 0.1,
+                    "follow_rate": 0.4,
                     "controversy_affinity": 0.2,
                 },
             },
@@ -419,7 +420,36 @@ class TestPhase1PersonaSchema:
         assert "originate posts: 0.7" in system
         assert "reply or quote: 0.5" in system
         assert "repost: 0.1" in system
+        assert "follow others whose stance you find compelling: 0.4" in system
         assert "engage with controversy: 0.2" in system
+
+    async def test_follow_rate_falls_back_when_ontology_omits_it(self) -> None:
+        # 구버전 Phase 1 ontology 가 follow_rate 키를 빠뜨려도 LLM 이 follow
+        # 가중치 신호를 받아야 — 그렇지 않으면 FOLLOW 가 거의 선택되지 않는다.
+        agent = _agent(
+            "me",
+            persona_traits={
+                "behavior_tendency": {
+                    "post_rate": 0.5,
+                    "reply_rate": 0.3,
+                    "repost_rate": 0.2,
+                    "controversy_affinity": 0.5,
+                },
+            },
+        )
+        llm = _FakeLLM(_payload(ActionType.DO_NOTHING))
+        await _selector(llm).select_action("me", _ctx(agent=agent))
+        system = llm.calls[0][0]
+        assert "follow others whose stance you find compelling: 0.2" in system
+
+    async def test_behavior_hint_skipped_when_tendency_absent(self) -> None:
+        # behavior_tendency 객체 자체가 없으면 hint 가 출력되지 않는다 —
+        # follow_rate 폴백이 다른 키 누락 패스 동작을 깨뜨리지 않는지 검증.
+        agent = _agent("me", persona_traits={"personality": "INTJ"})
+        llm = _FakeLLM(_payload(ActionType.DO_NOTHING))
+        await _selector(llm).select_action("me", _ctx(agent=agent))
+        system = llm.calls[0][0]
+        assert "Behavior tendencies" not in system
 
     async def test_sensitive_topics_become_avoidance_hint(self) -> None:
         agent = _agent(

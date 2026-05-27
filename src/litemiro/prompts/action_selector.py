@@ -88,6 +88,11 @@ _BEHAVIOR_TENDENCY_LABELS: tuple[tuple[str, str], ...] = (
     ("controversy_affinity", "engage with controversy"),
 )
 
+# Phase 1 ontology 가 follow_rate 키를 빠뜨려도 LLM 이 가중치 신호를 받게
+# 하는 안전망 (구버전 ontology 호환). Phase 1 의 BehaviorTendency.follow_rate
+# 디폴트와 같은 값으로 맞춘다.
+_FOLLOW_RATE_FALLBACK = 0.2
+
 
 def compose_system(agent_id: str, context: ActionContext) -> str:
     """Build the system prompt — persona card + behavior hints + schema."""
@@ -128,11 +133,23 @@ def _persona_card(context: ActionContext) -> str:
 
 
 def _behavior_hint(context: ActionContext) -> str:
-    """Restate ``behavior_tendency`` weights in prose for a clearer LLM cue."""
+    """Restate ``behavior_tendency`` weights in prose for a clearer LLM cue.
+
+    Missing keys collapse to skip — *except* ``follow_rate``: if the
+    ontology has a ``behavior_tendency`` block but omits ``follow_rate``
+    (구버전 Phase 1 출력), inject the Phase 1 default so the LLM still
+    sees a follow weight. Without this, the FOLLOW label is silently
+    dropped and the model never picks FOLLOW.
+    """
     bt = context.agent.persona_traits.get("behavior_tendency")
     if not isinstance(bt, Mapping):
         return ""
-    bits = [f"{label}: {bt[key]}" for key, label in _BEHAVIOR_TENDENCY_LABELS if key in bt]
+    bits: list[str] = []
+    for key, label in _BEHAVIOR_TENDENCY_LABELS:
+        if key in bt:
+            bits.append(f"{label}: {bt[key]}")
+        elif key == "follow_rate":
+            bits.append(f"{label}: {_FOLLOW_RATE_FALLBACK}")
     if not bits:
         return ""
     return "Behavior tendencies (0..1, higher = more likely): " + "; ".join(bits) + "."
