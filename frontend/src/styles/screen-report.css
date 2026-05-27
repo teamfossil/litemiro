@@ -711,3 +711,29 @@
   }
   .lm-rep__inf-col-cite, .lm-rep__inf-col-rep { display: none; }
 }
+
+/* ---------- PRINT (브라우저 "PDF 로 저장") ----------
+   화면용 chrome / 액션 버튼 / 박스 스크롤 잘림 제거.
+   섹션 단위 page-break, 배경/strong 색상 보존. */
+@media print {
+  @page { size: A4; margin: 14mm 12mm; }
+  html, body { background: #ffffff !important; }
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  .lm-header, .lm-shell__nav, .lm-shell__sidebar, .lm-statusline { display: none !important; }
+  .lm-rep { overflow: visible !important; height: auto !important; display: block !important; }
+  .lm-rep__pad {
+    overflow: visible !important;
+    max-width: none !important;
+    width: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    gap: var(--s-5) !important;
+  }
+  .lm-rep__head-actions { display: none !important; }
+  .lm-rep__hero-markdown {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  .lm-rep__hero, .lm-rep__sec { break-inside: avoid; page-break-inside: avoid; }
+  .lm-rep__sec { break-before: auto; }
+}
