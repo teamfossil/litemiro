@@ -321,9 +321,9 @@
   gap: var(--s-3);
 }
 .lm-rep__topic-row {
-  display: grid; grid-template-columns: calc(140px * var(--scale)) calc(56px * var(--scale)) 1fr calc(96px * var(--scale));
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--s-4);
-  align-items: center;
+  align-items: baseline;
   padding: var(--s-3) 0;
   border-top: 1px solid var(--rule-2);
 }
@@ -334,6 +334,8 @@
   font-weight: 600;
   letter-spacing: var(--ls-mono);
   color: var(--ink);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .lm-rep__topic-count {
   font-family: var(--mono);
@@ -342,6 +344,7 @@
   color: var(--ink-3);
   text-align: right;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .lm-rep__topic-bar {
   height: calc(14px * var(--scale));
