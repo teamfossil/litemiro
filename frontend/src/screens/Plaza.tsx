@@ -4,7 +4,7 @@
 // =====================================================================
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { lm } from '@/data/mock';
 import type { GroupId, PlazaNode } from '@/data/types';
 import { AvatarSVG, Badge, RoleSwatch, Button, Stat, Pill, ArrowGlyph } from '@/components/atoms';
@@ -416,7 +416,15 @@ function PlazaFilters({ filters, onChange, totalNodes }: { filters: PlazaFilters
 // --------------------------------------------------------------------
 export default function Plaza() {
   const { plazaId } = useParams<{ plazaId: string }>();
-  const go = useScreenNav(plazaId);
+  const location = useLocation();
+  const navigate = useNavigate();
+  // /demo/plaza 진입 시 mock-only — /layout fetch 안 함, nav 도 /demo/* 로.
+  const isDemo = location.pathname.startsWith('/demo/');
+  const baseGo = useScreenNav(plazaId);
+  const go = isDemo
+    ? (target: 'live' | 'report' | 'plaza' | 'casting' | 'landing' | 'seed') =>
+        navigate(target === 'landing' ? '/' : `/demo/${target}`)
+    : baseGo;
   // mock 312 노드를 초기값으로 — /layout 응답으로 교체. ready=false 면 mock 유지.
   const mockNodes = useMemo(() => lm.generatePlaza({ seed: 42, n: 312 }), []);
   const [allNodes, setAllNodes] = useState<PlazaNode[]>(mockNodes);
