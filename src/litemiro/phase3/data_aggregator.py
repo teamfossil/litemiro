@@ -145,15 +145,18 @@ def _topic_flow(events: list[RoundEvent]) -> dict[str, Any]:
             n_amplifications += 1
     n_content_posts = sum(posts_per_round.values())
     return {
-        # 기존 키 — content 가 있는 게시물 (CREATE_POST + QUOTE_POST). 호환 유지.
+        # [DEPRECATED] "n_posts" 가 "총 게시물" 로 오해돼 REPOST 누락 (#110) 원인이
+        # 됐다. 새 코드는 의미가 명확한 n_content_posts / n_amplifications /
+        # total_posts_created 중 하나를 쓰고, 본 키는 구버전 prompt·외부
+        # consumer 호환을 위해서만 유지한다. 다음 마이너에서 제거 후보.
         "n_posts": n_content_posts,
-        # 명시 alias — "n_posts" 가 모호하니 보고서 prompt 에서 이 키를 쓰면
-        # 의미가 분명해진다 (top_posters / samples 와 같은 모집단).
+        # content 가 있는 게시물 (CREATE_POST + QUOTE_POST) — top_posters /
+        # samples 와 같은 모집단.
         "n_content_posts": n_content_posts,
         # REPOST 만 — 본문 없이 인용만 한 amplification.
         "n_amplifications": n_amplifications,
-        # 사용자 입장에선 store/feed 에 새로 등장한 모든 Post 의 합계.
-        # ReportComposer 가 "총 게시물 N건" 이라 표현할 때 인용해야 할 값.
+        # store/feed 에 새로 등장한 모든 Post 의 합계. ReportComposer 가
+        # "총 게시물 N건" 이라 표현할 때 인용해야 하는 정식 키.
         "total_posts_created": n_content_posts + n_amplifications,
         "posts_per_round": [
             {"round_num": r, "n": posts_per_round[r]} for r in sorted(posts_per_round)
