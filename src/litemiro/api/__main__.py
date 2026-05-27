@@ -78,7 +78,22 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--llm-model",
         default=os.environ.get("LITEMIRO_API_LLM_MODEL", "openrouter/qwen/qwen-plus"),
     )
+    # Phase 1 ontology generation 이 provider content filter (#121, Qwen 의
+    # data_inspection_failed) 에 막혔을 때 자동 우회할 모델 리스트. 콤마 구분.
+    # 정상 케이스는 primary 모델만 호출 — fallback 비용 영향 없음. 빈 문자열
+    # 이면 fallback 비활성, default 는 OpenAI gpt-4o-mini 한 개.
+    parser.add_argument(
+        "--llm-fallback-models",
+        default=os.environ.get(
+            "LITEMIRO_API_LLM_FALLBACK_MODELS", "openrouter/openai/gpt-4o-mini"
+        ),
+        help="content filter 발동 시 순차 우회할 모델 (콤마 구분, 빈 문자열이면 비활성)",
+    )
     return parser.parse_args(argv)
+
+
+def _parse_fallback_models(raw: str) -> list[str]:
+    return [m.strip() for m in raw.split(",") if m.strip()]
 
 
 def _build_real_runner_and_composer(*, llm_model: str) -> tuple[PlazaRunner, PlazaComposer]:
@@ -101,7 +116,9 @@ def _build_real_runner_and_composer(*, llm_model: str) -> tuple[PlazaRunner, Pla
     return runner, composer
 
 
-def _build_real_ontology_runner(*, llm_model: str) -> OntologyRunner:
+def _build_real_ontology_runner(
+    *, llm_model: str, fallback_models: list[str] | None = None
+) -> OntologyRunner:
     """Phase 1 ``OntologyPipeline`` 을 감싸 ``OntologyStore`` 가 부르는 시그니처에
     맞춘 closure 를 만든다. ``litellm.acompletion`` 콜이 1건의 ontology 당 분 단위
     — fake runner 와 달리 OpenRouter 키가 반드시 필요하다.
@@ -109,10 +126,23 @@ def _build_real_ontology_runner(*, llm_model: str) -> OntologyRunner:
     pipeline 은 ``output_dir / ontology_{a,b}_*.json`` 두 파일을 떨군 뒤
     ``(OntologyA, OntologyB)`` 를 돌려준다. runner 는 그 경로를 그대로
     ``OntologyRunResult`` 에 박아 store 의 row 에 반영된다.
+
+    ``fallback_models`` 가 비어있지 않으면 primary (``llm_model``) 가 provider
+    content filter 에 막혔을 때 (``data_inspection_failed`` 등) 순차로 재시도.
+    filter 외 에러는 즉시 전파 — rate-limit / network 은 fallback 으로 우회해도
+    동일하게 실패할 가능성이 크다.
     """
+    import logging  # noqa: PLC0415
+
+    from litemiro.api.ontology_store import (  # noqa: PLC0415
+        OntologyContentFilterBlockedError,
+        is_content_filter_error,
+    )
     from litemiro.cli.ontology import Phase1LiteLLMClient  # noqa: PLC0415
     from litemiro.phase1.pipeline import OntologyPipeline, PipelineConfig  # noqa: PLC0415
 
+    log = logging.getLogger(__name__)
+    chain = [llm_model, *(fallback_models or [])]
     llm = Phase1LiteLLMClient()
 
     async def _run(
@@ -126,19 +156,35 @@ def _build_real_ontology_runner(*, llm_model: str) -> OntologyRunner:
         # serializer 가 write 직전에 dir 존재를 기대한다. 동기 호출 한 줄이라
         # event-loop 블록 무시 가능.
         output_dir.mkdir(parents=True, exist_ok=True)  # noqa: ASYNC240
-        config = PipelineConfig(
-            input_path=document_path,
-            requirement=requirement,
-            preset=preset,
-            output_dir=output_dir,
-            model=llm_model,
-        )
-        ontology_a, _ = await OntologyPipeline(config, llm).run()
-        return OntologyRunResult(
-            ontology_a_path=output_dir / "ontology_a_persona.json",
-            ontology_b_path=output_dir / "ontology_b_memory.json",
-            agent_count=ontology_a.agent_count,
-        )
+        last_filter_exc: Exception | None = None
+        for idx, model in enumerate(chain):
+            config = PipelineConfig(
+                input_path=document_path,
+                requirement=requirement,
+                preset=preset,
+                output_dir=output_dir,
+                model=model,
+            )
+            try:
+                ontology_a, _ = await OntologyPipeline(config, llm).run()
+            except Exception as exc:
+                if not is_content_filter_error(exc):
+                    raise
+                last_filter_exc = exc
+                log.warning(
+                    "ontology_content_filter_blocked",
+                    extra={"model": model, "fallback_remaining": len(chain) - idx - 1},
+                )
+                continue
+            return OntologyRunResult(
+                ontology_a_path=output_dir / "ontology_a_persona.json",
+                ontology_b_path=output_dir / "ontology_b_memory.json",
+                agent_count=ontology_a.agent_count,
+            )
+        # primary + 모든 fallback 모델이 filter 에 막힘.
+        raise OntologyContentFilterBlockedError(
+            f"all models blocked by content filter: {chain}"
+        ) from last_filter_exc
 
     return _run
 
@@ -167,7 +213,10 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 1
         runner, composer = _build_real_runner_and_composer(llm_model=args.llm_model)
-        ontology_runner = _build_real_ontology_runner(llm_model=args.llm_model)
+        ontology_runner = _build_real_ontology_runner(
+            llm_model=args.llm_model,
+            fallback_models=_parse_fallback_models(args.llm_fallback_models),
+        )
 
     # uvicorn 은 ``[api]`` extra 에서만 들어오므로 main 안에서 import — fastapi
     # 만 깔린 테스트 환경에서도 모듈 import 가 깨지지 않도록.
