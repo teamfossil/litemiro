@@ -424,9 +424,9 @@ export default function Report() {
                 </div>
               ))}
               {(topicFlow.samples ?? []).slice(0, 3).map((s, i) => (
-                <div key={i} className="lm-rep__topic-row">
-                  <span className="lm-rep__topic-name">R{s.round_num} · {s.agent_id}</span>
-                  <span className="lm-rep__topic-count">{s.content}</span>
+                <div key={i} className="lm-rep__topic-sample">
+                  <div className="lm-rep__topic-sample-head">R{s.round_num} · {s.agent_id}</div>
+                  <div className="lm-rep__topic-sample-body">{s.content}</div>
                 </div>
               ))}
             </div>
