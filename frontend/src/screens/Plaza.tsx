@@ -4,11 +4,14 @@
 // =====================================================================
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { lm } from '@/data/mock';
 import type { GroupId, PlazaNode } from '@/data/types';
 import { AvatarSVG, Badge, RoleSwatch, Button, Stat, Pill, ArrowGlyph } from '@/components/atoms';
 import { ScreenHeader } from '@/components/chrome';
 import { useScreenNav } from '@/lib/nav';
+import { api } from '@/api/client';
+import { mapBackendRoleToRoleId } from '@/lib/roles';
 
 interface PlazaFiltersState {
   groups: GroupId[];
@@ -412,13 +415,50 @@ function PlazaFilters({ filters, onChange, totalNodes }: { filters: PlazaFilters
 // ScreenPlaza — 메인.
 // --------------------------------------------------------------------
 export default function Plaza() {
-  const go = useScreenNav();
-  const allNodes = useMemo(() => lm.generatePlaza({ seed: 42, n: 312 }), []);
+  const { plazaId } = useParams<{ plazaId: string }>();
+  const go = useScreenNav(plazaId);
+  // mock 312 노드를 초기값으로 — /layout 응답으로 교체. ready=false 면 mock 유지.
+  const mockNodes = useMemo(() => lm.generatePlaza({ seed: 42, n: 312 }), []);
+  const [allNodes, setAllNodes] = useState<PlazaNode[]>(mockNodes);
   const [selectedId, setSelected] = useState<string | null>(null);
   const [hoverId, setHover] = useState<string | null>(null);
   const [mouse, setMouse] = useState({ x: 0, y: 0 });
   const [filters, setFilters] = useState<PlazaFiltersState>({ groups: [], influenceOnly: false });
   const canvasRef = useRef<HTMLDivElement>(null);
+
+  // /layout fetch — composing/completed 부터 의미 있는 응답. pending/running 은
+  // ready=false → mock 유지.
+  useEffect(() => {
+    if (!plazaId) return;
+    let cancelled = false;
+    api
+      .getLayout(plazaId)
+      .then((res) => {
+        if (cancelled || !res.ready || res.agents.length === 0) return;
+        const nodes: PlazaNode[] = res.agents.map((a) => {
+          const roleId = mapBackendRoleToRoleId(a.role);
+          const role = lm.ROLE_BY_ID[roleId];
+          return {
+            id: a.id,
+            name: a.name,
+            role: roleId,
+            kind: 'anchor',
+            x: a.x,
+            y: a.y,
+            influence: a.influence,
+            color: role.color,
+            anchor: true,
+          };
+        });
+        setAllNodes(nodes);
+      })
+      .catch(() => {
+        // mock 유지.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [plazaId]);
 
   // ESC로 드릴인 닫기.
   useEffect(() => {
@@ -459,7 +499,7 @@ export default function Plaza() {
         <ScreenHeader
           eyebrow={`Phase 5 · 종료 광장 · R${lm.ROUND_META.current}/${lm.ROUND_META.total}`}
           title="광장이 닫혔어요."
-          subtitle={`312명의 인격이 ${lm.ROUND_META.total} 라운드 동안 ${lm.ROUND_META.counts.utterances.toLocaleString()}건을 발화했어요. 위에서 내려다본 결과예요.`}
+          subtitle={`${allNodes.length}명의 인격이 ${lm.ROUND_META.total} 라운드 동안 ${lm.ROUND_META.counts.utterances.toLocaleString()}건을 발화했어요. 위에서 내려다본 결과예요.`}
           meta={
             <>
               <Stat label="비판적" value={distrib.pro} align="right" />

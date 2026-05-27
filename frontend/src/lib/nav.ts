@@ -30,13 +30,17 @@ export function pathForScreen(id: ScreenId, plazaId: string = DEMO_PLAZA_ID): st
   }
 }
 
-// 화면 컴포넌트에서: const go = useScreenNav();  go('plaza');
 // 인자 미지정 시 현재 라우트의 :plazaId 를 따라간다 — Casting/Live/Plaza/Report
 // 가 자기 URL 의 plaza_id 를 그대로 다음 화면에 전달하게 된다. 라우트 밖
 // (e.g. Landing) 에서는 useParams 가 빈 객체라 DEMO_PLAZA_ID 폴백이 적용.
-export function useScreenNav(plazaId?: string): (id: ScreenId) => void {
+// 두 번째 인자로 plazaId 를 override 하면 그 plaza 로 — Seed → Casting 처럼
+// `createPlaza` 응답의 실 plaza_id 로 이동할 때 쓴다.
+export function useScreenNav(
+  defaultPlazaId?: string,
+): (id: ScreenId, overridePlazaId?: string) => void {
   const navigate = useNavigate();
   const { plazaId: routePlazaId } = useParams<{ plazaId: string }>();
-  const effective = plazaId ?? routePlazaId ?? DEMO_PLAZA_ID;
-  return (id: ScreenId) => navigate(pathForScreen(id, effective));
+  const baseId = defaultPlazaId ?? routePlazaId ?? DEMO_PLAZA_ID;
+  return (id, overridePlazaId) =>
+    navigate(pathForScreen(id, overridePlazaId ?? baseId));
 }

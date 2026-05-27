@@ -348,6 +348,7 @@ export default function Seed() {
                   ₩ {plan.cost.toLocaleString()}
                   <span className="lm-seed__footer-min">· 약 {plan.minutes}분</span>
                 </div>
+                {error && <div className="lm-seed__footer-error">{error}</div>}
               </div>
               <Button
                 kind="primary"

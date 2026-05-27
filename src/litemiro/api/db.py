@@ -16,6 +16,8 @@ checkpoint 기반 자동 재개는 별도 작업.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -110,6 +112,14 @@ CREATE TABLE IF NOT EXISTS plazas (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+-- 목록 정렬 (최신순 + tie-break) 용. ``ORDER BY created_at DESC, plaza_id DESC``
+-- 이 row 수에 비례해 풀스캔 → sort 로 굳지 않도록.
+CREATE INDEX IF NOT EXISTS idx_plazas_created_id
+    ON plazas (created_at DESC, plaza_id DESC);
+-- ``?status=`` 필터 단독 사용 시 인덱스 스캔으로 좁힌 뒤 정렬. 동시 사용 시
+-- composite (status, created_at DESC) 가 더 빠르지만 행 수가 만 단위 안 갈
+-- 시뮬레이션 워크로드 기준 단순 인덱스로 충분.
+CREATE INDEX IF NOT EXISTS idx_plazas_status ON plazas (status);
 
 CREATE TABLE IF NOT EXISTS documents (
     document_id TEXT PRIMARY KEY,
@@ -187,6 +197,43 @@ FROM plazas
 """
 
 _COUNT_BASE = "SELECT COUNT(*) AS n FROM plazas"
+
+
+def encode_cursor(created_at: datetime, plaza_id: str) -> str:
+    """``(created_at, plaza_id)`` → opaque cursor 문자열.
+
+    클라가 다음 페이지 요청 시 그대로 ``?cursor=`` 로 돌려보낸다 — 서버만 의미를
+    안다 (포맷 변경의 자유를 위해 base64 + ``|`` 구분자). URL-safe & no pad.
+    """
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=UTC)
+    raw = f"{created_at.isoformat(timespec='seconds')}|{plaza_id}".encode()
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+
+
+def decode_cursor(cursor: str) -> tuple[datetime, str]:
+    """opaque cursor → ``(created_at, plaza_id)``. 잘못된 입력은 ``ValueError``.
+
+    클라가 stale cursor 를 들고 와도 단지 다음 페이지가 비어 보일 뿐이라
+    silent 한 빈 페이지는 정상 동작 — 디코드 실패만 422 로 응답한다.
+    """
+    pad = "=" * (-len(cursor) % 4)
+    try:
+        raw = base64.urlsafe_b64decode(cursor + pad).decode("utf-8")
+    except (binascii.Error, UnicodeDecodeError, ValueError) as exc:
+        raise ValueError(f"invalid cursor: {cursor!r}") from exc
+    if "|" not in raw:
+        raise ValueError(f"invalid cursor payload: {raw!r}")
+    iso, plaza_id = raw.rsplit("|", 1)
+    if not plaza_id:
+        raise ValueError(f"invalid cursor: empty plaza_id from {raw!r}")
+    try:
+        created_at = datetime.fromisoformat(iso)
+    except ValueError as exc:
+        raise ValueError(f"invalid cursor timestamp: {iso!r}") from exc
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=UTC)
+    return created_at, plaza_id
 
 
 def _utcnow_iso() -> str:
@@ -314,10 +361,11 @@ def list_summary(
     conn: sqlite3.Connection,
     *,
     limit: int,
-    offset: int,
+    offset: int = 0,
+    cursor: tuple[datetime, str] | None = None,
     status_filter: PlazaStatus | None = None,
-) -> tuple[list[PlazaSummary], int]:
-    """plaza summary 행 + 필터 적용 후 전체 row 수.
+) -> tuple[list[PlazaSummary], int, str | None]:
+    """plaza summary 한 페이지 + ``total`` + ``next_cursor``.
 
     정렬은 ``created_at DESC, plaza_id DESC`` — 최신 plaza 가 위. ``_utcnow_iso``
     가 ``isoformat(timespec="seconds")`` UTC 라 lexicographic 정렬과 시간 정렬이
@@ -327,23 +375,48 @@ def list_summary(
     plaza 가 누락/중복될 수 있다. in-memory 폴백 경로 (``PlazaStore.list_plazas``)
     도 동일 키 ``(created_at, plaza_id)`` 둘 다 reverse 로 sort 해 두 경로 동치.
 
+    ``cursor`` 가 주어지면 keyset 페이징 — ``offset`` 무시. ``(created_at,
+    plaza_id)`` 보다 strictly 작은 행만 본다. 깊은 offset 이 ``LIMIT N OFFSET M``
+    의 M 만큼 스캔하던 비용을 인덱스 lookup 한 번으로 줄이는 게 목적. ``next_cursor``
+    는 cursor 모드일 때만 채운다 — 마지막 페이지면 ``None``. offset 모드의
+    응답은 ``next_cursor=None`` 으로 두고 클라가 limit/offset/total 로 페이지를
+    돌게 한다 (두 모드를 한 응답에서 섞지 않아 사용자 코드가 분기 안 헷갈리게).
+
     ``status_filter`` 는 단일 PlazaStatus literal — 동일 필터를 COUNT 에도
-    걸어 페이지네이션 용 ``total`` 이 "필터 후 전체" 를 가리키게 한다.
+    걸어 ``total`` 이 "필터 후 전체" 를 가리키게 한다. cursor 모드도 ``total``
+    은 일관되게 채운다 — 인덱스 덕에 COUNT 비용 작고, 클라가 "총 N건 중 M번째"
+    같은 UI 를 유지할 수 있다.
     """
-    where = ""
-    params: tuple[object, ...] = ()
+    where_clauses: list[str] = []
+    params: list[object] = []
     if status_filter is not None:
-        where = " WHERE status = ?"
-        params = (status_filter,)
+        where_clauses.append("status = ?")
+        params.append(status_filter)
+    if cursor is not None:
+        cursor_iso = cursor[0].isoformat(timespec="seconds")
+        cursor_id = cursor[1]
+        # keyset: 같은 created_at 의 plaza_id tie-break 까지 정확히 다음 행부터.
+        where_clauses.append("(created_at < ? OR (created_at = ? AND plaza_id < ?))")
+        params.extend([cursor_iso, cursor_iso, cursor_id])
+    where_sql = (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
+    # cursor 모드면 offset 은 강제로 0 — keyset 이 위치를 결정.
+    effective_offset = 0 if cursor is not None else offset
     rows = list(
         conn.execute(
             _SELECT_SUMMARY_BASE
-            + where
+            + where_sql
             + " ORDER BY created_at DESC, plaza_id DESC LIMIT ? OFFSET ?",
-            (*params, limit, offset),
+            (*params, limit, effective_offset),
         )
     )
-    total_row = conn.execute(_COUNT_BASE + where, params).fetchone()
+    # COUNT 는 페이지 keyset 과 무관한 "필터 전체" — status_filter 만 반영.
+    count_where = ""
+    count_params: tuple[object, ...] = ()
+    if status_filter is not None:
+        count_where = " WHERE status = ?"
+        count_params = (status_filter,)
+    total_row = conn.execute(_COUNT_BASE + count_where, count_params).fetchone()
     total = int(total_row["n"]) if total_row is not None else 0
     summaries = [
         PlazaSummary(
@@ -360,7 +433,186 @@ def list_summary(
         )
         for r in rows
     ]
-    return summaries, total
+    next_cursor: str | None = None
+    if summaries and len(summaries) == limit:
+        # 한 페이지 꽉 찼으면 다음 페이지가 있을 가능성. 비어 있거나 부족하면
+        # next_cursor=None — 끝. 한 페이지 정확히 ``limit`` 만큼 차고 그게 끝인
+        # 경우는 클라가 다음 호출에서 빈 페이지를 받아 끝남을 확인 (keyset 정석).
+        # cursor 모드뿐 아니라 offset 모드에서도 채워서, 클라가 첫 호출(no cursor)
+        # 후 두 번째부터 cursor 로 스위치할 수 있게 한다 — infinite scroll 패턴.
+        last = summaries[-1]
+        next_cursor = encode_cursor(last.created_at, last.plaza_id)
+    return summaries, total, next_cursor
+
+
+_DOCUMENT_INSERT_SQL = """
+INSERT INTO documents (
+    document_id, filename, mime_type, size_bytes, sha256, storage_path, created_at
+) VALUES (?, ?, ?, ?, ?, ?, ?)
+"""
+
+_DOCUMENT_SELECT_SQL = """
+SELECT document_id, filename, mime_type, size_bytes, sha256, storage_path, created_at
+FROM documents
+"""
+
+
+def insert_document(conn: sqlite3.Connection, row: DocumentRow) -> None:
+    """문서 한 건 INSERT. 같은 document_id 면 sqlite IntegrityError — 호출자가
+    UUID 발급 책임을 지므로 충돌이 나면 발급 측 버그.
+    """
+    conn.execute(
+        _DOCUMENT_INSERT_SQL,
+        (
+            row.document_id,
+            row.filename,
+            row.mime_type,
+            row.size_bytes,
+            row.sha256,
+            str(row.storage_path),
+            row.created_at.isoformat(timespec="seconds"),
+        ),
+    )
+
+
+def get_document(conn: sqlite3.Connection, document_id: str) -> DocumentRow | None:
+    cursor = conn.execute(
+        _DOCUMENT_SELECT_SQL + " WHERE document_id = ?",
+        (document_id,),
+    )
+    row = cursor.fetchone()
+    if row is None:
+        return None
+    return DocumentRow(
+        document_id=row["document_id"],
+        filename=row["filename"],
+        mime_type=row["mime_type"],
+        size_bytes=row["size_bytes"],
+        sha256=row["sha256"],
+        storage_path=Path(row["storage_path"]),
+        created_at=datetime.fromisoformat(row["created_at"]),
+    )
+
+
+def list_documents(conn: sqlite3.Connection) -> list[DocumentRow]:
+    rows = list(conn.execute(_DOCUMENT_SELECT_SQL + " ORDER BY created_at DESC, document_id DESC"))
+    return [
+        DocumentRow(
+            document_id=r["document_id"],
+            filename=r["filename"],
+            mime_type=r["mime_type"],
+            size_bytes=r["size_bytes"],
+            sha256=r["sha256"],
+            storage_path=Path(r["storage_path"]),
+            created_at=datetime.fromisoformat(r["created_at"]),
+        )
+        for r in rows
+    ]
+
+
+def delete_document(conn: sqlite3.Connection, document_id: str) -> bool:
+    cursor = conn.execute("DELETE FROM documents WHERE document_id = ?", (document_id,))
+    return cursor.rowcount > 0
+
+
+_ONTOLOGY_UPSERT_SQL = """
+INSERT INTO ontologies (
+    ontology_id, document_id, preset, requirement, status,
+    ontology_a_path, ontology_b_path, agent_count, error,
+    created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(ontology_id) DO UPDATE SET
+    status=excluded.status,
+    ontology_a_path=excluded.ontology_a_path,
+    ontology_b_path=excluded.ontology_b_path,
+    agent_count=excluded.agent_count,
+    error=excluded.error,
+    updated_at=excluded.updated_at
+"""
+
+_ONTOLOGY_SELECT_SQL = """
+SELECT ontology_id, document_id, preset, requirement, status,
+       ontology_a_path, ontology_b_path, agent_count, error,
+       created_at, updated_at
+FROM ontologies
+"""
+
+
+def upsert_ontology(conn: sqlite3.Connection, row: OntologyRow) -> None:
+    """ontology row INSERT or UPDATE. ``updated_at`` 은 항상 지금으로 갱신.
+
+    ``isolation_level=None`` (auto-commit) 이라 호출자가 따로 commit 안 해도 됨.
+    """
+    now_dt = datetime.now(UTC).replace(microsecond=0)
+    created = row.created_at
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=UTC)
+    row.updated_at = now_dt
+    conn.execute(
+        _ONTOLOGY_UPSERT_SQL,
+        (
+            row.ontology_id,
+            row.document_id,
+            row.preset.value,
+            row.requirement,
+            row.status,
+            str(row.ontology_a_path) if row.ontology_a_path else None,
+            str(row.ontology_b_path) if row.ontology_b_path else None,
+            row.agent_count,
+            row.error,
+            created.isoformat(timespec="seconds"),
+            now_dt.isoformat(timespec="seconds"),
+        ),
+    )
+
+
+def _row_to_ontology(row: sqlite3.Row) -> OntologyRow:
+    raw_status = row["status"]
+    if raw_status not in _VALID_ONTOLOGY_STATUSES:
+        # 옛 코드가 새 status 를 만난 경우 폴백 — 클라가 "stuck" 처럼 보이지 않도록.
+        raw_status = "failed"
+    return OntologyRow(
+        ontology_id=row["ontology_id"],
+        document_id=row["document_id"],
+        preset=Preset(row["preset"]),
+        requirement=row["requirement"],
+        status=cast(OntologyStatus, raw_status),
+        ontology_a_path=Path(row["ontology_a_path"]) if row["ontology_a_path"] else None,
+        ontology_b_path=Path(row["ontology_b_path"]) if row["ontology_b_path"] else None,
+        agent_count=row["agent_count"],
+        error=row["error"],
+        created_at=datetime.fromisoformat(row["created_at"]),
+        updated_at=datetime.fromisoformat(row["updated_at"]),
+    )
+
+
+def get_ontology(conn: sqlite3.Connection, ontology_id: str) -> OntologyRow | None:
+    cursor = conn.execute(
+        _ONTOLOGY_SELECT_SQL + " WHERE ontology_id = ?",
+        (ontology_id,),
+    )
+    row = cursor.fetchone()
+    return _row_to_ontology(row) if row is not None else None
+
+
+def list_ontologies(conn: sqlite3.Connection) -> list[OntologyRow]:
+    rows = list(conn.execute(_ONTOLOGY_SELECT_SQL + " ORDER BY created_at DESC, ontology_id DESC"))
+    return [_row_to_ontology(r) for r in rows]
+
+
+def load_ontologies_recover(conn: sqlite3.Connection) -> list[OntologyRow]:
+    """모든 ontology row 를 복원. pending/running 은 ``failed`` 로 강제 마킹 +
+    error 에 그 사실을 적어 클라가 stuck 처럼 보지 않게 한다 (plazas 와 동일 패턴).
+    """
+    out: list[OntologyRow] = []
+    for r in list(conn.execute(_ONTOLOGY_SELECT_SQL)):
+        row = _row_to_ontology(r)
+        if row.status in _INTERRUPTED_ONTOLOGY_STATUSES:
+            row.status = "failed"
+            row.error = f"process restarted while {r['status']}"
+            upsert_ontology(conn, row)
+        out.append(row)
+    return out
 
 
 _DOCUMENT_INSERT_SQL = """
@@ -539,8 +791,10 @@ __all__ = [
     "OntologyStatus",
     "PlazaSummary",
     "connect",
+    "decode_cursor",
     "delete_document",
     "delete_record",
+    "encode_cursor",
     "get_document",
     "get_ontology",
     "insert_document",

@@ -11,12 +11,13 @@
 // =====================================================================
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { lm } from '@/data/mock';
 import type { Anchor, Seed } from '@/data/types';
 import { AvatarSVG, Badge, RoleSwatch, Button, ArrowGlyph } from '@/components/atoms';
 import { useScreenNav, pathForScreen } from '@/lib/nav';
 import { api, ApiError, type OntologyResponse, type Preset } from '@/api/client';
+import { avatarFromSeed, mapBackendRoleToRoleId } from '@/lib/roles';
 
 // --------------------------------------------------------------------
 // 타이밍 — 총 8초.
@@ -173,14 +174,62 @@ function DerivedSwarm({ progress }: { progress: number }) {
 // CastingDemo — 옛 8 초 fake 애니메이션. Landing 데모 / phase nav 진입용.
 // --------------------------------------------------------------------
 function CastingDemo() {
-  const go = useScreenNav();
+  const { plazaId } = useParams<{ plazaId: string }>();
+  const go = useScreenNav(plazaId);
   const seed = lm.SEED;
-  const anchors = lm.ANCHORS;
+  // 문서 본문은 mock (백엔드가 source 문서를 직렬화해 주지 않음) — 슬롯의
+  // 앵커 데이터만 실 백엔드로 교체. lm.ANCHORS fallback 은 plazaId 없을 때 / API
+  // 실패 시 시각이 깨지지 않게.
+  const [anchors, setAnchors] = useState<Anchor[]>(lm.ANCHORS);
+  // 백엔드 sim 이 실제로 'running' 상태가 됐는지 — 8초 mock 타이머와 별개로
+  // 트래킹해서 둘 다 만족할 때 광장 입장 활성.
+  const [simStarted, setSimStarted] = useState(false);
 
   const [t, setT] = useState(0);
   const startedAtRef = useRef<number>(0);
   const rafRef = useRef<number>(0);
-  const navTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // /agents fetch — pending/running 단계에서도 200 (#85). 실패 시 mock fallback 유지.
+  useEffect(() => {
+    if (!plazaId) return;
+    let cancelled = false;
+    api
+      .getAgents(plazaId)
+      .then((res) => {
+        if (cancelled) return;
+        const mapped: Anchor[] = res.agents.map((a) => ({
+          id: a.id,
+          name: a.name,
+          title: '',
+          role: mapBackendRoleToRoleId(a.role),
+          avatar: avatarFromSeed(a.avatar_seed),
+          ideology: a.ideology,
+          baseInfluence: 0.5,
+          bio: '',
+          isOrg: false,
+        }));
+        if (mapped.length > 0) setAnchors(mapped);
+      })
+      .catch(() => {
+        // 실패 시 mock 유지 — 화면이 빈 슬롯으로 깨지지 않게.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [plazaId]);
+
+  // SSE 구독 — status='running' 부터는 sim 실제 시작이므로 광장 입장 가능 신호.
+  useEffect(() => {
+    if (!plazaId) return;
+    const stream = api.streamPlazaEvents(plazaId, {
+      onStatus: (e) => {
+        if (e.status === 'running' || e.status === 'composing' || e.status === 'completed') {
+          setSimStarted(true);
+        }
+      },
+    });
+    return () => stream.close();
+  }, [plazaId]);
 
   useEffect(() => {
     startedAtRef.current = performance.now();
@@ -195,24 +244,28 @@ function CastingDemo() {
     rafRef.current = requestAnimationFrame(tick);
     return () => {
       cancelAnimationFrame(rafRef.current);
-      if (navTimerRef.current) clearTimeout(navTimerRef.current);
     };
   }, []);
 
+  // anchors 길이가 ANCHOR_TIMES(5)와 달라도 (백엔드 quick=3 등) 안전하게.
+  const anchorTimes = useMemo(() => ANCHOR_TIMES.slice(0, anchors.length), [anchors.length]);
+
   const extractedIds = useMemo(() => {
-    return ANCHOR_TIMES.map((at, i) => (t >= at ? anchors[i].id : null)).filter(Boolean) as string[];
-  }, [t, anchors]);
+    return anchorTimes.map((at, i) => (t >= at ? anchors[i].id : null)).filter(Boolean) as string[];
+  }, [t, anchors, anchorTimes]);
 
   const extractingIdx = useMemo(() => {
-    for (let i = 0; i < ANCHOR_TIMES.length; i++) {
-      const at = ANCHOR_TIMES[i];
+    for (let i = 0; i < anchorTimes.length; i++) {
+      const at = anchorTimes[i];
       if (t >= at - 0.04 && t < at) return i;
     }
     return -1;
-  }, [t]);
+  }, [t, anchorTimes]);
 
   const derivedProgress = clamp((t - DERIVED_START) / (1 - DERIVED_START), 0, 1);
-  const done = t >= 1.0;
+  // 8초 mock 애니메이션 완료 + 백엔드 'running' 둘 다 만족하면 입장 가능.
+  // plazaId 없을 때는 (개발/링크 직접 진입) mock 만으로 진행.
+  const done = t >= 1.0 && (simStarted || !plazaId);
 
   const scanLineY = t < 0.75 ? ((t / 0.75) * 1.0) % 1.0 : 1.0;
 
@@ -228,7 +281,6 @@ function CastingDemo() {
 
   const handleSkip = () => {
     cancelAnimationFrame(rafRef.current);
-    if (navTimerRef.current) clearTimeout(navTimerRef.current);
     go('live');
   };
 
@@ -255,7 +307,7 @@ function CastingDemo() {
         {/* PROGRESS BAR */}
         <div className="lm-cast__progress">
           <div className="lm-cast__progress-bar" style={{ width: `${t * 100}%` }} />
-          {ANCHOR_TIMES.map((at, i) => (
+          {anchorTimes.map((at, i) => (
             <div key={i} className={`lm-cast__progress-mark${t >= at ? ' is-passed' : ''}`} style={{ left: `${at * 100}%` }} />
           ))}
           <div

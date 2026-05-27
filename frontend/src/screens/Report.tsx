@@ -10,11 +10,14 @@
 // (screen-report.jsx → ES 모듈 + 타입. 별칭 훅 → 표준 훅, window.LM → lm)
 // =====================================================================
 
-import { useMemo, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useParams } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
 import { lm } from '@/data/mock';
 import type { ActionType, PlazaNode, ReportData, Stance } from '@/data/types';
 import { AvatarSVG, RoleSwatch, Button, Stat, ArrowGlyph } from '@/components/atoms';
 import { useScreenNav } from '@/lib/nav';
+import { api, type PlazaReportResponse } from '@/api/client';
 
 // --------------------------------------------------------------------
 // 모킹 데이터 — 실 제품에서는 DataAggregator/PatternAnalyzer 출력으로 교체.
@@ -574,10 +577,35 @@ function CostPanel() {
 // ScreenReport — 메인
 // --------------------------------------------------------------------
 export default function Report() {
-  const go = useScreenNav();
+  const { plazaId } = useParams<{ plazaId: string }>();
+  const go = useScreenNav(plazaId);
   const nodes = useMemo(() => lm.generatePlaza({ seed: 42, n: 312 }), []);
   const pred = REPORT_DATA.prediction;
   const total = REPORT_DATA.total;
+  const [backendReport, setBackendReport] = useState<PlazaReportResponse | null>(null);
+
+  // /report fetch — composing 단계에서도 200 (markdown 만 비어있을 수 있음).
+  // status='completed' 또는 markdown 도착 시 hero 가 진짜 본문으로 교체된다.
+  useEffect(() => {
+    if (!plazaId) return;
+    let cancelled = false;
+    api
+      .getReport(plazaId)
+      .then((res) => {
+        if (!cancelled) setBackendReport(res);
+      })
+      .catch(() => {
+        // mock 유지.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [plazaId]);
+
+  const reportMarkdown = backendReport?.report_markdown ?? null;
+  const reportFallbackUsed = backendReport?.report_fallback_used ?? false;
+  const nAgents = backendReport?.n_agents ?? 312;
+  const nRounds = backendReport?.n_rounds ?? total;
 
   return (
     <div className="lm-rep">
@@ -586,13 +614,13 @@ export default function Report() {
         <header className="lm-rep__head">
           <div className="lm-rep__head-left">
             <div className="lm-rep__head-eyebrow">
-              Phase 6 · 결과 리포트 · R{total}/{total}
+              Phase 6 · 결과 리포트 · R{nRounds}/{nRounds}
             </div>
             <h1 className="lm-rep__head-title">주 4일제 도입 시뮬레이션 리포트</h1>
             <div className="lm-rep__head-meta">
-              <span>광장 ID · {lm.SEED.id}</span>
+              <span>광장 ID · {plazaId ?? lm.SEED.id}</span>
               <span>2026 · 05 · 23 · 18:42</span>
-              <span>Standard · 312명 · 50라운드 · 약 18.3분</span>
+              <span>{nAgents}명 · {nRounds}라운드</span>
             </div>
           </div>
           <div className="lm-rep__head-actions">
@@ -607,10 +635,18 @@ export default function Report() {
           </div>
         </header>
 
-        {/* PREDICTION HERO */}
+        {/* PREDICTION HERO — backend markdown 우선, 없으면 mock pred.headline */}
         <section className="lm-rep__hero">
           <div className="lm-rep__hero-tag">PREDICTION · 핵심 예측</div>
-          <p className="lm-rep__hero-text">{pred.headline}</p>
+          {reportMarkdown ? (
+            <div className="lm-rep__hero-markdown">
+              <ReactMarkdown>{reportMarkdown}</ReactMarkdown>
+            </div>
+          ) : (
+            <p className="lm-rep__hero-text">
+              {reportFallbackUsed ? '보고서 본문 합성 폴백 — 통계만 확인 가능.' : pred.headline}
+            </p>
+          )}
           <div className="lm-rep__hero-meta">
             <span>
               신뢰도 · <b>medium-high</b>
