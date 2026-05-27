@@ -318,8 +318,9 @@ export default function Report() {
             <div className="lm-rep__head-eyebrow">
               Phase 6 · 결과 리포트 · R{nRounds}/{nRounds}
             </div>
-            <h1 className="lm-rep__head-title">주 4일제 도입 시뮬레이션 리포트</h1>
+            <h1 className="lm-rep__head-title">시뮬레이션 결과 리포트</h1>
             <div className="lm-rep__head-meta">
+              {backendReport?.label && <span>{backendReport.label}</span>}
               <span>광장 ID · {plazaId ?? '—'}</span>
               <span>{nAgents}명 · {nRounds}라운드</span>
             </div>

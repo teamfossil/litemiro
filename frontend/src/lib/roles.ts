@@ -46,6 +46,14 @@ const ENTITY_TYPE_TO_ROLE_ID: Record<string, RoleId> = {
   // contract.md "media" → 방송기자 (mock 의 media 그룹 중 가장 일반적)
   Media: 'broadcast',
   MediaOutlet: 'broadcast',
+  // AI 규제 시뮬레이션용 추상 개념 노드 — ontology generator 가 사람뿐 아니라
+  // 정책/기술/이슈도 entity_type 으로 내보낸다. 색이 너무 단조롭지 않게 의미가
+  // 가까운 그룹에 흡수: 기술/영향 → 기업, 정책/규제 → 정치인, 입장 → 시민단체.
+  AiTechnology: 'corp',
+  AiImpact: 'corp',
+  AiPolicyIssue: 'politician',
+  RegulatoryInstrument: 'politician',
+  PolicyStance: 'ngo',
 };
 
 export function mapBackendRoleToRoleId(entityType: string): RoleId {

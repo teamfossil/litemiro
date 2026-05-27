@@ -146,7 +146,7 @@ export default function Landing() {
             시뮬레이션 시작
           </Button>
           <Button kind="link" onClick={() => go('casting')}>
-            예시 시뮬레이션 — 주 4일제 도입
+            예시 시뮬레이션 보기
           </Button>
         </div>
 
