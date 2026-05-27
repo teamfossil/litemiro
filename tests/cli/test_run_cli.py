@@ -265,21 +265,48 @@ def test_main_aborts_when_event_log_exists_without_opt_in(
     assert exit_code == 1
     captured = capsys.readouterr()
     assert "already exists" in captured.err
-    assert "--allow-existing-events" in captured.err
+    assert "double-count" in captured.err
+    assert "--reuse-output-dir" in captured.err
     # 기존 라인은 보존 — abort 가 데이터를 만지지 않는다.
     assert event_log.read_text(encoding="utf-8") == '{"prior":"run"}\n'
 
 
-def test_main_appends_when_allow_existing_events_passed(
+def test_main_aborts_when_checkpoint_dir_is_non_empty(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """events.jsonl 만 비어있어도 checkpoints/ 가 채워져 있으면 abort.
+
+    사용자가 events.jsonl 만 지우고 재실행하는 케이스를 막는다 — stale
+    checkpoint 위에 새 events 가 얹히면 더 미묘한 state mismatch 가 된다.
+    """
+    _patch_dependencies(monkeypatch)
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir()
+    (checkpoint_dir / "checkpoint_round_0001.json").write_text("{}", encoding="utf-8")
+
+    exit_code = run_cli.main(_argv_with_paths(tmp_path))
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "checkpoint" in captured.err
+    assert "--reuse-output-dir" in captured.err
+
+
+def test_main_appends_when_reuse_output_dir_passed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``--allow-existing-events`` 명시 시 기존 ``events.jsonl`` 위에 append 진행."""
+    """``--reuse-output-dir`` 명시 시 기존 events.jsonl + checkpoints/ 둘 다 재사용."""
     _patch_dependencies(monkeypatch)
     event_log = tmp_path / "events.jsonl"
     event_log.write_text('{"prior":"run"}\n', encoding="utf-8")
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir()
+    (checkpoint_dir / "checkpoint_round_0000.json").write_text("{}", encoding="utf-8")
 
-    exit_code = run_cli.main(_argv_with_paths(tmp_path, "--allow-existing-events"))
+    exit_code = run_cli.main(_argv_with_paths(tmp_path, "--reuse-output-dir"))
 
     assert exit_code == 0
     lines = list(_read_lines(event_log))
@@ -288,13 +315,14 @@ def test_main_appends_when_allow_existing_events_passed(
     assert len(lines) >= 2
 
 
-def test_main_proceeds_when_event_log_is_empty(
+def test_main_proceeds_when_output_dir_only_has_empty_event_log(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """크기 0 의 ``events.jsonl`` 은 누적 위험 없음 → opt-in 없이 진행 허용."""
+    """크기 0 events.jsonl + 비어있는 checkpoints/ 는 누적 위험 없음 → 진행 허용."""
     _patch_dependencies(monkeypatch)
     (tmp_path / "events.jsonl").touch()
+    (tmp_path / "checkpoints").mkdir()
 
     exit_code = run_cli.main(_argv_with_paths(tmp_path))
 

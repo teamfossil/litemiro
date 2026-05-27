@@ -90,11 +90,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Sleep between batches to ease rate limits (default: 0.5)",
     )
     parser.add_argument(
-        "--allow-existing-events",
+        "--reuse-output-dir",
         action="store_true",
         help=(
-            "Append to an existing events.jsonl instead of aborting. Off by default "
-            "to prevent Phase 3 corruption from accidental run reuse."
+            "Reuse an --output-dir that already has events.jsonl or checkpoints/. "
+            "Off by default to prevent Phase 3 double-counting and resume from "
+            "stale checkpoints."
         ),
     )
     return parser
@@ -129,19 +130,25 @@ async def _run(
     인스턴스화 단계를 우회해 fake 로 닫는다."""
     output_dir: Path = args.output_dir if args.output_dir is not None else _default_output_dir()
     event_log_path = output_dir / "events.jsonl"
-    # EventLogger 는 append 모드라 같은 ``--output-dir`` 재사용 시 이전 실행의
-    # 라인이 그대로 누적되어 Phase 3 집계가 오염된다 (관측: 같은 (round, agent)
-    # 쌍이 2~3회 등장 → 액션 분포 / posts_created 왜곡). 명시적인 opt-in
-    # (``--allow-existing-events``) 없으면 사전 검사로 abort.
-    if (
-        event_log_path.exists()
-        and event_log_path.stat().st_size > 0
-        and not args.allow_existing_events
-    ):
-        raise FileExistsError(
-            f"{event_log_path} already exists. Delete it, pass a fresh "
-            "--output-dir, or use --allow-existing-events to intentionally append."
-        )
+    checkpoint_dir = output_dir / "checkpoints"
+    # ``--output-dir`` 재사용 footgun. EventLogger 는 append 모드라 events.jsonl 잔재가
+    # 그대로 누적돼 Phase 3 집계가 오염되고 (관측: 같은 (round, agent) 쌍이 2~3회
+    # 등장 → 액션 분포·posts_created 왜곡), checkpoints/ 잔재는 향후 resume 경로에서
+    # stale state 위에 새 events 가 얹혀 더 미묘한 mismatch 를 만든다. ``--reuse-output-dir``
+    # 없이는 둘 다 사전 검사로 abort.
+    if not args.reuse_output_dir:
+        if event_log_path.exists() and event_log_path.stat().st_size > 0:
+            raise FileExistsError(
+                f"{event_log_path} already exists. Reusing it would double-count "
+                "events into Phase 3 aggregates. Delete it, pass a fresh --output-dir, "
+                "or use --reuse-output-dir to intentionally append."
+            )
+        if checkpoint_dir.exists() and any(checkpoint_dir.iterdir()):
+            raise FileExistsError(
+                f"{checkpoint_dir} contains stale checkpoint files that could "
+                "resume into a fresh run. Delete it, pass a fresh --output-dir, "
+                "or use --reuse-output-dir to intentionally reuse."
+            )
     return await run_simulation(
         ontology_a_path=args.ontology_a,
         ontology_b_path=args.ontology_b,
@@ -149,7 +156,7 @@ async def _run(
         embedder=embedder,
         rounds=args.rounds,
         event_log_path=event_log_path,
-        checkpoint_dir=output_dir / "checkpoints",
+        checkpoint_dir=checkpoint_dir,
         llm_model=args.llm_model,
         token_budget=args.token_budget,
         semaphore_limit=args.semaphore_limit,
