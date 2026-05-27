@@ -13,12 +13,14 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from pydantic import ValidationError
 
+from litemiro.api import db as _db
 from litemiro.api.layout import compute_layout, plaza_seed
 from litemiro.api.models import (
     CreatePlazaRequest,
@@ -162,21 +164,45 @@ async def list_plazas(
     request: Request,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
+    cursor: Annotated[str | None, Query()] = None,
     status_filter: Annotated[PlazaStatus | None, Query(alias="status")] = None,
 ) -> PlazaListResponse:
     """최신순 plaza 카드 리스트. ``?status=`` 로 한 상태만 좁힐 수 있다.
 
-    ``total`` 은 ``status`` 필터 적용 후 전체 개수 — 페이지네이션 위젯의 "총
-    N건" 표시에 그대로. 같은 prefix 라우터의 ``""`` 라 ``/api/plazas`` 자체에
-    매핑된다 (path 변수 라우트가 위로 가지 않게 등록 순서에 신경썼다 — FastAPI
-    는 등록 순으로 매칭하지만 이 라우트는 path 충돌이 없어 사실상 안전).
+    페이징 두 모드:
+
+    - **offset 모드** (기본) — ``?limit=&offset=`` 으로 페이지를 넘긴다. 응답의
+      ``total`` 로 "총 N건" UI 를 그릴 수 있다. ``offset`` 이 깊으면 SQLite 가
+      그만큼 스캔해야 해서 행 수가 만 단위 이상이면 느려진다.
+    - **cursor 모드** — ``?cursor=<opaque>`` 를 같이 보내면 keyset 페이징. 깊은
+      offset 의 비용을 인덱스 lookup 한 번으로 줄인다. 응답의 ``next_cursor`` 를
+      받아 다음 호출의 ``?cursor=`` 에 그대로 박는다. ``next_cursor`` 가
+      ``null`` 이면 마지막 페이지. cursor 모드에서는 클라가 보낸 ``offset`` 을
+      무시한다.
+
+    cursor 가 유효하지 않으면 422 — 변조된 cursor 가 silent 한 빈 페이지로
+    이어지면 디버그가 어렵다. cursor 가 stale (해당 plaza 가 그새 삭제) 이어도
+    인코드된 timestamp 가 살아있어 정상적으로 그 시각 이후 행을 본다.
     """
+    decoded_cursor: tuple[datetime, str] | None = None
+    if cursor is not None:
+        try:
+            decoded_cursor = _db.decode_cursor(cursor)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=str(exc),
+            ) from exc
     store = _store(request)
-    summaries, total = await store.list_plazas(
+    summaries, total, next_cursor = await store.list_plazas(
         limit=limit,
         offset=offset,
+        cursor=decoded_cursor,
         status_filter=status_filter,
     )
+    # cursor 모드면 응답의 ``offset`` 은 의미 없음 — 0 으로 정규화해서 클라가
+    # 두 모드를 섞어 쓰다 헷갈리지 않게 한다.
+    response_offset = 0 if decoded_cursor is not None else offset
     return PlazaListResponse(
         plazas=[
             PlazaSummaryItem(
@@ -195,7 +221,8 @@ async def list_plazas(
         ],
         total=total,
         limit=limit,
-        offset=offset,
+        offset=response_offset,
+        next_cursor=next_cursor,
     )
 
 

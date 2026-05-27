@@ -82,6 +82,30 @@
   color: var(--paper);
   text-wrap: pretty;
 }
+/* 백엔드 report_markdown 본문 — LLM ReportComposer 출력. 다크 hero 배경에 맞춰 paper. */
+.lm-rep__hero-markdown {
+  color: var(--paper);
+  font-size: var(--t-body);
+  line-height: var(--lh-loose);
+  letter-spacing: var(--ls-normal);
+  max-height: calc(420px * var(--scale));
+  overflow-y: auto;
+}
+.lm-rep__hero-markdown h1 { font-size: var(--t-h2); font-weight: 600; margin: 0 0 var(--s-3); letter-spacing: var(--ls-tight); }
+.lm-rep__hero-markdown h2 { font-size: var(--t-h3); font-weight: 600; margin: var(--s-5) 0 var(--s-3); letter-spacing: var(--ls-tight); }
+.lm-rep__hero-markdown h3 { font-size: var(--t-h4); font-weight: 600; margin: var(--s-4) 0 var(--s-2); letter-spacing: var(--ls-tight); }
+.lm-rep__hero-markdown p { margin: 0 0 var(--s-3); }
+.lm-rep__hero-markdown ul, .lm-rep__hero-markdown ol { padding-left: var(--s-5); margin: 0 0 var(--s-3); }
+.lm-rep__hero-markdown li { margin-bottom: var(--s-2); }
+.lm-rep__hero-markdown strong { font-weight: 600; color: var(--highlight-bg); }
+.lm-rep__hero-markdown em { font-style: italic; opacity: 0.85; }
+.lm-rep__hero-markdown code {
+  font-family: var(--mono);
+  font-size: var(--t-small);
+  background: rgba(250, 247, 238, 0.12);
+  padding: 0 calc(4px * var(--scale));
+  border-radius: var(--r-1);
+}
 .lm-rep__hero-meta {
   font-family: var(--mono);
   font-size: var(--t-small);

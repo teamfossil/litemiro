@@ -156,7 +156,13 @@ class PlazaListResponse(BaseModel):
 
     ``total`` 은 필터(``status``) 가 걸린 경우 그 필터 후 전체 row 수 — 페이지
     네이션 위젯의 "총 N건" 표시에 그대로 쓸 수 있게 한다. ``plazas`` 자체는
-    ``limit`` / ``offset`` 으로 잘려 들어온 한 페이지.
+    ``limit`` / ``offset`` 또는 ``cursor`` 로 잘려 들어온 한 페이지.
+
+    ``next_cursor`` 는 다음 페이지가 있을 가능성이 있으면 opaque 문자열, 마지막
+    페이지면 ``None``. offset 모드 응답에도 채워서 클라가 첫 호출(no cursor)
+    이후 두 번째부터 cursor 로 갈아탈 수 있게 한다 (infinite scroll 패턴).
+    한 페이지가 정확히 ``limit`` 만큼 차고 그게 끝이면 한 번 더 호출해 빈
+    페이지를 받고 끝을 확인하는 게 keyset 의 정석.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -165,6 +171,7 @@ class PlazaListResponse(BaseModel):
     total: int = Field(ge=0)
     limit: int = Field(ge=1, le=100)
     offset: int = Field(ge=0)
+    next_cursor: str | None = None
 
 
 class PlazaReportResponse(BaseModel):
