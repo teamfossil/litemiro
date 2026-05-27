@@ -426,3 +426,44 @@
 @media (max-width: 1200px) {
   .lm-cast__grid { grid-template-columns: 1fr; }
 }
+
+/* ---------- REAL MODE (CastingReal) ---------- */
+.lm-cast__real {
+  flex: 1;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--s-4);
+  padding: var(--s-7) var(--s-5);
+  text-align: center;
+}
+.lm-cast__real-spinner {
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  border: 3px solid var(--rule);
+  border-top-color: var(--ink-1);
+  animation: lm-cast__spin 0.9s linear infinite;
+}
+@keyframes lm-cast__spin {
+  to { transform: rotate(360deg); }
+}
+.lm-cast__real-hint {
+  max-width: 56ch;
+  margin: 0;
+  font-size: var(--t-body);
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.lm-cast__real-progress {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: var(--t-mono);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.lm-cast__real-error {
+  max-width: 56ch;
+  margin: 0;
+  font-size: var(--t-body);
+  line-height: 1.55;
+  color: var(--danger, #b85138);
+}

@@ -1,19 +1,22 @@
 // =====================================================================
 // 시드 입력 (Phase 2) — Seed
-// (screen-seed.jsx → ES 모듈 + 타입. useStateSeed/useRefSeed → useState/useRef)
+// PDF/TXT 업로드 → /api/documents → requirement 입력 → /api/ontologies POST.
+// 분 단위 걸리는 ontology 폴링과 plaza 생성은 다음 화면(Casting)이 맡는다 —
+// Seed 는 "광장 열기" 버튼을 짧게 잠그고 바로 Casting 으로 넘긴다.
 // =====================================================================
 
 import { useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ScreenHeader } from '@/components/chrome';
 import { Button, ArrowGlyph } from '@/components/atoms';
-import { useScreenNav } from '@/lib/nav';
-import { api, ApiError, type Preset } from '@/api/client';
+import { api, ApiError, type DocumentResponse, type Preset } from '@/api/client';
 
 // --------------------------------------------------------------------
-// 인격 규모 옵션
+// 인격 규모 옵션. id 는 백엔드 Preset literal 과 1:1.
+// 비용/시간/참가자 수는 데모용 표기 — 실제 비용은 백엔드 LLM 콜 수에 의존.
 // --------------------------------------------------------------------
 interface SeedPlan {
-  id: string;
+  id: Preset;
   name: string;
   participants: number;
   rounds: number;
@@ -28,35 +31,30 @@ const SEED_PLANS: SeedPlan[] = [
   { id: 'full', name: 'Full', participants: 500, rounds: 50, minutes: 37.5, cost: 2980, desc: '정밀 · 군중 두께 + 영향력 분포' },
 ];
 
-interface SeedFile {
-  name: string;
-  type: string;
-  sizeKB: number;
-  pages: number;
-  summary: string;
-  entitiesPreview: string[];
-}
+// 광장 열기 버튼이 거치는 단계. idle 외에는 사용자 입력을 모두 잠근다.
+// 폴링/plaza 생성은 Casting 으로 넘어가 거기서 처리하므로 Seed 단계엔
+// 'starting' 이 짧게만 (createOntology 응답 한 라운드) 잡힌다.
+type Phase = 'idle' | 'uploading' | 'starting';
 
-const SAMPLE_FILE: SeedFile = {
-  name: '주4일제_도입_정책분석.pdf',
-  type: 'PDF',
-  sizeKB: 482,
-  pages: 14,
-  summary:
-    '주 4일제 도입을 둘러싼 한국 사회의 입장 분포. 정세훈 의원 발의안, 최영민 기자 비판 보도, 한지영 칼럼, 박서경 교수 OECD 비교, 전국노동연대 시범사업 성명을 다룬다.',
-  entitiesPreview: ['정세훈 의원', '최영민 기자', '한지영', '박서경 교수', '전국노동연대'],
-};
+// 백엔드가 받는 확장자만 화이트리스트. 옛 prototype 의 docx/md 는 제외 — 백엔드
+// _ALLOWED_EXTENSIONS 와 일치시킨다.
+const ACCEPT_FILE = '.pdf,.txt,application/pdf,text/plain';
+const MAX_UPLOAD_MB = 5;
 
 // --------------------------------------------------------------------
 // FileDropZone — 비어있을 때.
 // --------------------------------------------------------------------
-function FileDropZone({ onUpload }: { onUpload: (f: File) => void }) {
+function FileDropZone({ onUpload, disabled }: { onUpload: (f: File) => void; disabled: boolean }) {
   const inputRef = useRef<HTMLInputElement>(null);
   return (
     <div
-      className="lm-seed__drop"
-      onClick={() => inputRef.current?.click()}
+      className={`lm-seed__drop${disabled ? ' is-disabled' : ''}`}
+      onClick={() => {
+        if (disabled) return;
+        inputRef.current?.click();
+      }}
       onDragOver={(e) => {
+        if (disabled) return;
         e.preventDefault();
         e.currentTarget.classList.add('is-over');
       }}
@@ -66,6 +64,7 @@ function FileDropZone({ onUpload }: { onUpload: (f: File) => void }) {
       onDrop={(e) => {
         e.preventDefault();
         e.currentTarget.classList.remove('is-over');
+        if (disabled) return;
         const f = e.dataTransfer.files[0];
         if (f) onUpload(f);
       }}
@@ -84,20 +83,21 @@ function FileDropZone({ onUpload }: { onUpload: (f: File) => void }) {
         <div className="lm-seed__drop-sub">보고서·정책안·기사 한 건이면 광장이 열립니다</div>
         <div className="lm-seed__drop-formats">
           <span>PDF</span>
-          <span>DOCX</span>
           <span>TXT</span>
-          <span>MD</span>
-          <span className="lm-seed__drop-formats-sub">· 최대 30 MB</span>
+          <span className="lm-seed__drop-formats-sub">· 최대 {MAX_UPLOAD_MB} MB</span>
         </div>
       </div>
       <input
         ref={inputRef}
         type="file"
-        accept=".pdf,.docx,.txt,.md,application/pdf"
+        accept={ACCEPT_FILE}
         style={{ display: 'none' }}
+        disabled={disabled}
         onChange={(e) => {
           const f = e.target.files?.[0];
           if (f) onUpload(f);
+          // 같은 파일을 다시 선택할 수 있게 input 값을 비운다.
+          e.target.value = '';
         }}
       />
     </div>
@@ -105,44 +105,39 @@ function FileDropZone({ onUpload }: { onUpload: (f: File) => void }) {
 }
 
 // --------------------------------------------------------------------
-// FilePreview — 업로드된 파일 카드 (실/샘플 공통).
+// FilePreview — 업로드된 파일 카드. /api/documents 가 반환한 메타만 보여준다.
+// 옛 prototype 의 자동 요약/엔티티 프리뷰는 백엔드 응답에 없어 제거.
 // --------------------------------------------------------------------
-function FilePreview({ file, onReplace }: { file: SeedFile; onReplace: () => void }) {
+function FilePreview({ doc, onReplace, disabled }: { doc: DocumentResponse; onReplace: () => void; disabled: boolean }) {
+  const ext = (doc.filename.split('.').pop() || 'FILE').toUpperCase();
+  const sizeKB = Math.max(1, Math.round(doc.size_bytes / 1024));
   return (
     <div className="lm-seed__file">
       <div className="lm-seed__file-head">
         <div className="lm-seed__file-icon">
-          <span className="lm-seed__file-ext">{file.type}</span>
+          <span className="lm-seed__file-ext">{ext}</span>
         </div>
         <div className="lm-seed__file-info">
-          <div className="lm-seed__file-name">{file.name}</div>
+          <div className="lm-seed__file-name">{doc.filename}</div>
           <div className="lm-seed__file-meta">
-            <span>{file.sizeKB} KB</span>
-            <span>{file.pages}쪽</span>
-            <span>한국어 · 자동감지</span>
+            <span>{sizeKB.toLocaleString()} KB</span>
+            <span>{doc.mime_type}</span>
+            <span>{doc.sha256.slice(0, 10)}…</span>
           </div>
         </div>
         <div className="lm-seed__file-actions">
-          <Button kind="ghost" size="sm" onClick={onReplace}>
+          <Button kind="ghost" size="sm" onClick={onReplace} disabled={disabled}>
             교체
           </Button>
         </div>
       </div>
 
       <div className="lm-seed__file-summary">
-        <div className="lm-seed__file-summary-label">자동 요약</div>
-        <p>{file.summary}</p>
-      </div>
-
-      <div className="lm-seed__file-entities">
-        <div className="lm-seed__file-entities-label">추출된 인격 (캐스팅 후보)</div>
-        <div className="lm-seed__file-entities-list">
-          {file.entitiesPreview.map((e, i) => (
-            <span key={i} className="lm-seed__file-entity">
-              {e}
-            </span>
-          ))}
-        </div>
+        <div className="lm-seed__file-summary-label">업로드 확인</div>
+        <p>
+          문서가 서버에 저장되었습니다. 아래 시뮬레이션 목적을 한 줄 적고 광장을 열면
+          Phase 1 인격 생성이 시작됩니다. 추출된 인격은 캐스팅 화면에서 확인할 수 있어요.
+        </p>
       </div>
     </div>
   );
@@ -151,9 +146,24 @@ function FilePreview({ file, onReplace }: { file: SeedFile; onReplace: () => voi
 // --------------------------------------------------------------------
 // PlanCard — 인격 규모 옵션. 한 줄 정렬.
 // --------------------------------------------------------------------
-function PlanCard({ plan, selected, onSelect }: { plan: SeedPlan; selected: boolean; onSelect: (id: string) => void }) {
+function PlanCard({
+  plan,
+  selected,
+  onSelect,
+  disabled,
+}: {
+  plan: SeedPlan;
+  selected: boolean;
+  onSelect: (id: Preset) => void;
+  disabled: boolean;
+}) {
   return (
-    <button type="button" onClick={() => onSelect(plan.id)} className={`lm-seed__plan${selected ? ' is-active' : ''}`}>
+    <button
+      type="button"
+      onClick={() => onSelect(plan.id)}
+      className={`lm-seed__plan${selected ? ' is-active' : ''}`}
+      disabled={disabled}
+    >
       <span className="lm-seed__plan-radio" aria-hidden="true">
         <span className="lm-seed__plan-radio-dot" />
       </span>
@@ -178,45 +188,89 @@ function PlanCard({ plan, selected, onSelect }: { plan: SeedPlan; selected: bool
 }
 
 // --------------------------------------------------------------------
+// 단계 표기 — 사용자에게 "지금 뭐 하는 중" 한 줄.
+// --------------------------------------------------------------------
+function phaseLabel(phase: Phase): string {
+  switch (phase) {
+    case 'uploading':
+      return '문서를 서버로 보내는 중…';
+    case 'starting':
+      return 'Phase 1 시작 요청 중…';
+    default:
+      return '';
+  }
+}
+
+// --------------------------------------------------------------------
 // ScreenSeed — 메인.
 // --------------------------------------------------------------------
 export default function Seed() {
-  const go = useScreenNav();
-  const [file, setFile] = useState<SeedFile | null>(null);
-  const [planId, setPlanId] = useState('standard');
-  const [pending, setPending] = useState(false);
+  const navigate = useNavigate();
+  const [doc, setDoc] = useState<DocumentResponse | null>(null);
+  const [requirement, setRequirement] = useState('');
+  const [planId, setPlanId] = useState<Preset>('standard');
+  const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<string | null>(null);
-  const plan = SEED_PLANS.find((p) => p.id === planId)!;
 
-  const handleUpload = (f: File) => {
-    // 실 제품: 업로드 → 서버 추출 → entity preview. 프로토타입: 파일명만 받아 샘플로 채움.
-    // 백엔드는 ontology path 가 optional 이라 (#88) 실 파일 전송은 안 하고
-    // sample fixture 폴백을 사용. "업로드" 는 UX 게이트 역할만.
-    setFile({
-      ...SAMPLE_FILE,
-      name: f.name || SAMPLE_FILE.name,
-      type: (f.name?.split('.').pop() || 'PDF').toUpperCase(),
-      sizeKB: Math.round((f.size || 482000) / 1024),
-    });
+  const plan = SEED_PLANS.find((p) => p.id === planId)!;
+  const busy = phase !== 'idle';
+  // 입력 항목 다 채워졌고 작업 중이 아닐 때만 열린다. requirement 1~500 자
+  // 제한은 백엔드 Pydantic 과 일치 — 여기서 미리 잘라 422 를 피한다.
+  const requirementTrimmed = requirement.trim();
+  const canStart =
+    !busy && doc !== null && requirementTrimmed.length >= 1 && requirementTrimmed.length <= 500;
+
+  const handleUpload = async (f: File) => {
+    if (busy) return;
+    setError(null);
+
+    // 클라 측 사전 검증 — 백엔드도 같은 한도를 보지만 큰 파일을 보내 5MB 가
+    // 넘는 걸 확인하는 라운드트립을 줄인다.
+    if (f.size > MAX_UPLOAD_MB * 1024 * 1024) {
+      setError(`파일이 너무 큽니다 — 최대 ${MAX_UPLOAD_MB} MB`);
+      return;
+    }
+
+    setPhase('uploading');
+    try {
+      const res = await api.uploadDocument(f);
+      setDoc(res);
+    } catch (e) {
+      setError(formatError(e, '업로드 실패'));
+    } finally {
+      setPhase('idle');
+    }
   };
-  const handleReplace = () => setFile(null);
-  const canStart = !!file && !pending;
+
+  const handleReplace = () => {
+    if (busy) return;
+    setDoc(null);
+    setError(null);
+  };
 
   const handleStart = async () => {
-    if (!canStart) return;
-    setPending(true);
+    if (!canStart || doc === null) return;
     setError(null);
+
+    // POST 만 하고 응답이 떨어지면 곧장 Casting 으로 넘긴다. 분 단위 폴링과
+    // plaza 생성은 거기서 처리 — Seed 화면이 길게 막혀 보이지 않도록.
+    setPhase('starting');
     try {
-      const res = await api.createPlaza({
-        preset: plan.id as Preset,
-        rounds: plan.rounds,
+      const created = await api.createOntology({
+        document_id: doc.document_id,
+        requirement: requirementTrimmed,
+        preset: planId,
       });
-      go('casting', res.plaza_id);
-    } catch (err) {
-      const msg =
-        err instanceof ApiError ? `${err.status} ${err.message}` : (err as Error).message;
-      setError(msg || '광장 생성 중 오류');
-      setPending(false);
+      const search = new URLSearchParams({
+        ontology: created.ontology_id,
+        preset: planId,
+        rounds: String(plan.rounds),
+        label: doc.filename,
+      });
+      navigate(`/casting/new?${search.toString()}`);
+    } catch (e) {
+      setError(formatError(e, '인격 생성 요청 실패'));
+      setPhase('idle');
     }
   };
 
@@ -230,14 +284,36 @@ export default function Seed() {
         />
 
         <div className="lm-seed__grid">
-          {/* LEFT — UPLOAD / PREVIEW */}
+          {/* LEFT — UPLOAD / PREVIEW + REQUIREMENT */}
           <section className="lm-seed__left">
             <div className="lm-seed__section-head">
               <span className="lm-seed__section-tag">01 · INPUT</span>
               <span className="lm-seed__section-h">자료 업로드</span>
             </div>
 
-            {file ? <FilePreview file={file} onReplace={handleReplace} /> : <FileDropZone onUpload={handleUpload} />}
+            {doc ? (
+              <FilePreview doc={doc} onReplace={handleReplace} disabled={busy} />
+            ) : (
+              <FileDropZone onUpload={handleUpload} disabled={busy} />
+            )}
+
+            {doc && (
+              <div className="lm-seed__requirement">
+                <label className="lm-seed__requirement-label" htmlFor="lm-seed-requirement">
+                  시뮬레이션 목적 (1~500자)
+                </label>
+                <textarea
+                  id="lm-seed-requirement"
+                  className="lm-seed__requirement-textarea"
+                  value={requirement}
+                  onChange={(e) => setRequirement(e.target.value.slice(0, 500))}
+                  placeholder="예) 주 4일제 도입에 대한 시민 반응을 보고 싶다"
+                  rows={3}
+                  disabled={busy}
+                />
+                <div className="lm-seed__requirement-count">{requirement.length} / 500</div>
+              </div>
+            )}
           </section>
 
           {/* RIGHT — PLAN PICKER */}
@@ -249,9 +325,21 @@ export default function Seed() {
 
             <div className="lm-seed__plans">
               {SEED_PLANS.map((p) => (
-                <PlanCard key={p.id} plan={p} selected={planId === p.id} onSelect={setPlanId} />
+                <PlanCard
+                  key={p.id}
+                  plan={p}
+                  selected={planId === p.id}
+                  onSelect={setPlanId}
+                  disabled={busy}
+                />
               ))}
             </div>
+
+            {(busy || error) && (
+              <div className={`lm-seed__status${error ? ' is-error' : ''}`} role="status">
+                {error ?? phaseLabel(phase)}
+              </div>
+            )}
 
             <footer className="lm-seed__footer">
               <div className="lm-seed__footer-left">
@@ -269,7 +357,7 @@ export default function Seed() {
                 onClick={handleStart}
                 trailing={<ArrowGlyph dir="right" />}
               >
-                {pending ? '광장 여는 중…' : '광장 열기'}
+                {phase === 'idle' ? '광장 열기' : phaseLabel(phase)}
               </Button>
             </footer>
           </section>
@@ -277,4 +365,17 @@ export default function Seed() {
       </div>
     </div>
   );
+}
+
+// --------------------------------------------------------------------
+// 사용자에게 표시할 에러 메시지로 정규화. ApiError 면 status + body 일부,
+// 그 외엔 fallback 문구.
+// --------------------------------------------------------------------
+function formatError(err: unknown, fallback: string): string {
+  if (err instanceof ApiError) {
+    const detail = err.message.length > 200 ? err.message.slice(0, 200) + '…' : err.message;
+    return `${fallback} (${err.status}): ${detail}`;
+  }
+  if (err instanceof Error) return `${fallback}: ${err.message}`;
+  return fallback;
 }
