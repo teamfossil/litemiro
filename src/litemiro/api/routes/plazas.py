@@ -41,7 +41,7 @@ from litemiro.api.sample_fixtures import (
 )
 from litemiro.api.store import PlazaStore
 from litemiro.models import ActionType, RoundEvent
-from litemiro.phase1.models import OntologyA
+from litemiro.phase1.models import BehaviorTendency, OntologyA
 
 
 def _avatar_seed(agent_id: str) -> int:
@@ -51,6 +51,27 @@ def _avatar_seed(agent_id: str) -> int:
     프론트가 reload 때마다 다른 아바타를 보면 안 되므로 sha256 사용.
     """
     return int.from_bytes(hashlib.sha256(agent_id.encode("utf-8")).digest()[:4], "big")
+
+
+# Phase 2 의 engagement-weighted ``/layout`` ``influence`` 와 분리되는 정적 prior.
+# sim 결과가 아니라 ontology 의 ``behavior_tendency`` 만으로 결정 — Casting 화면이
+# 아직 sim 이 안 돈 상태에서도 "주역" 같은 노출 우선순위/Badge 분기에 쓸 수 있다.
+# 가중치 합 = 1.0 으로 결과는 항상 [0.0, 1.0]:
+#   - post_rate    * 0.45  새 post 생성 → 다른 agent feed 진입 (가장 강한 신호)
+#   - reply_rate   * 0.20  LIKE/REPOST/QUOTE total → 회신 그래프 형성
+#   - repost_rate  * 0.15  재공유 → 노출 증폭
+#   - controversy  * 0.15  논쟁성 → 회자될 가능성
+#   - follow_rate  * 0.05  out-degree → 본인 영향력 prior 와 약한 상관
+# like_rate 는 reply_rate 의 split 의 일부 (PR #120 의 reaction 통합 정의) 라 별도
+# 가중치를 안 박음. 가중치 SSoT 는 ``docs/api/contract.md`` 의 ``/agents`` 섹션.
+def _compute_base_influence(behavior: BehaviorTendency) -> float:
+    return (
+        behavior.post_rate * 0.45
+        + behavior.reply_rate * 0.20
+        + behavior.repost_rate * 0.15
+        + behavior.controversy_affinity * 0.15
+        + behavior.follow_rate * 0.05
+    )
 
 
 def _load_ontology_a(onto_path: Path) -> OntologyA | None:
@@ -359,6 +380,7 @@ async def get_agents(plaza_id: str, request: Request) -> PlazaAgentsResponse:
             role=profile.entity_type,
             ideology=profile.ideology,
             topics=list(profile.topics),
+            base_influence=_compute_base_influence(profile.behavior_tendency),
             avatar_seed=_avatar_seed(profile.agent_id),
         )
         for profile in ontology.agents.values()
