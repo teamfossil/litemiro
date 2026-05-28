@@ -77,7 +77,11 @@ _SYSTEM_SCHEMA = (
     "restated points are likes, not quotes.\n"
     "  - CREATE_POST  → non-empty content; no targets. Use when you want to "
     "introduce a NEW topic, observation, or claim that is NOT already a "
-    "thread in your feed — agenda-setting, not reaction.\n"
+    "thread in your feed — agenda-setting, not reaction. Originating new "
+    "content is a separate axis from reacting to the feed: even when your "
+    "feed is full of relevant posts, your post_rate translates into "
+    "CREATE_POST over time. Once cold-start (the first empty-feed round) "
+    "ends, never selecting CREATE_POST contradicts the weight.\n"
     "  - FOLLOW       → target_agent_id of an author visible in your feed. "
     "Use when an author's stance or topics consistently align with yours "
     "and you want their future posts to keep surfacing in your feed. This "
@@ -200,6 +204,18 @@ def _behavior_hint(context: ActionContext) -> str:
             "LIKE / REPOST / QUOTE. like_rate and repost_rate are absolute weights "
             "within that total — the remainder (reply_rate - like_rate - repost_rate) "
             "goes to QUOTE."
+        )
+    # post_rate 는 reply_rate 와 직교 — CREATE_POST 의 절대 비율. debug4 측정에서
+    # post_rate default 0.5 인데도 r1 이후 CREATE_POST ≈ 0 으로 떨어지는 cold-
+    # start 후 망각 패턴이 보였다. umbrella 산수가 reaction 셋의 분배만 명시하고
+    # post_rate 가 별도 축이라는 점이 명시 안 돼 LLM 이 feed 가 차면 reaction 만
+    # 골라버린다 — 두 축이 직교라는 cue 를 한 줄 더 박는다.
+    if "post_rate" in bt:
+        line += (
+            " post_rate is a separate axis from reply_rate — it controls how often "
+            "you ORIGINATE a new post, independent of feed contents. A non-trivial "
+            "post_rate (>0.2) that yields zero CREATE_POST after cold-start signals "
+            "the weight is being ignored."
         )
     return line
 
