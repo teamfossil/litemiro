@@ -330,9 +330,7 @@ def _build_real_ontology_runner(
                 model=model,
             )
             try:
-                ontology_a, _ = await OntologyPipeline(config, llm).run(
-                    on_progress=_step_callback
-                )
+                ontology_a, _ = await OntologyPipeline(config, llm).run(on_progress=_step_callback)
             except Exception as exc:
                 if not is_content_filter_error(exc):
                     raise

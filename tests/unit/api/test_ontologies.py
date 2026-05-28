@@ -441,9 +441,7 @@ class TestProgressExposure:
             on_progress("step0_document", "openrouter/openai/gpt-4o-mini")
             on_progress("step6_serialize", "openrouter/openai/gpt-4o-mini")
             a, b = _make_fake_ontology_files(output_dir)
-            return OntologyRunResult(
-                ontology_a_path=a, ontology_b_path=b, agent_count=5
-            )
+            return OntologyRunResult(ontology_a_path=a, ontology_b_path=b, agent_count=5)
 
         app = create_app(
             runner=_noop_plaza_runner,
