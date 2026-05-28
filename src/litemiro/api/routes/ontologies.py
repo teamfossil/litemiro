@@ -40,6 +40,8 @@ def _to_response(row: OntologyRow) -> OntologyResponse:
         agent_count=row.agent_count,
         error=row.error,
         ready=row.status == "completed",
+        active_step=row.active_step,
+        fallback_model=row.fallback_model,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )

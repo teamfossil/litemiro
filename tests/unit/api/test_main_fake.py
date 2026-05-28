@@ -26,11 +26,17 @@ from litemiro.phase1.models import Preset
 
 async def test_noop_ontology_runner_copies_default_fixtures(tmp_path: Path) -> None:
     out = tmp_path / "ontology-xyz"
+    progressed: list[tuple[str, str | None]] = []
+
+    def _record(step: str, fallback_model: str | None) -> None:
+        progressed.append((step, fallback_model))
+
     result = await _noop_ontology_runner(
         document_path=tmp_path / "ignored.txt",
         requirement="fake requirement",
         preset=Preset.QUICK,
         output_dir=out,
+        on_progress=_record,
     )
     assert result.ontology_a_path == out / "ontology_a_persona.json"
     assert result.ontology_b_path == out / "ontology_b_memory.json"
@@ -39,6 +45,18 @@ async def test_noop_ontology_runner_copies_default_fixtures(tmp_path: Path) -> N
     assert result.ontology_a_path.read_bytes() == DEFAULT_ONTOLOGY_A_PATH.read_bytes()
     assert result.ontology_b_path.read_bytes() == DEFAULT_ONTOLOGY_B_PATH.read_bytes()
     assert result.agent_count >= 1
+    # #126: fake runner 도 실 pipeline 의 7 step 시퀀스를 그대로 콜백으로
+    # 흘려 프론트 progress UI 가 fake 모드에서 동작 확인 가능해야 한다.
+    assert [step for step, _ in progressed] == [
+        "step0_document",
+        "step1_ontology",
+        "step2_graph",
+        "step3_seeds",
+        "step4_profiles",
+        "step5_memory",
+        "step6_serialize",
+    ]
+    assert all(model is None for _, model in progressed)
 
 
 async def test_noop_runner_writes_synthetic_events(tmp_path: Path) -> None:

@@ -16,6 +16,7 @@ import asyncio
 import contextlib
 import logging
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -27,6 +28,13 @@ if TYPE_CHECKING:
     import sqlite3
 
     from litemiro.phase1.models import Preset
+
+# #126: pipeline 의 step 진입 / fallback 모델 전환을 알리는 콜백 시그니처.
+# ``step`` 은 ``step1_ontology`` 같은 사람-읽기 가능한 식별자, ``fallback_model``
+# 은 primary 모델이면 None, fallback chain 진입 시 그 모델명 — 둘 다 row 에
+# 그대로 저장돼 polling 응답 한 곳에서 합쳐 보인다. row 갱신은 store 가
+# 책임지므로 runner 는 호출만 한다.
+OntologyProgressCallback = Callable[[str, str | None], None]
 
 log = logging.getLogger(__name__)
 
@@ -78,6 +86,7 @@ class OntologyRunner(Protocol):
         requirement: str,
         preset: Preset,
         output_dir: Path,
+        on_progress: OntologyProgressCallback,
     ) -> OntologyRunResult: ...
 
 
@@ -141,6 +150,16 @@ class OntologyStore:
         return row
 
     async def _run(self, row: _db.OntologyRow, document_path: Path, out_dir: Path) -> None:
+        def _on_progress(step: str, fallback_model: str | None) -> None:
+            # #126: pipeline 의 step / fallback chain 신호를 row 에 즉시 반영.
+            # 폴링 응답이 다음 호출에서 ``active_step``/``fallback_model`` 을
+            # 함께 돌려준다. row 객체를 그대로 갱신해 _run 끝의 completed/failed
+            # upsert 와 같은 인스턴스에 누적되도록 한다.
+            row.active_step = step
+            if fallback_model is not None:
+                row.fallback_model = fallback_model
+            _db.upsert_ontology(self._conn, row)
+
         try:
             row.status = "running"
             _db.upsert_ontology(self._conn, row)
@@ -149,6 +168,7 @@ class OntologyStore:
                 requirement=row.requirement,
                 preset=row.preset,
                 output_dir=out_dir,
+                on_progress=_on_progress,
             )
             row.status = "completed"
             row.ontology_a_path = result.ontology_a_path
@@ -212,4 +232,9 @@ class OntologyStore:
         self._conn.close()
 
 
-__all__ = ["OntologyRunResult", "OntologyRunner", "OntologyStore"]
+__all__ = [
+    "OntologyProgressCallback",
+    "OntologyRunResult",
+    "OntologyRunner",
+    "OntologyStore",
+]

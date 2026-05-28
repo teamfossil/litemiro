@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import contextlib
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -75,6 +76,12 @@ class OntologyRow:
 
     ``agent_count`` 는 ``OntologyA.agent_count`` — preset 으로 결정되지만 Phase 1
     내부 동작에 따라 미달할 수 있어 실측값을 따로 저장. 보고용.
+
+    ``active_step`` / ``fallback_model`` 은 #126: running 중 사용자에게 진행
+    상황 노출용. runner 가 pipeline 의 step 진입 시 / fallback chain 의 다음
+    모델로 전환 시 채워주고, polling 응답에 그대로 전달돼 "어디서 얼마나 더
+    걸릴지" 신호가 된다. 완료/실패 후엔 의미 없는 마지막 값이 남아있을 수
+    있다 — 클라는 ``status`` 를 기준으로 표시 여부 결정.
     """
 
     ontology_id: str
@@ -88,6 +95,8 @@ class OntologyRow:
     error: str | None
     created_at: datetime
     updated_at: datetime
+    active_step: str | None = None
+    fallback_model: str | None = None
 
 
 _VALID_STATUSES: frozenset[PlazaStatus] = frozenset(get_args(PlazaStatus))
@@ -143,6 +152,8 @@ CREATE TABLE IF NOT EXISTS ontologies (
     ontology_b_path TEXT,
     agent_count INTEGER,
     error TEXT,
+    active_step TEXT,
+    fallback_model TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY (document_id) REFERENCES documents(document_id)
@@ -150,6 +161,16 @@ CREATE TABLE IF NOT EXISTS ontologies (
 
 CREATE INDEX IF NOT EXISTS idx_ontologies_document ON ontologies (document_id);
 """
+
+# 신규 DB 는 CREATE TABLE 의 컬럼 정의로 끝나지만, 기존 사용자의 DB 는
+# active_step / fallback_model 두 컬럼이 빠진 채 만들어졌을 수 있다 (#126
+# 이전). SQLite 의 ``ALTER TABLE ADD COLUMN`` 은 idempotent 가 아니라 두
+# 번 호출하면 에러 — try/except 로 안전하게 추가만 시도. 두 컬럼 모두
+# NULLable + 기본 NULL 이라 기존 row 와 호환.
+_ONTOLOGY_MIGRATION_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("active_step", "TEXT"),
+    ("fallback_model", "TEXT"),
+)
 
 _UPSERT_SQL = """
 INSERT INTO plazas (
@@ -256,6 +277,13 @@ def connect(db_path: Path) -> sqlite3.Connection:
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript(_SCHEMA_SQL)
+    # #126 이전에 만들어진 DB 에 빠져있는 컬럼을 사후 추가. SQLite 의
+    # ADD COLUMN 은 같은 이름이 이미 있으면 OperationalError 라 try/except 로
+    # 흡수한다. 새 DB 는 _SCHEMA_SQL 의 CREATE TABLE 단계에서 이미 컬럼이
+    # 박혀있어 여기서 모두 fail 하고 통과 — 한 번도 의도된 동작.
+    for col_name, col_type in _ONTOLOGY_MIGRATION_COLUMNS:
+        with contextlib.suppress(sqlite3.OperationalError):
+            conn.execute(f"ALTER TABLE ontologies ADD COLUMN {col_name} {col_type}")
     return conn
 
 
@@ -519,20 +547,24 @@ _ONTOLOGY_UPSERT_SQL = """
 INSERT INTO ontologies (
     ontology_id, document_id, preset, requirement, status,
     ontology_a_path, ontology_b_path, agent_count, error,
+    active_step, fallback_model,
     created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(ontology_id) DO UPDATE SET
     status=excluded.status,
     ontology_a_path=excluded.ontology_a_path,
     ontology_b_path=excluded.ontology_b_path,
     agent_count=excluded.agent_count,
     error=excluded.error,
+    active_step=excluded.active_step,
+    fallback_model=excluded.fallback_model,
     updated_at=excluded.updated_at
 """
 
 _ONTOLOGY_SELECT_SQL = """
 SELECT ontology_id, document_id, preset, requirement, status,
        ontology_a_path, ontology_b_path, agent_count, error,
+       active_step, fallback_model,
        created_at, updated_at
 FROM ontologies
 """
@@ -560,6 +592,8 @@ def upsert_ontology(conn: sqlite3.Connection, row: OntologyRow) -> None:
             str(row.ontology_b_path) if row.ontology_b_path else None,
             row.agent_count,
             row.error,
+            row.active_step,
+            row.fallback_model,
             created.isoformat(timespec="seconds"),
             now_dt.isoformat(timespec="seconds"),
         ),
@@ -583,6 +617,8 @@ def _row_to_ontology(row: sqlite3.Row) -> OntologyRow:
         error=row["error"],
         created_at=datetime.fromisoformat(row["created_at"]),
         updated_at=datetime.fromisoformat(row["updated_at"]),
+        active_step=row["active_step"],
+        fallback_model=row["fallback_model"],
     )
 
 
