@@ -391,6 +391,27 @@ class TestPromptComposition:
         system = llm.calls[0][0]
         assert "Skipping FOLLOW entirely contradicts your follow_rate" in system
 
+    async def test_system_prompt_quote_streak_guard_present(self) -> None:
+        # #124: streak count 가드 cue ("recent actions 가 QUOTE_POST 2회 이상이면
+        # LIKE / REPOST 로 default") 가 사라지면 v1 의 QUOTE 57% 쏠림이 재발한다.
+        # anti_quote_spam_cues 와 별도로 분리 — 어느 cue 가 빠졌는지 stack 에서
+        # 즉시 식별 가능하도록.
+        llm = _FakeLLM(_payload(ActionType.DO_NOTHING))
+        await _selector(llm).select_action("me", _ctx())
+        system = llm.calls[0][0]
+        assert "if two or more of your recent actions were QUOTE_POST" in system
+
+    async def test_user_prompt_renders_quote_post_action_literal(self) -> None:
+        # #124: streak 가드가 카운트 가능하려면 recent_actions 의 QUOTE_POST 가
+        # user prompt 에 그 literal 그대로 노출돼야. _recent_block 의 출력 포맷
+        # ("<ActionType> target_post_id=<id>") 도 같이 잠근다 — cue 와 노출 포맷
+        # 두 쪽 다 살아있어야 LLM 이 streak 을 셀 수 있음.
+        recent = (Action(type=ActionType.QUOTE_POST, target_post_id="p-q1", content="hi"),)
+        llm = _FakeLLM(_payload(ActionType.DO_NOTHING))
+        await _selector(llm).select_action("me", _ctx(recent_actions=recent))
+        user = llm.calls[0][1]
+        assert "QUOTE_POST target_post_id=p-q1" in user
+
 
 class TestPhase1PersonaSchema:
     """Phase 1 (dual-ontology) freezes ten persona keys; the prompt layer
@@ -446,9 +467,11 @@ class TestPhase1PersonaSchema:
         assert "press LIKE on aligned posts: 0.6" in system
         assert "follow others whose stance you find compelling: 0.4" in system
         assert "engage with controversy: 0.2" in system
-        # reply_rate 가 있을 때 umbrella vs subtype 관계가 prompt 에 명시돼야 — #120 리뷰.
-        assert "umbrella reaction probability" in system
-        assert "whatever remains is QUOTE" in system
+        # reply_rate 가 있을 때 산수 정의가 prompt 에 명시돼야 — #122. 첫 보강
+        # (#120) 의 "umbrella / tilt" 표현은 ratio / 곱 / absolute 어느 셋인지
+        # 모호했다. 의도된 산수 (absolute weights + remainder = QUOTE) 를 잠근다.
+        assert "reply_rate is the total reaction probability" in system
+        assert "remainder (reply_rate - like_rate - repost_rate) goes to QUOTE" in system
 
     async def test_umbrella_note_omitted_when_reply_rate_absent(self) -> None:
         agent = _agent(
@@ -464,7 +487,7 @@ class TestPhase1PersonaSchema:
         llm = _FakeLLM(_payload(ActionType.DO_NOTHING))
         await _selector(llm).select_action("me", _ctx(agent=agent))
         system = llm.calls[0][0]
-        assert "umbrella reaction probability" not in system
+        assert "reply_rate is the total reaction probability" not in system
 
     async def test_follow_rate_falls_back_when_ontology_omits_it(self) -> None:
         # 구버전 Phase 1 ontology 가 follow_rate 키를 빠뜨려도 LLM 이 follow
