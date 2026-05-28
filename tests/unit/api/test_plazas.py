@@ -782,6 +782,49 @@ def _follow_writing_runner(follows: list[tuple[int, str, str]]) -> _RunnerCoro:
     return _run
 
 
+def _events_jsonl(*events: tuple[int, str, dict[str, str]]) -> str:
+    """(round_num, agent_id, action_dict) 튜플들을 events.jsonl 본문으로 직렬화.
+
+    ``_follow_jsonl`` 의 일반화 — FOLLOW 외 LIKE/REPOST/QUOTE 까지 같이 흘릴 때 사용.
+    """
+    lines = []
+    for round_num, agent_id, action in events:
+        lines.append(
+            json.dumps(
+                {
+                    "round_num": round_num,
+                    "timestamp": "2026-05-26T00:00:00+00:00",
+                    "agent_id": agent_id,
+                    "action": action,
+                }
+            )
+        )
+    return "\n".join(lines) + "\n"
+
+
+def _events_writing_runner(events: list[tuple[int, str, dict[str, str]]]) -> _RunnerCoro:
+    """events.jsonl 에 임의 action 라인들을 흘려주고 종료하는 runner."""
+
+    async def _run(
+        *,
+        plaza_id: str,
+        ontology_a_path: Path,
+        ontology_b_path: Path,
+        rounds: int,
+        event_log_path: Path,
+        checkpoint_dir: Path,
+        on_progress: ProgressCallback,
+    ) -> RunnerOutcome:
+        del plaza_id, ontology_a_path, ontology_b_path, checkpoint_dir
+        await asyncio.to_thread(event_log_path.write_text, _events_jsonl(*events), encoding="utf-8")
+        for r in range(rounds):
+            await asyncio.sleep(0)
+            on_progress(rounds_done=r + 1)
+        return RunnerOutcome()
+
+    return _run
+
+
 class TestGetLayout:
     """``GET /api/plazas/{id}/layout`` — Plaza 부감 뷰 좌표."""
 
@@ -830,7 +873,8 @@ class TestGetLayout:
         assert by_id["a02"]["follower_count"] == 2
         assert by_id["a03"]["follower_count"] == 1
         assert by_id["a01"]["follower_count"] == 0
-        # influence 는 plaza 내 max 로 정규화 (max=2 → a02=1.0, a03=0.5, a01=0.0).
+        # influence 는 engagement-weighted score 의 max 정규화 (#132). FOLLOW only
+        # 케이스는 가중치 5 가 균일해 raw count 비율과 동일 — a02=10, a03=5, a01=0.
         assert by_id["a02"]["influence"] == 1.0
         assert by_id["a03"]["influence"] == 0.5
         assert by_id["a01"]["influence"] == 0.0
@@ -840,6 +884,124 @@ class TestGetLayout:
         # ontology 메타가 그대로.
         assert by_id["a01"]["name"] == "A1"
         assert by_id["a01"]["role"] == "Role"
+
+    def test_engagement_weighted_influence(self, tmp_path: Path) -> None:
+        """LIKE/REPOST/QUOTE 받은 수도 가중합으로 influence 에 반영 (#132).
+
+        in-degree (FOLLOW) only 였을 때 sim 의 follower=0 long-tail 에서 노드
+        크기 차별이 0 으로 떨어졌다. LIKE 1, REPOST 2, QUOTE 3, FOLLOW 5 가중합.
+        LIKE/REPOST/QUOTE 의 author 는 ``target_post_id`` (``{agent}_r{n:04d}``) 에서 도출.
+        """
+        onto_a = _write_ontology_a(
+            tmp_path / "ontology_a.json",
+            [
+                ("a01", "A1", "Role", 0.5),
+                ("a02", "A2", "Role", 0.5),
+                ("a03", "A3", "Role", 0.5),
+            ],
+        )
+        # a01_r0000 (작성자 a01) 가 LIKE + REPOST + QUOTE = 1 + 2 + 3 = 6.
+        # a02_r0000 (작성자 a02) 가 LIKE = 1.  a03 = 0.
+        events: list[tuple[int, str, dict[str, str]]] = [
+            (0, "a02", {"type": "LIKE_POST", "target_post_id": "a01_r0000"}),
+            (1, "a03", {"type": "REPOST", "target_post_id": "a01_r0000"}),
+            (
+                1,
+                "a02",
+                {
+                    "type": "QUOTE_POST",
+                    "target_post_id": "a01_r0000",
+                    "content": "..",
+                },
+            ),
+            (2, "a03", {"type": "LIKE_POST", "target_post_id": "a02_r0000"}),
+        ]
+        app = create_app(runner=_events_writing_runner(events), base_dir=tmp_path)
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/plazas",
+                json={
+                    "ontology_a_path": str(onto_a),
+                    "ontology_b_path": "/tmp/b.json",
+                    "rounds": 3,
+                },
+            ).json()
+            plaza_id = created["plaza_id"]
+            _wait_until(client, plaza_id, terminal={"completed", "failed"})
+            resp = client.get(f"/api/plazas/{plaza_id}/layout")
+        assert resp.status_code == 200
+        by_id = {a["id"]: a for a in resp.json()["agents"]}
+        # FOLLOW 0건 — follower_count 는 전부 0.
+        assert all(by_id[k]["follower_count"] == 0 for k in ("a01", "a02", "a03"))
+        # max=6 (a01) → a02 = 1/6, a03 = 0.
+        assert by_id["a01"]["influence"] == 1.0
+        assert by_id["a02"]["influence"] == pytest.approx(1 / 6)
+        assert by_id["a03"]["influence"] == 0.0
+
+    def test_follower_count_excludes_non_follow_engagement(self, tmp_path: Path) -> None:
+        """``follower_count`` 는 받은 FOLLOW 카운트만 (#132 의 의미 분리).
+
+        UI 가 raw follower 수도 따로 노출하니 의미 보존 — influence 는 가중합 정규화,
+        follower_count 는 FOLLOW received raw 카운트로 분리된다.
+        """
+        onto_a = _write_ontology_a(
+            tmp_path / "ontology_a.json",
+            [("a01", "A1", "Role", 0.5), ("a02", "A2", "Role", 0.5)],
+        )
+        events: list[tuple[int, str, dict[str, str]]] = [
+            (0, "a02", {"type": "FOLLOW", "target_agent_id": "a01"}),
+            (1, "a02", {"type": "LIKE_POST", "target_post_id": "a01_r0000"}),
+            (1, "a02", {"type": "REPOST", "target_post_id": "a01_r0000"}),
+        ]
+        app = create_app(runner=_events_writing_runner(events), base_dir=tmp_path)
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/plazas",
+                json={
+                    "ontology_a_path": str(onto_a),
+                    "ontology_b_path": "/tmp/b.json",
+                    "rounds": 2,
+                },
+            ).json()
+            plaza_id = created["plaza_id"]
+            _wait_until(client, plaza_id, terminal={"completed", "failed"})
+            resp = client.get(f"/api/plazas/{plaza_id}/layout")
+        by_id = {a["id"]: a for a in resp.json()["agents"]}
+        # a01 = FOLLOW 1번만. LIKE/REPOST 는 follower_count 에 안 들어감.
+        assert by_id["a01"]["follower_count"] == 1
+        assert by_id["a02"]["follower_count"] == 0
+
+    def test_skips_lines_with_unparseable_post_id(self, tmp_path: Path) -> None:
+        """``target_post_id`` 가 ``{agent}_r{n:04d}`` 포맷이 아니면 그 한 줄 skip.
+
+        외부 주입 / 구버전 events.jsonl 호환 — author 를 도출 못 하는 라인은
+        influence 합산에서 안전하게 빠진다 (예외로 500 으로 떨어지지 않게).
+        """
+        onto_a = _write_ontology_a(
+            tmp_path / "ontology_a.json",
+            [("a01", "A1", "Role", 0.5), ("a02", "A2", "Role", 0.5)],
+        )
+        events: list[tuple[int, str, dict[str, str]]] = [
+            (0, "a02", {"type": "LIKE_POST", "target_post_id": "a01_r0000"}),
+            (1, "a02", {"type": "LIKE_POST", "target_post_id": "garbage-no-underscore"}),
+        ]
+        app = create_app(runner=_events_writing_runner(events), base_dir=tmp_path)
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/plazas",
+                json={
+                    "ontology_a_path": str(onto_a),
+                    "ontology_b_path": "/tmp/b.json",
+                    "rounds": 2,
+                },
+            ).json()
+            plaza_id = created["plaza_id"]
+            _wait_until(client, plaza_id, terminal={"completed", "failed"})
+            resp = client.get(f"/api/plazas/{plaza_id}/layout")
+        by_id = {a["id"]: a for a in resp.json()["agents"]}
+        # 두 번째 라인 skip → a01 만 LIKE 1 점, max=1 → 1.0.  a02 = 0.
+        assert by_id["a01"]["influence"] == 1.0
+        assert by_id["a02"]["influence"] == 0.0
 
     def test_pending_returns_not_ready(self, tmp_path: Path) -> None:
         """pending / running 동안엔 200 + ``ready=false`` + ``agents=[]``.

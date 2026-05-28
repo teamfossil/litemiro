@@ -260,10 +260,11 @@ events.jsonl 이 아직 안정적이지 않으므로 `ready: false` + `agents: [
 - `x` / `y`: `[0.0, 1.0]` 정규화 좌표. 프론트가 캔버스 크기 곱해 그린다.
 - `follower_count`: events.jsonl 의 FOLLOW 이벤트에서 해당 agent 가 받은
   follow 수 (절대값).
-- `influence`: 같은 plaza 내 `follower_count` 최댓값으로 정규화한 `[0.0, 1.0]`
-  값. 최댓값을 가진 노드는 1.0, 아무도 안 따른 노드는 0.0. 노드 크기/색
-  매핑에 그대로 곱해 쓰면 된다. 모든 agent 의 `follower_count` 가 0 이면
-  전부 0.0.
+- `influence`: 같은 plaza 내 engagement-weighted score 최댓값으로 정규화한
+  `[0.0, 1.0]`. 가중치는 받은 LIKE×1, REPOST×2, QUOTE×3, FOLLOW×5 의 합 (#132).
+  FOLLOW in-degree 만 보면 sim 의 long-tail (현 표본은 follower=0 100% 비율) 에서
+  노드 크기 차별이 0 으로 떨어져 LIKE/REPOST/QUOTE 까지 합산한다. 노드 크기/색
+  매핑에 그대로 곱해 쓰면 된다. 모든 agent 의 점수가 0 이면 전부 0.0.
 - `avatar_seed`: `/agents` 와 동일한 uint32. 같은 agent 면 두 응답이 같은 값.
 - `width` / `height`: 좌표 박스. 현재 항상 1.0 x 1.0 — 향후 비정방 화면에
   맞춰 늘릴 여지.
