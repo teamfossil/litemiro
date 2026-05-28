@@ -17,7 +17,7 @@ import pytest
 from pydantic import ValidationError
 
 from litemiro.integration import OntologyLoader
-from litemiro.integration.ontology_loader import ConsistencyWarning
+from litemiro.integration.ontology_loader import ConsistencyWarning, _cosine
 from litemiro.phase1.models import (
     AgentOrigin,
     AgentProfile,
@@ -685,3 +685,139 @@ def test_consistency_warning_rejects_out_of_range_similarity() -> None:
             memory_topics=("Y",),
             max_similarity=1.5,
         )
+
+
+# ── §8.4 hard-error 승격 (ADR-0001) ──────────────────────────────────
+
+
+def _derived_profile(aid: str, *, topics: list[str]) -> AgentProfile:
+    return _profile(aid, topics=topics, post_rate=0.5, origin=AgentOrigin.DERIVED)
+
+
+def test_raise_on_extracted_mismatch_extracted_below_threshold_raises() -> None:
+    """extracted + embedder + cosine < threshold → ValueError (§8.4 게이트)."""
+    a, b = _single_agent_ontology(persona_topics=["선거"], memory_topics=["김치"])
+    embedder = _MapEmbedder({"선거": (1.0, 0.0, 0.0), "김치": (0.0, 1.0, 0.0)})
+    with pytest.raises(ValueError, match="persona-memory cosine mismatch"):
+        OntologyLoader.validate_consistency(
+            ontology_a=a,
+            ontology_b=b,
+            embedder=embedder,
+            similarity_threshold=0.4,
+            raise_on_extracted_mismatch=True,
+        )
+
+
+def test_raise_on_extracted_mismatch_extracted_above_threshold_passes() -> None:
+    """cosine >= threshold 면 게이트 켜져도 raise 안 함."""
+    a, b = _single_agent_ontology(persona_topics=["정치"], memory_topics=["대통령"])
+    embedder = _MapEmbedder({"정치": (1.0, 0.0, 0.0), "대통령": (0.9, 0.4, 0.0)})
+    warnings = OntologyLoader.validate_consistency(
+        ontology_a=a,
+        ontology_b=b,
+        embedder=embedder,
+        similarity_threshold=0.4,
+        raise_on_extracted_mismatch=True,
+    )
+    assert warnings == ()
+
+
+def test_raise_on_extracted_mismatch_derived_stays_warning() -> None:
+    """derived 는 게이트 켜져도 보수적으로 warning — 메모리 토픽 결정 미정착."""
+    a = OntologyA(
+        seed=1,
+        agent_count=1,
+        preset=Preset.QUICK,
+        source_document="x",
+        simulation_requirement="x",
+        generated_at=datetime(2026, 5, 25, tzinfo=UTC),
+        ontology=Ontology(entity_types=[], edge_types=[]),
+        agents={"a1": _derived_profile("a1", topics=["선거"])},
+    )
+    b = OntologyB(
+        stores={"a1": MemoryStore(agent_id="a1", semantic=[_semantic_with_topics("m1", ["김치"])])}
+    )
+    embedder = _MapEmbedder({"선거": (1.0, 0.0, 0.0), "김치": (0.0, 1.0, 0.0)})
+    warnings = OntologyLoader.validate_consistency(
+        ontology_a=a,
+        ontology_b=b,
+        embedder=embedder,
+        similarity_threshold=0.4,
+        raise_on_extracted_mismatch=True,
+    )
+    assert len(warnings) == 1
+    assert warnings[0].origin == AgentOrigin.DERIVED
+
+
+def test_raise_on_extracted_mismatch_legacy_path_never_raises() -> None:
+    """embedder=None 은 의미 비교가 불가능하므로 게이트와 무관하게 warning-only."""
+    a, b = _single_agent_ontology(persona_topics=["선거"], memory_topics=["김치"])
+    warnings = OntologyLoader.validate_consistency(
+        ontology_a=a,
+        ontology_b=b,
+        embedder=None,
+        raise_on_extracted_mismatch=True,
+    )
+    assert len(warnings) == 1
+    assert warnings[0].max_similarity is None
+
+
+def test_raise_on_extracted_mismatch_error_lists_sample_agent_ids() -> None:
+    """다중 fatal 시 에러 메시지에 처음 5 개 agent_id sample 노출 + ADR 링크."""
+    seven = {f"a{i}": _profile(f"a{i}", topics=["선거"], post_rate=0.5) for i in range(7)}
+    a = OntologyA(
+        seed=1,
+        agent_count=7,
+        preset=Preset.QUICK,
+        source_document="x",
+        simulation_requirement="x",
+        generated_at=datetime(2026, 5, 25, tzinfo=UTC),
+        ontology=Ontology(entity_types=[], edge_types=[]),
+        agents=seven,
+    )
+    b = OntologyB(
+        stores={
+            f"a{i}": MemoryStore(agent_id=f"a{i}", semantic=[_semantic_with_topics("m", ["김치"])])
+            for i in range(7)
+        }
+    )
+    embedder = _MapEmbedder({"선거": (1.0, 0.0, 0.0), "김치": (0.0, 1.0, 0.0)})
+    with pytest.raises(ValueError) as exc:
+        OntologyLoader.validate_consistency(
+            ontology_a=a,
+            ontology_b=b,
+            embedder=embedder,
+            similarity_threshold=0.4,
+            raise_on_extracted_mismatch=True,
+        )
+    msg = str(exc.value)
+    assert "extracted 7 명" in msg
+    assert "a0, a1, a2, a3, a4" in msg
+    assert "..." in msg
+    assert "ADR" in msg or "decisions/0001" in msg
+
+
+def test_cosine_clamps_to_unit_interval() -> None:
+    """`_cosine` 결과가 [-1, 1] 범위로 clamp — ConsistencyWarning Field(le=1) 보호.
+
+    부동소수 누적 오차가 자연 발생하는 numpy 시나리오는 재현이 약하므로 (정의
+    상 통과해야 할 입력으로 clamp 가드 자체만 검증). production 동작은 ADR-0001
+    측정으로 가드됨.
+    """
+    assert _cosine((1.0, 0.0, 0.0), (1.0, 0.0, 0.0)) == 1.0
+    assert _cosine((1.0, 0.0), (-1.0, 0.0)) == -1.0
+    assert _cosine((0.0, 0.0), (1.0, 1.0)) == 0.0
+    for av, bv in [((3.0, 4.0), (3.0, 4.0)), ((-2.0, -2.0), (2.0, 2.0))]:
+        result = _cosine(av, bv)
+        assert -1.0 <= result <= 1.0
+
+
+def test_validate_consistency_self_cosine_one_does_not_break_warning_model() -> None:
+    """같은 토픽 → cosine 정확히 1.0 → ConsistencyWarning Field(le=1) 통과."""
+    a, b = _single_agent_ontology(persona_topics=["AI"], memory_topics=["AI"])
+    embedder = _MapEmbedder({"AI": (0.6, 0.8)})
+    warnings = OntologyLoader.validate_consistency(
+        ontology_a=a, ontology_b=b, embedder=embedder, similarity_threshold=1.01
+    )
+    assert len(warnings) == 1
+    assert warnings[0].max_similarity == 1.0

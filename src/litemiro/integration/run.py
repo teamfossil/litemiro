@@ -93,20 +93,22 @@ async def run_simulation(
         ontology_a_path=ontology_a_path,
         ontology_b_path=ontology_b_path,
     )
-    # Section 6.5 persona-memory topic overlap. MVP 는 warning-only 라 진행은
-    # 막지 않지만 어디서도 호출이 안 되면 (#21 task 2) 누적 비율 측정이 사장
-    # 되므로 RunBootstrap 단에서 한 번 부르고 structlog 로 흘린다.
-    # #58 옵션 B: 임베딩 cosine 으로 어휘공간 분리 (페르소나 LLM 추상 개념 vs
-    # NER 엔티티명) 를 우회. 이미 FeedEngine 용으로 인스턴스화된 ``embedder``
-    # 를 재사용해 모델 로딩을 한 번에 묶는다.
-    consistency_warnings = OntologyLoader.validate_consistency(
-        ontology_a=ontology_a, ontology_b=ontology_b, embedder=embedder
+    # Section 6.5 persona-memory topic overlap. #58 옵션 B 임베딩 cosine 경로 +
+    # §8.4 hard-error 승격 — extracted 에이전트가 threshold 미만이면 ValueError 로
+    # 거부 (`raise_on_extracted_mismatch=True`). derived 는 메모리 토픽 결정
+    # 시퀀스가 미정착이라 보수적으로 warning 만. 임계값 calibration 근거는
+    # `docs/decisions/0001-persona-memory-cosine-threshold.md`.
+    derived_warnings = OntologyLoader.validate_consistency(
+        ontology_a=ontology_a,
+        ontology_b=ontology_b,
+        embedder=embedder,
+        raise_on_extracted_mismatch=True,
     )
-    if consistency_warnings:
+    if derived_warnings:
         log.warning(
             "run_simulation.persona_memory_overlap_warnings",
-            count=len(consistency_warnings),
-            agent_ids=tuple(w.agent_id for w in consistency_warnings),
+            count=len(derived_warnings),
+            agent_ids=tuple(w.agent_id for w in derived_warnings),
         )
     if topic_vocabulary is None:
         topic_vocabulary = derive_topic_vocabulary(ontology_a)
