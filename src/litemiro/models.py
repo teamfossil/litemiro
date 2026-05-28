@@ -159,6 +159,10 @@ class ActionContext(BaseModel):
     recent_actions: tuple[Action, ...] = Field(default_factory=tuple)
     follower_count: int = Field(default=0, ge=0)
     following_count: int = Field(default=0, ge=0)
+    # 현재 follow 중인 agent_id 집합. prompt 의 author 섹션에서 "아직 follow 안 한
+    # 후보" 와 "이미 follow 중" 을 분리 표시 — LLM 이 새 FOLLOW 의향을 결정할
+    # 근거 정보. follow 결정은 강제 X, 단순 정보 제공.
+    following_ids: frozenset[str] = Field(default_factory=frozenset)
     round_num: int = Field(ge=0)
 
 
