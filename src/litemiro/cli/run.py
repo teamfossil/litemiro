@@ -30,7 +30,7 @@ import structlog
 from dotenv import find_dotenv, load_dotenv
 
 from litemiro.embedding.sentence_transformers import STEmbedder
-from litemiro.integration.run import run_simulation
+from litemiro.integration.run import RUN_SUMMARY_FILENAME, run_simulation
 from litemiro.llm.litellm_client import LiteLLMClient
 
 if TYPE_CHECKING:
@@ -101,12 +101,38 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _fmt_bytes(n: int) -> str:
+    """사용자 가독용 단위 변환 — 1024 기반 (IEC), 라벨은 일상 표기 ``KB/MB/GB``.
+
+    기기 스펙 보고서에서 ``KiB`` 같은 엄밀 표기보다 ``MB`` 가 익숙해서 가독성이
+    낫다. 1024 미만은 그대로 byte 정수.
+    """
+    if n < 1024:
+        return f"{n}B"
+    size = n / 1024.0
+    for unit in ("KB", "MB", "GB"):
+        if size < 1024:
+            return f"{size:.1f}{unit}"
+        size /= 1024
+    return f"{size:.1f}TB"
+
+
 def _print_result(result: SimulationResult) -> None:
+    summary_path = result.event_log_path.parent / RUN_SUMMARY_FILENAME
     print(f"Rounds run     : {result.rounds_run}")
     print(f"Early exit     : {result.early_exit}")
     print(f"Tokens used    : {result.tokens_used}")
     print(f"Event log      : {result.event_log_path}")
     print(f"Checkpoint dir : {result.checkpoint_dir}")
+    print(f"Run summary    : {summary_path}")
+    # stderr 한 줄 — 기기 스펙 산정용 측정값. stdout 의 결과 블록과 섞이지 않게
+    # stderr 로 분리하면 사용자가 ``2>>resource.log`` 같은 식으로 따로 모을 수
+    # 있고, ``run_summary.json`` (영구 산출물) 과 이중 채널.
+    print(
+        f"run_summary peak_rss={_fmt_bytes(result.peak_rss_bytes)} "
+        f"output_dir={_fmt_bytes(result.output_dir_bytes)}",
+        file=sys.stderr,
+    )
 
 
 def _default_output_dir() -> Path:
