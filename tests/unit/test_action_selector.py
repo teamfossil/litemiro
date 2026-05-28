@@ -28,6 +28,7 @@ contract here:
 
 from __future__ import annotations
 
+import collections
 import json
 from typing import Any
 
@@ -72,6 +73,7 @@ def _ctx(
     round_num: int = 1,
     follower_count: int = 0,
     following_count: int = 0,
+    following_ids: frozenset[str] = frozenset(),
 ) -> ActionContext:
     return ActionContext(
         agent=agent or _agent(),
@@ -79,6 +81,7 @@ def _ctx(
         recent_actions=recent_actions,
         follower_count=follower_count,
         following_count=following_count,
+        following_ids=following_ids,
         round_num=round_num,
     )
 
@@ -291,6 +294,14 @@ class TestTargetValidation:
         action = (await _selector(llm).select_action("me", _ctx(feed=feed))).action
         assert action == Action(type=ActionType.DO_NOTHING)
 
+    async def test_already_followed_target_falls_back(self) -> None:
+        # 이미 follow 중인 author 를 다시 FOLLOW → 신규 엣지가 아니므로 fallback.
+        feed = (_post("p1", author="alice"),)
+        llm = _FakeLLM(_payload(ActionType.FOLLOW, target_agent_id="alice"))
+        ctx = _ctx(feed=feed, following_ids=frozenset({"alice"}))
+        action = (await _selector(llm).select_action("me", ctx)).action
+        assert action == Action(type=ActionType.DO_NOTHING)
+
 
 class TestPydanticValidation:
     async def test_invalid_action_type_falls_back(self) -> None:
@@ -444,7 +455,10 @@ class TestPhase1PersonaSchema:
         ):
             assert value in system
 
-    async def test_behavior_tendency_renders_as_natural_language(self) -> None:
+    async def test_behavior_tendency_renders_reaction_mix(self) -> None:
+        # behavior_tendency 가 있으면 reaction 분기 가중을 LIKE/REPOST/QUOTE share
+        # 로 렌더한다. like_rate : repost_rate : controversy_affinity 정규화.
+        # originate 축 (post/follow) 은 prompt 가 아니라 게이트가 다루므로 여기 안 뜬다.
         agent = _agent(
             "me",
             persona_traits={
@@ -461,85 +475,23 @@ class TestPhase1PersonaSchema:
         llm = _FakeLLM(_payload(ActionType.DO_NOTHING))
         await _selector(llm).select_action("me", _ctx(agent=agent))
         system = llm.calls[0][0]
-        assert "Behavior tendencies" in system
-        assert "originate posts: 0.7" in system
-        assert "react to others' posts overall (LIKE / REPOST / QUOTE): 0.5" in system
-        assert "repost: 0.1" in system
-        assert "press LIKE on aligned posts: 0.6" in system
-        assert "follow others whose stance you find compelling: 0.4" in system
-        assert "engage with controversy: 0.2" in system
-        # reply_rate 가 있을 때 산수 정의가 prompt 에 명시돼야 — #122. 첫 보강
-        # (#120) 의 "umbrella / tilt" 표현은 ratio / 곱 / absolute 어느 셋인지
-        # 모호했다. 의도된 산수 (absolute weights + remainder = QUOTE) 를 잠근다.
-        assert "reply_rate is the total reaction probability" in system
-        assert "remainder (reply_rate - like_rate - repost_rate) goes to QUOTE" in system
-        # post_rate cue — debug4 측정에서 r1 이후 CREATE_POST 가 ≈0 으로 떨어지는
-        # cold-start 후 망각을 막으려고 두 축이 직교라는 점을 따로 박아뒀다.
-        assert "post_rate is a separate axis from reply_rate" in system
+        # like:repost:contro = 0.6:0.1:0.2, total 0.9 → 67% / 11% / 22%
+        assert "When you react to a feed post" in system
+        assert "LIKE 67% / REPOST 11% / QUOTE 22%" in system
+        assert "normalized from like_rate / repost_rate / controversy_affinity" in system
 
-    async def test_post_rate_cue_omitted_when_post_rate_absent(self) -> None:
-        # behavior_tendency 가 post_rate 키를 빠뜨린 (구버전 또는 외부 박은) 경우엔
-        # CREATE_POST 직교 cue 가 등장하지 않아야 prompt 가 거짓 신호를 흘리지 않는다.
-        agent = _agent(
-            "me",
-            persona_traits={
-                "behavior_tendency": {
-                    "reply_rate": 0.5,
-                    "repost_rate": 0.2,
-                    "like_rate": 0.4,
-                },
-            },
-        )
-        llm = _FakeLLM(_payload(ActionType.DO_NOTHING))
-        await _selector(llm).select_action("me", _ctx(agent=agent))
-        system = llm.calls[0][0]
-        assert "post_rate is a separate axis from reply_rate" not in system
-
-    async def test_umbrella_note_omitted_when_reply_rate_absent(self) -> None:
+    async def test_originate_and_umbrella_cues_absent(self) -> None:
+        # originate 축은 ActionSelector 게이트가 전담 — 옛 post_rate 직교 cue 와
+        # reply_rate umbrella 산수 (음수 QUOTE remainder 버그의 출처) 가 prompt 에
+        # 남으면 안 된다.
         agent = _agent(
             "me",
             persona_traits={
                 "behavior_tendency": {
                     "post_rate": 0.5,
+                    "reply_rate": 0.3,
                     "repost_rate": 0.2,
                     "like_rate": 0.6,
-                },
-            },
-        )
-        llm = _FakeLLM(_payload(ActionType.DO_NOTHING))
-        await _selector(llm).select_action("me", _ctx(agent=agent))
-        system = llm.calls[0][0]
-        assert "reply_rate is the total reaction probability" not in system
-
-    async def test_follow_rate_falls_back_when_ontology_omits_it(self) -> None:
-        # 구버전 Phase 1 ontology 가 follow_rate 키를 빠뜨려도 LLM 이 follow
-        # 가중치 신호를 받아야 — 그렇지 않으면 FOLLOW 가 거의 선택되지 않는다.
-        agent = _agent(
-            "me",
-            persona_traits={
-                "behavior_tendency": {
-                    "post_rate": 0.5,
-                    "reply_rate": 0.3,
-                    "repost_rate": 0.2,
-                    "controversy_affinity": 0.5,
-                },
-            },
-        )
-        llm = _FakeLLM(_payload(ActionType.DO_NOTHING))
-        await _selector(llm).select_action("me", _ctx(agent=agent))
-        system = llm.calls[0][0]
-        assert "follow others whose stance you find compelling: 0.2" in system
-
-    async def test_like_rate_falls_back_when_ontology_omits_it(self) -> None:
-        # 구버전 Phase 1 ontology (#10 이전) 가 like_rate 를 빠뜨리면 LIKE 가중치가
-        # 사라져 QUOTE 로 쏠린다. 폴백이 들어가 가중치 신호가 살아있어야.
-        agent = _agent(
-            "me",
-            persona_traits={
-                "behavior_tendency": {
-                    "post_rate": 0.5,
-                    "reply_rate": 0.3,
-                    "repost_rate": 0.2,
                     "follow_rate": 0.2,
                     "controversy_affinity": 0.5,
                 },
@@ -548,7 +500,48 @@ class TestPhase1PersonaSchema:
         llm = _FakeLLM(_payload(ActionType.DO_NOTHING))
         await _selector(llm).select_action("me", _ctx(agent=agent))
         system = llm.calls[0][0]
-        assert "press LIKE on aligned posts: 0.4" in system
+        assert "post_rate is a separate axis" not in system
+        assert "reply_rate is the total reaction probability" not in system
+        assert "remainder" not in system
+
+    async def test_reaction_mix_well_defined_when_like_repost_exceed_reply(self) -> None:
+        # 옛 산수 (QUOTE = reply - like - repost) 는 like+repost > reply 인 Phase 1
+        # 페르소나 97% 에서 QUOTE 에 음수를 배정했다. 정규화 share 는 항상 [0,100].
+        agent = _agent(
+            "me",
+            persona_traits={
+                "behavior_tendency": {
+                    "reply_rate": 0.3,
+                    "repost_rate": 0.8,
+                    "like_rate": 0.9,
+                    "controversy_affinity": 0.1,
+                },
+            },
+        )
+        llm = _FakeLLM(_payload(ActionType.DO_NOTHING))
+        await _selector(llm).select_action("me", _ctx(agent=agent))
+        system = llm.calls[0][0]
+        # like:repost:contro = 0.9:0.8:0.1, total 1.8 → 50% / 44% / 6% (모두 양수)
+        assert "LIKE 50% / REPOST 44% / QUOTE 6%" in system
+
+    async def test_like_rate_falls_back_in_reaction_mix(self) -> None:
+        # 구버전 Phase 1 ontology (#10 이전) 가 like_rate 를 빠뜨리면 LIKE 가중치가
+        # 사라져 QUOTE 로 쏠린다. fallback 0.4 가 정규화에 들어가 신호가 살아있어야.
+        agent = _agent(
+            "me",
+            persona_traits={
+                "behavior_tendency": {
+                    "reply_rate": 0.3,
+                    "repost_rate": 0.2,
+                    "controversy_affinity": 0.5,
+                },
+            },
+        )
+        llm = _FakeLLM(_payload(ActionType.DO_NOTHING))
+        await _selector(llm).select_action("me", _ctx(agent=agent))
+        system = llm.calls[0][0]
+        # like(fallback 0.4):repost 0.2:contro 0.5, total 1.1 → 36% / 18% / 45%
+        assert "LIKE 36% / REPOST 18% / QUOTE 45%" in system
 
     async def test_behavior_hint_skipped_when_tendency_absent(self) -> None:
         # behavior_tendency 객체 자체가 없으면 hint 가 출력되지 않는다 —
@@ -809,6 +802,159 @@ class TestAuthorsBlockSample:
         feed = (_post("p1", author="me", content="my own post"),)
         rendered = compose_user(_ctx(feed=feed))
         assert "Authors in your feed" not in rendered
+
+
+class TestBehaviorGate:
+    """``global_seed`` enables the originate-axis probability gate: CREATE_POST
+    and FOLLOW are drawn from post_rate / follow_rate rather than left to the
+    LLM, and the reaction branch drops them from the allowed set. With no seed
+    (the unit-test default) the gate is off and the pre-gate contract holds.
+    """
+
+    def _agent_bt(self, **rates: float) -> Agent:
+        base = {
+            "post_rate": 0.5,
+            "reply_rate": 0.3,
+            "repost_rate": 0.2,
+            "like_rate": 0.4,
+            "follow_rate": 0.2,
+            "controversy_affinity": 0.5,
+        }
+        base.update(rates)
+        return _agent("me", persona_traits={"behavior_tendency": base})
+
+    def _sel(self, llm: LLMClient, *, seed: int = 7) -> ActionSelector:
+        return ActionSelector(llm=llm, model="test-model", global_seed=seed)
+
+    # ── gate decision (white-box on the probability split) ──────────────
+
+    def test_gate_off_without_seed(self) -> None:
+        sel = ActionSelector(llm=_FakeLLM(), model="test-model")  # no global_seed
+        ctx = _ctx(agent=self._agent_bt(), feed=(_post("p1"),))
+        assert sel._gate("me", ctx) == (None, False)
+
+    def test_gate_off_without_behavior_tendency(self) -> None:
+        ctx = _ctx(agent=_agent("me", persona_traits={"tone": "x"}), feed=(_post("p1"),))
+        assert self._sel(_FakeLLM())._gate("me", ctx) == (None, False)
+
+    def test_cold_start_forces_create_post(self) -> None:
+        ctx = _ctx(agent=self._agent_bt(), feed=())
+        assert self._sel(_FakeLLM())._gate("me", ctx) == (ActionType.CREATE_POST, False)
+
+    def test_sole_post_weight_forces_create_post(self) -> None:
+        # 단독 nonzero 가중 → 그 family 확정 (정규화 분모가 그 하나뿐).
+        ctx = _ctx(
+            agent=self._agent_bt(post_rate=1.0, reply_rate=0.0, follow_rate=0.0),
+            feed=(_post("p1"),),
+        )
+        assert self._sel(_FakeLLM())._gate("me", ctx)[0] is ActionType.CREATE_POST
+
+    def test_sole_follow_weight_forces_follow(self) -> None:
+        ctx = _ctx(
+            agent=self._agent_bt(post_rate=0.0, reply_rate=0.0, follow_rate=1.0),
+            feed=(_post("p1", author="alice"),),
+        )
+        assert self._sel(_FakeLLM())._gate("me", ctx)[0] is ActionType.FOLLOW
+
+    def test_sole_reply_weight_forces_reaction(self) -> None:
+        ctx = _ctx(
+            agent=self._agent_bt(post_rate=0.0, reply_rate=1.0, follow_rate=0.0),
+            feed=(_post("p1"),),
+        )
+        assert self._sel(_FakeLLM())._gate("me", ctx) == (None, True)
+
+    def test_reply_rate_drives_reaction_share(self) -> None:
+        # reply_rate 가 family 가중에 들어가므로 (순차 게이트의 회귀 수정) reply 가
+        # 지배적이면 reaction 이 다수가 된다 — LIKE 위축의 근본 해소.
+        agent = self._agent_bt(post_rate=0.1, reply_rate=0.8, follow_rate=0.1)
+        sel = self._sel(_FakeLLM(), seed=1)
+        feed = (_post("p1", author="alice"),)
+        fams: collections.Counter[str] = collections.Counter()
+        for r in range(200):
+            forced, react = sel._gate("me", _ctx(agent=agent, feed=feed, round_num=r))
+            fams["REACTION" if react else forced.value] += 1  # type: ignore[union-attr]
+        assert fams["REACTION"] > fams["CREATE_POST"]
+        assert fams["REACTION"] > fams["FOLLOW"]
+
+    def test_follow_skipped_when_only_self_authored_feed(self) -> None:
+        # 유일한 feed author 가 자기 자신이면 FOLLOW 강제 불가 → reaction 분기.
+        ctx = _ctx(
+            agent=self._agent_bt(post_rate=0.0, follow_rate=1.0),
+            feed=(_post("p1", author="me"),),
+        )
+        assert self._sel(_FakeLLM())._gate("me", ctx) == (None, True)
+
+    def test_follow_skipped_when_all_feed_authors_already_followed(self) -> None:
+        # feed 의 non-self author 가 전부 이미 follow 대상이면 FOLLOW family 가
+        # 후보에서 빠진다 — 새로 follow 할 사람이 없는데 FOLLOW 를 강제하지 않는다.
+        ctx = _ctx(
+            agent=self._agent_bt(post_rate=0.0, reply_rate=0.0, follow_rate=1.0),
+            feed=(_post("p1", author="alice"),),
+            following_ids=frozenset({"alice"}),
+        )
+        assert self._sel(_FakeLLM())._gate("me", ctx) == (None, True)
+
+    def test_follow_candidate_excludes_already_followed_author(self) -> None:
+        # alice 는 이미 follow, bob 은 아직 — bob 덕에 FOLLOW 후보는 살아있다.
+        ctx = _ctx(
+            agent=self._agent_bt(post_rate=0.0, reply_rate=0.0, follow_rate=1.0),
+            feed=(_post("p1", author="alice"), _post("p2", author="bob")),
+            following_ids=frozenset({"alice"}),
+        )
+        assert self._sel(_FakeLLM())._gate("me", ctx)[0] is ActionType.FOLLOW
+
+    def test_gate_deterministic_in_seed_agent_round(self) -> None:
+        ctx = _ctx(
+            agent=self._agent_bt(post_rate=0.5, follow_rate=0.5), feed=(_post("p1"),), round_num=3
+        )
+        assert self._sel(_FakeLLM(), seed=99)._gate("me", ctx) == self._sel(
+            _FakeLLM(), seed=99
+        )._gate("me", ctx)
+
+    def test_gate_handles_missing_originate_rates(self) -> None:
+        # post_rate / follow_rate 키가 없어도 (구버전 ontology) fallback 으로 동작, 예외 없음.
+        agent = _agent("me", persona_traits={"behavior_tendency": {"like_rate": 0.4}})
+        forced, _ = self._sel(_FakeLLM())._gate("me", _ctx(agent=agent, feed=(_post("p1"),)))
+        assert forced in (ActionType.CREATE_POST, ActionType.FOLLOW, None)
+
+    # ── prompt narrowing + violation fallback (through select_action) ───
+
+    async def test_forced_create_post_narrows_prompt(self) -> None:
+        llm = _FakeLLM(_payload(ActionType.CREATE_POST, content="새 화제를 던진다"))
+        ctx = _ctx(
+            agent=self._agent_bt(post_rate=1.0, reply_rate=0.0, follow_rate=0.0),
+            feed=(_post("p1"),),
+        )
+        result = await self._sel(llm).select_action("me", ctx)
+        assert result.action.type is ActionType.CREATE_POST
+        assert "ORIGINATING new content" in llm.calls[0][0]
+
+    async def test_react_only_prompt_excludes_originate_from_allowed(self) -> None:
+        llm = _FakeLLM(_payload(ActionType.LIKE_POST, target_post_id="p1"))
+        ctx = _ctx(agent=self._agent_bt(post_rate=0.0, follow_rate=0.0), feed=(_post("p1"),))
+        result = await self._sel(llm).select_action("me", ctx)
+        system = llm.calls[0][0]
+        assert result.action.type is ActionType.LIKE_POST
+        assert "are NOT options now" in system
+        assert "Allowed ActionType values: LIKE_POST, REPOST, QUOTE_POST, DO_NOTHING" in system
+
+    async def test_forced_family_violation_falls_back(self) -> None:
+        # 게이트가 CREATE_POST 를 강제했는데 LLM 이 다른 타입을 내면 fallback 으로 관측.
+        llm = _FakeLLM(_payload(ActionType.LIKE_POST, target_post_id="p1"))
+        ctx = _ctx(
+            agent=self._agent_bt(post_rate=1.0, reply_rate=0.0, follow_rate=0.0),
+            feed=(_post("p1"),),
+        )
+        result = await self._sel(llm).select_action("me", ctx)
+        assert result.action.type is ActionType.DO_NOTHING
+        assert result.llm_meta.fallback_used is True
+
+    async def test_react_only_rejects_create_post(self) -> None:
+        llm = _FakeLLM(_payload(ActionType.CREATE_POST, content="게이트를 무시한 글"))
+        ctx = _ctx(agent=self._agent_bt(post_rate=0.0, follow_rate=0.0), feed=(_post("p1"),))
+        result = await self._sel(llm).select_action("me", ctx)
+        assert result.action.type is ActionType.DO_NOTHING
+        assert result.llm_meta.fallback_used is True
 
 
 def test_protocol_is_satisfied() -> None:

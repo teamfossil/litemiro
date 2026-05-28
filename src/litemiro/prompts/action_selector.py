@@ -106,27 +106,23 @@ _PHASE1_PERSONA_KEYS: tuple[str, ...] = (
     "sensitive_topics",
 )
 
-_BEHAVIOR_TENDENCY_LABELS: tuple[tuple[str, str], ...] = (
-    ("post_rate", "originate posts"),
-    # ``reply_rate`` 는 ActionType 에 REPLY 가 없어서 옛 라벨 "reply or quote"
-    # 가 QUOTE 한 곳으로만 신호를 몰아 debug3 에서 QUOTE 57% 쏠림을 만들었다.
-    # 본 모델의 reaction 은 LIKE / REPOST / QUOTE 셋이므로 라벨도 셋을 모두
-    # 가리키게 풀어 신호를 분산.
-    ("reply_rate", "react to others' posts overall (LIKE / REPOST / QUOTE)"),
-    ("repost_rate", "repost"),
-    ("like_rate", "press LIKE on aligned posts"),
-    ("follow_rate", "follow others whose stance you find compelling"),
-    ("controversy_affinity", "engage with controversy"),
-)
-
-# Phase 1 ontology 가 follow_rate / like_rate 키를 빠뜨려도 LLM 이 가중치
-# 신호를 받게 하는 안전망 — Phase 1 신버전은 항상 키를 채우지만 외부에서
-# 직접 박은 ontology JSON 이나 구버전 산출물 (follow_rate=#106 이전,
-# like_rate=#10 이전) 호환을 위해 살려둔다. 값은
-# ``phase1.models.BehaviorTendency`` 디폴트와 동기 유지 — Phase 1 디폴트를
-# 바꿀 때 같이 갱신해야 silent drift 가 없다.
-_FOLLOW_RATE_FALLBACK = 0.2
+# originate 축 (CREATE_POST / FOLLOW) 은 ``ActionSelector`` 의 확률 게이트가
+# post_rate / follow_rate 로 직접 강제하므로 prompt 에서 prose cue 로 설득하지
+# 않는다 (#120~#150 의 prose-only 시도가 FOLLOW 1.8% / r1+ CREATE_POST 0 으로
+# 실패). 여기 남는 건 reaction 축 (LIKE / REPOST / QUOTE) 의 상대 가중 — feed
+# 를 보고 고르는 결정이라 LLM 자율로 두되 비율 신호만 정확히 준다.
+#
+# 옛 산수 (``QUOTE = reply_rate - like_rate - repost_rate``) 는 폐기. Phase 1
+# 페르소나의 97% 에서 like_rate + repost_rate 가 reply_rate 를 넘어 QUOTE 에
+# 음수 확률을 배정하는 불가능한 지시였다. 대신 like_rate : repost_rate :
+# controversy_affinity 를 정규화한 share 를 준다 — 셋 다 [0,1] 양수라 음수 불가.
+#
+# Fallback 은 ``phase1.models.BehaviorTendency`` 디폴트와 동기 유지 (구버전
+# ontology / 외부 주입 JSON 의 키 누락 대비). Phase 1 디폴트를 바꿀 때 같이
+# 갱신해야 silent drift 가 없다.
 _LIKE_RATE_FALLBACK = 0.4
+_REPOST_RATE_FALLBACK = 0.2
+_CONTROVERSY_FALLBACK = 0.5
 
 # _authors_block 의 author 별 sample post snippet 길이. feed_block 의 120 보다
 # 짧게 — author 섹션은 여러 author 가 나란히 있어 줄당 길이 압축이 필요하고,
@@ -134,8 +130,27 @@ _LIKE_RATE_FALLBACK = 0.4
 _SAMPLE_LEN = 80
 
 
-def compose_system(agent_id: str, context: ActionContext) -> str:
-    """Build the system prompt — persona card + behavior hints + schema."""
+def compose_system(
+    agent_id: str,
+    context: ActionContext,
+    *,
+    forced_family: ActionType | None = None,
+    react_only: bool = False,
+) -> str:
+    """Build the system prompt — persona card + behavior hints + schema.
+
+    ``forced_family`` / ``react_only`` are set by ``ActionSelector`` 's
+    behavior gate. With both at their defaults (no gate — e.g. unit tests
+    that omit ``global_seed``) the schema section is byte-identical to the
+    pre-gate prompt, so the composition contract is preserved.
+
+    * ``forced_family`` (CREATE_POST or FOLLOW) → the gate has already drawn
+      this action from post_rate / follow_rate; the schema collapses to a
+      single mandated type.
+    * ``react_only`` → the gate landed on the reaction branch; CREATE_POST
+      and FOLLOW are dropped from the allowed set so they only ever surface
+      through their probability gates, not opportunistically.
+    """
     sections: list[str] = [
         _SYSTEM_HEADER.format(agent_id=agent_id),
         "Persona card:\n" + _persona_card(context),
@@ -146,10 +161,57 @@ def compose_system(agent_id: str, context: ActionContext) -> str:
     avoidance = _avoidance_hint(context)
     if avoidance:
         sections.append(avoidance)
-    action_types = ", ".join(at.value for at in ActionType)
-    sections.append(_SYSTEM_SCHEMA.format(action_types=action_types))
+    sections.append(_schema_section(forced_family=forced_family, react_only=react_only))
     sections.append("Respond with the JSON object only.")
     return "\n\n".join(sections)
+
+
+# reaction 분기에서 originate 두 종을 뺀 허용 집합. 게이트가 CREATE_POST /
+# FOLLOW 를 확률로 전담하므로, LLM 이 feed 가 차 있다고 즉흥적으로 글을 쓰거나
+# 팔로우하지 않게 vocabulary 자체에서 제외한다.
+_REACTION_TYPES: tuple[ActionType, ...] = (
+    ActionType.LIKE_POST,
+    ActionType.REPOST,
+    ActionType.QUOTE_POST,
+    ActionType.DO_NOTHING,
+)
+
+_REACT_ONLY_PREFIX = (
+    "This round, originating a new post and following an author are decided "
+    "separately and are NOT options now — choose only how you react to a post "
+    "already in your feed (or DO_NOTHING if nothing warrants a reaction).\n\n"
+)
+
+_FORCE_CREATE_POST = (
+    "This round you are ORIGINATING new content — that decision is already made "
+    "for you. Output EXACTLY one JSON object:\n"
+    '  {"type": "CREATE_POST", "target_post_id": null, "target_agent_id": null, '
+    '"content": <str>}\n'
+    "content must be non-empty: introduce a NEW topic, observation, or claim in "
+    "your own voice, consistent with your persona and topics — agenda-setting, "
+    "not a reaction to any feed post. Do NOT output any other action type."
+)
+
+_FORCE_FOLLOW = (
+    "This round you are FOLLOWING an author — that decision is already made for "
+    "you. Output EXACTLY one JSON object:\n"
+    '  {"type": "FOLLOW", "target_post_id": null, "target_agent_id": <author_id>, '
+    '"content": null}\n'
+    "Pick ONE author visible in your feed whose stance or topics align with "
+    "yours. target_agent_id must be a feed author and must not be yourself. "
+    "Do NOT output any other action type."
+)
+
+
+def _schema_section(*, forced_family: ActionType | None, react_only: bool) -> str:
+    """Render the output-schema block, narrowed by the gate decision."""
+    if forced_family is ActionType.CREATE_POST:
+        return _FORCE_CREATE_POST
+    if forced_family is ActionType.FOLLOW:
+        return _FORCE_FOLLOW
+    types = _REACTION_TYPES if react_only else tuple(ActionType)
+    body = _SYSTEM_SCHEMA.format(action_types=", ".join(at.value for at in types))
+    return (_REACT_ONLY_PREFIX + body) if react_only else body
 
 
 def _persona_card(context: ActionContext) -> str:
@@ -172,63 +234,48 @@ def _persona_card(context: ActionContext) -> str:
     return json.dumps(card, ensure_ascii=False, indent=2)
 
 
-def _behavior_hint(context: ActionContext) -> str:
-    """Restate ``behavior_tendency`` weights in prose for a clearer LLM cue.
+def _as_rate(value: object, fallback: float) -> float:
+    """Coerce a behavior-tendency value to a [0,1] float, else the fallback.
 
-    Missing keys collapse to skip — *except* ``follow_rate`` / ``like_rate``:
-    if the ontology has a ``behavior_tendency`` block but omits either key
-    (구버전 Phase 1 출력), inject the Phase 1 default so the LLM still sees
-    a weight. Without this, the matching action label is silently dropped
-    and the model never picks that action.
+    External / hand-written ontology JSON can carry non-numeric or
+    out-of-range weights; the normalization must not raise on them.
+    """
+    if isinstance(value, bool):
+        return fallback
+    if isinstance(value, (int, float)):
+        v = float(value)
+        return v if 0.0 <= v <= 1.0 else fallback
+    return fallback
+
+
+def _behavior_hint(context: ActionContext) -> str:
+    """Reaction-mix cue — LIKE / REPOST / QUOTE share for the reaction branch.
+
+    Normalized from ``like_rate : repost_rate : controversy_affinity`` (all
+    [0,1], so the share is always well-defined — no negative QUOTE remainder).
+    The originate axis (CREATE_POST / FOLLOW) is handled by ``ActionSelector`` 's
+    probability gate, not here. When the persona carries no ``behavior_tendency``
+    block the cue is skipped — the persona card already embeds the raw JSON and
+    the gate falls back on its own defaults.
     """
     bt = context.agent.persona_traits.get("behavior_tendency")
     if not isinstance(bt, Mapping):
         return ""
-    bits: list[str] = []
-    for key, label in _BEHAVIOR_TENDENCY_LABELS:
-        if key in bt:
-            bits.append(f"{label}: {bt[key]}")
-        elif key == "follow_rate":
-            bits.append(f"{label}: {_FOLLOW_RATE_FALLBACK}")
-        elif key == "like_rate":
-            bits.append(f"{label}: {_LIKE_RATE_FALLBACK}")
-    if not bits:
+    like = _as_rate(bt.get("like_rate"), _LIKE_RATE_FALLBACK)
+    repost = _as_rate(bt.get("repost_rate"), _REPOST_RATE_FALLBACK)
+    contro = _as_rate(bt.get("controversy_affinity"), _CONTROVERSY_FALLBACK)
+    total = like + repost + contro
+    if total <= 0:
         return ""
-    line = "Behavior tendencies (0..1, higher = more likely): " + "; ".join(bits) + "."
-    # reply_rate 와 like_rate / repost_rate 가 동시에 등장하면 LLM 이 둘을 곱해
-    # 야 할지 (중복 가중) umbrella+subtype 으로 봐야 할지 모호 — #120 리뷰. 첫
-    # 보강 (umbrella/tilt 표현, #120) 도 "tilt within that umbrella" 가 ratio /
-    # 곱 / absolute 어느 셋인지 갈라져 LLM 별 분포가 흔들렸다 (#122). 의도된 산수
-    # 를 직접 박는다: reply_rate 가 총량, like_rate 와 repost_rate 가 그 안의
-    # absolute share, 나머지 = QUOTE. debug4 의 LIKE 41% / QUOTE 29% 도 이
-    # 해석에 정합 (Phase 1 default 0.668/0.4/0.2 → LIKE 60%, REPOST 30%, QUOTE
-    # 10% 의 noisy 근사).
-    if "reply_rate" in bt:
-        line += (
-            " Note: reply_rate is the total reaction probability split across "
-            "LIKE / REPOST / QUOTE. like_rate and repost_rate are absolute weights "
-            "within that total — the remainder (reply_rate - like_rate - repost_rate) "
-            "goes to QUOTE. follow_rate is INDEPENDENT of this split — it triggers "
-            "a FOLLOW action roughly follow_rate fraction of rounds, on top of "
-            "(not instead of) post reactions. Stay close to these tendencies "
-            "across many rounds — do NOT pick the same action every round "
-            "just because it feels safe. A realistic agent mixes reactions, "
-            "occasional follows when an aligned non-followee appears, and "
-            "the occasional new post or pause."
-        )
-    # post_rate 는 reply_rate 와 직교 — CREATE_POST 의 절대 비율. debug4 측정에서
-    # post_rate default 0.5 인데도 r1 이후 CREATE_POST ≈ 0 으로 떨어지는 cold-
-    # start 후 망각 패턴이 보였다. umbrella 산수가 reaction 셋의 분배만 명시하고
-    # post_rate 가 별도 축이라는 점이 명시 안 돼 LLM 이 feed 가 차면 reaction 만
-    # 골라버린다 — 두 축이 직교라는 cue 를 한 줄 더 박는다.
-    if "post_rate" in bt:
-        line += (
-            " post_rate is a separate axis from reply_rate — it controls how often "
-            "you ORIGINATE a new post, independent of feed contents. A non-trivial "
-            "post_rate (>0.2) that yields zero CREATE_POST after cold-start signals "
-            "the weight is being ignored."
-        )
-    return line
+    pct = [round(100 * w / total) for w in (like, repost, contro)]
+    return (
+        "When you react to a feed post, your persona leans roughly "
+        f"LIKE {pct[0]}% / REPOST {pct[1]}% / QUOTE {pct[2]}% "
+        "(normalized from like_rate / repost_rate / controversy_affinity). "
+        "LIKE is the default for routine agreement; REPOST amplifies a post "
+        "without adding words; reserve QUOTE for added text that contributes "
+        "genuinely new information."
+    )
 
 
 def _avoidance_hint(context: ActionContext) -> str:

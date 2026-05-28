@@ -129,7 +129,7 @@ async def run_simulation(
         cooldown_seconds=cooldown_seconds,
     )
     feed = FeedEngine(social=social, embedder=embedder)
-    action_selector = ActionSelector(llm=llm_client, model=llm_model)
+    action_selector = ActionSelector(llm=llm_client, model=llm_model, global_seed=ontology_a.seed)
     topic_extractor = TopicExtractor(embedder=embedder, vocabulary=topic_vocabulary)
     budget = TokenBudgetManager(total_budget=token_budget)
     logger = EventLogger(event_log_path)
