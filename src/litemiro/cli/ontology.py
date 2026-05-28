@@ -72,9 +72,10 @@ def main(argv: list[str] | None = None) -> int:
 
     llm = Phase1LiteLLMClient()
     t_start = time.monotonic()
+    pipeline = OntologyPipeline(config, llm)
 
     try:
-        ontology_a, _ontology_b = asyncio.run(OntologyPipeline(config, llm).run())
+        ontology_a, _ontology_b = asyncio.run(pipeline.run())
     except Exception as exc:
         log.error("pipeline_failed", error=str(exc))
         print(f"Error: {exc}", file=sys.stderr)
@@ -86,6 +87,13 @@ def main(argv: list[str] | None = None) -> int:
     path_b = args.output_dir / "ontology_b_memory.json"
 
     print(f"Agents generated : {ontology_a.agent_count}")
+    fallback = pipeline.profile_fallback_count
+    if fallback > 0:
+        pct = (fallback / ontology_a.agent_count * 100) if ontology_a.agent_count else 0.0
+        # #109: LLM 배치 실패 / 파싱 실패로 디폴트 프로필이 박힌 agent 수.
+        # 동질화된 페르소나로 시뮬레이션 다양성 손상 — 사용자가 결과 품질
+        # 떨어진 걸 알아챌 수 있게 stdout 에 명시. 자세한 사유는 로그 참조.
+        print(f"  Fallback profiles: {fallback} ({pct:.1f}%) — see warnings in logs")
     print(f"OntologyA written: {path_a}")
     print(f"OntologyB written: {path_b}")
     print(f"Elapsed          : {elapsed:.1f}s")
