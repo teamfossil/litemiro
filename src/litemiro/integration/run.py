@@ -15,6 +15,8 @@ preset 이 이미 진실 공급원이라 중복이다.
 
 from __future__ import annotations
 
+import json
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import structlog
@@ -28,6 +30,7 @@ from litemiro.core.round_manager import RoundManager
 from litemiro.core.state_store import StateStore
 from litemiro.eventlog.logger import EventLogger
 from litemiro.feed.engine import FeedEngine
+from litemiro.integration._resource import directory_size_bytes, peak_rss_bytes
 from litemiro.integration.ontology_loader import OntologyLoader
 from litemiro.social.graph import SocialGraph
 from litemiro.topics.extractor import TopicExtractor
@@ -154,13 +157,73 @@ async def run_simulation(
     finally:
         await logger.aclose()
 
+    tokens_used = token_budget - budget.remaining()
+    # 시뮬 종료 직후 측정. peak RSS 는 전 구간 최댓값이라 종료 시점이 가장 의미
+    # 있고, output_dir 트리는 run_summary.json 이 추가되기 전 시점이라 측정값이
+    # "시뮬이 실제로 만든 산출물" 크기와 일치한다.
+    peak_rss = peak_rss_bytes()
+    output_dir_bytes = directory_size_bytes(event_log_path.parent)
+    _write_run_summary(
+        output_dir=event_log_path.parent,
+        rounds_run=rounds_run,
+        early_exit=early_exit,
+        tokens_used=tokens_used,
+        peak_rss_bytes=peak_rss,
+        output_dir_bytes=output_dir_bytes,
+    )
+    log.info(
+        "run_simulation.run_summary",
+        rounds_run=rounds_run,
+        early_exit=early_exit,
+        tokens_used=tokens_used,
+        peak_rss_bytes=peak_rss,
+        output_dir_bytes=output_dir_bytes,
+    )
+
     return SimulationResult(
         rounds_run=rounds_run,
         early_exit=early_exit,
         event_log_path=event_log_path,
         checkpoint_dir=checkpoint_dir,
-        tokens_used=token_budget - budget.remaining(),
+        tokens_used=tokens_used,
+        peak_rss_bytes=peak_rss,
+        output_dir_bytes=output_dir_bytes,
     )
 
 
-__all__ = ["derive_topic_vocabulary", "run_simulation"]
+RUN_SUMMARY_FILENAME = "run_summary.json"
+
+
+def _write_run_summary(
+    *,
+    output_dir: Path,
+    rounds_run: int,
+    early_exit: bool,
+    tokens_used: int,
+    peak_rss_bytes: int,
+    output_dir_bytes: int,
+) -> None:
+    """``output_dir/run_summary.json`` 에 시뮬 종료 메타 단일 객체로 기록.
+
+    ``events.jsonl`` 에 섞지 않는 이유: ``litemiro-validate`` (contract §8.1 Phase 3
+    ingest 게이트) 가 모든 라인을 RoundEvent 스키마로 strict 검증하므로, 다른
+    스키마 라인을 같은 파일에 넣으면 게이트가 깨진다. 별도 파일은 컨슈머가 두
+    경로를 알아야 하는 비용을 지지만 게이트 의미를 단단히 보전.
+    """
+    payload = {
+        "event_type": "run_summary",
+        "rounds_run": rounds_run,
+        "early_exit": early_exit,
+        "tokens_used": tokens_used,
+        "peak_rss_bytes": peak_rss_bytes,
+        "output_dir_bytes": output_dir_bytes,
+        "recorded_at": datetime.now(UTC).isoformat(),
+    }
+    summary_path = output_dir / RUN_SUMMARY_FILENAME
+    summary_path.write_text(
+        json.dumps(payload, sort_keys=True, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+__all__ = ["RUN_SUMMARY_FILENAME", "derive_topic_vocabulary", "run_simulation"]

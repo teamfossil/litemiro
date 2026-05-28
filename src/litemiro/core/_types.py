@@ -20,6 +20,10 @@ class SimulationResult:
     재진입하므로, 본 result 는 그 경로 + 진행 메타 (rounds_run / early_exit /
     tokens_used) 만 담는다. 더 깊은 통계는 EventLogger 가 남긴 JSONL 에서
     재계산.
+
+    ``peak_rss_bytes`` / ``output_dir_bytes`` 는 시뮬 종료 시점에서 잰 자원
+    사용량 (기기 스펙 산정용). 측정 실패 / 미측정 시 0 — 0 과 실제 0-byte 산출의
+    구분은 ``events.jsonl`` 마지막 줄의 ``run_summary`` 이벤트가 진실 공급원.
     """
 
     rounds_run: int
@@ -27,6 +31,8 @@ class SimulationResult:
     event_log_path: Path
     checkpoint_dir: Path
     tokens_used: int
+    peak_rss_bytes: int = 0
+    output_dir_bytes: int = 0
 
 
 __all__ = ["RoundOutcome", "SimulationResult"]

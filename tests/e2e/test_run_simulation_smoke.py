@@ -178,3 +178,53 @@ async def test_run_simulation_rejects_negative_rounds(tmp_path: Path) -> None:
             event_log_path=tmp_path / "events.jsonl",
             checkpoint_dir=tmp_path / "checkpoints",
         )
+
+
+async def test_run_simulation_writes_run_summary_json_with_resource_metrics(
+    tmp_path: Path,
+) -> None:
+    """시뮬 종료 후 ``output_dir/run_summary.json`` 이 생성되고, 측정값이
+    ``SimulationResult`` 와 동일하게 직렬화된다.
+
+    기기 스펙 산정용 메트릭 (peak RSS / output_dir 트리 크기) 의 유일한 영구
+    산출물 — events.jsonl 에 섞지 않은 결정 (litemiro-validate 게이트 보전)
+    을 lock-in.
+    """
+    event_log_path = tmp_path / "events.jsonl"
+    checkpoint_dir = tmp_path / "checkpoints"
+    result = await run_simulation(
+        ontology_a_path=_SAMPLE_A,
+        ontology_b_path=_SAMPLE_B,
+        llm_client=_FakeLLM(),
+        embedder=_FakeEmbedder(),
+        topic_vocabulary=("정치", "경제", "기술", "문화"),
+        rounds=2,
+        event_log_path=event_log_path,
+        checkpoint_dir=checkpoint_dir,
+        llm_model="fake-model",
+    )
+
+    summary_path = tmp_path / "run_summary.json"
+    assert summary_path.is_file()
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+
+    assert summary["event_type"] == "run_summary"
+    assert summary["rounds_run"] == result.rounds_run
+    assert summary["early_exit"] is result.early_exit
+    assert summary["tokens_used"] == result.tokens_used
+    assert summary["peak_rss_bytes"] == result.peak_rss_bytes
+    assert summary["output_dir_bytes"] == result.output_dir_bytes
+    assert "recorded_at" in summary
+
+    # 실제 측정값은 OS / 빌드에 따라 변동이라 절댓값은 단언하지 않고 "측정됨"
+    # 만 검증 — peak_rss 는 인터프리터만으로도 양수, output_dir 은 events.jsonl
+    # + checkpoints/ 가 있으니 역시 양수.
+    assert result.peak_rss_bytes > 0
+    assert result.output_dir_bytes > 0
+
+
+async def test_run_simulation_does_not_pollute_events_jsonl(tmp_path: Path) -> None:
+    """``run_summary`` 분리 결정의 회귀 방지: events.jsonl 에는 RoundEvent 만,
+    스키마 검증 (Phase 3 ingest 게이트) 이 종료 후에도 통과해야 한다."""
+    event_log_path, *_ = await _run(tmp_path)
+    assert validate_file(event_log_path) == 0
