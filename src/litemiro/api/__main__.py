@@ -31,7 +31,7 @@ from litemiro.api.store import RunnerOutcome
 from litemiro.models import Action, ActionType, RoundEvent
 
 if TYPE_CHECKING:
-    from litemiro.api.ontology_store import OntologyRunner
+    from litemiro.api.ontology_store import OntologyProgressCallback, OntologyRunner
     from litemiro.api.store import PlazaComposer, PlazaRunner, ProgressCallback
     from litemiro.phase1.models import Preset
 
@@ -144,12 +144,16 @@ async def _noop_ontology_runner(
     requirement: str,
     preset: Preset,
     output_dir: Path,
+    on_progress: OntologyProgressCallback,
 ) -> OntologyRunResult:
     """``--fake`` 모드 Phase 1: dev fixture 두 ontology 를 그대로 복사해서 return.
 
     실 Phase 1 은 분 단위 LLM. fake 는 같은 fixture (``sample_quick_preset_
     ontology_*.json``) 를 결과 디렉터리로 복사해 OntologyStore 가 정상 completed
     로 인식하게 한다 — Seed 화면이 LLM 키 없이 닫혀 Casting 까지 이어진다.
+
+    실 runner 와 같은 step 시퀀스를 콜백으로 흘려, 프론트의 active_step 표시
+    가 fake 모드에서도 동작하는지 검증할 수 있게 한다 (#126).
     """
     from litemiro.phase1.models import OntologyA  # noqa: PLC0415
 
@@ -158,6 +162,16 @@ async def _noop_ontology_runner(
     output_dir.mkdir(parents=True, exist_ok=True)  # noqa: ASYNC240
     target_a = output_dir / "ontology_a_persona.json"
     target_b = output_dir / "ontology_b_memory.json"
+    for step in (
+        "step0_document",
+        "step1_ontology",
+        "step2_graph",
+        "step3_seeds",
+        "step4_profiles",
+        "step5_memory",
+        "step6_serialize",
+    ):
+        on_progress(step, None)
     await asyncio.to_thread(shutil.copyfile, DEFAULT_ONTOLOGY_A_PATH, target_a)
     await asyncio.to_thread(shutil.copyfile, DEFAULT_ONTOLOGY_B_PATH, target_b)
     ontology_a = OntologyA.model_validate_json(target_a.read_text(encoding="utf-8"))
@@ -290,6 +304,7 @@ def _build_real_ontology_runner(
         requirement: str,
         preset: Preset,
         output_dir: Path,
+        on_progress: OntologyProgressCallback,
     ) -> OntologyRunResult:
         # OntologyStore 가 미리 mkdir 해 두지만 한 번 더 보장 — pipeline 의
         # serializer 가 write 직전에 dir 존재를 기대한다. 동기 호출 한 줄이라
@@ -297,6 +312,16 @@ def _build_real_ontology_runner(
         output_dir.mkdir(parents=True, exist_ok=True)  # noqa: ASYNC240
         last_filter_exc: Exception | None = None
         for idx, model in enumerate(chain):
+            # primary 시도 (idx=0) 에는 fallback 표시를 비워두고, 두 번째
+            # iteration 부터 현재 chain 모델명을 함께 흘린다. row 의 fallback_model
+            # 컬럼은 None→model_id 로 한 번만 바뀌면 충분 (마지막 시도가 어떤
+            # 모델인지가 사용자에게 의미). step 첫 신호는 pipeline 진입 시
+            # ``step0_document`` 가 따라온다.
+            current_fallback = model if idx > 0 else None
+
+            def _step_callback(step: str, _model: str | None = current_fallback) -> None:
+                on_progress(step, _model)
+
             config = PipelineConfig(
                 input_path=document_path,
                 requirement=requirement,
@@ -305,7 +330,9 @@ def _build_real_ontology_runner(
                 model=model,
             )
             try:
-                ontology_a, _ = await OntologyPipeline(config, llm).run()
+                ontology_a, _ = await OntologyPipeline(config, llm).run(
+                    on_progress=_step_callback
+                )
             except Exception as exc:
                 if not is_content_filter_error(exc):
                     raise

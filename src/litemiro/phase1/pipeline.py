@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -43,11 +44,19 @@ class OntologyPipeline:
         self._config = config
         self._llm = llm
 
-    async def run(self) -> tuple[OntologyA, OntologyB]:
+    async def run(  # noqa: PLR0915 — 7 step 시퀀스 + 검증/직렬화 → 자연스레 길다. 분할은 리팩토링 사안.
+        self, *, on_progress: Callable[[str], None] | None = None
+    ) -> tuple[OntologyA, OntologyB]:
         cfg = self._config
         target_count = PRESET_AGENT_COUNTS[cfg.preset]
 
+        # #126: step 진입 직전에 외부로 신호. ``OntologyStore`` 가 받아 DB row 의
+        # ``active_step`` 컬럼에 박고 polling 응답으로 흘려보낸다. 호출자가
+        # 콜백을 안 줬으면 no-op — pipeline 단독 호출 (CLI) 도 동일하게 동작.
+        notify = on_progress or (lambda _step: None)
+
         # Step 0: Read document
+        notify("step0_document")
         t0 = time.monotonic()
         document_text = self._read_document()
         log.info(
@@ -55,6 +64,7 @@ class OntologyPipeline:
         )
 
         # Step 1: Generate ontology schema
+        notify("step1_ontology")
         t1 = time.monotonic()
         ontology = await OntologyGenerator(llm=self._llm, model=cfg.model).generate(
             document_text, cfg.requirement
@@ -67,6 +77,7 @@ class OntologyPipeline:
         )
 
         # Step 2: Extract entities and build local graph
+        notify("step2_graph")
         t2 = time.monotonic()
         chunker = TextChunker()
         chunks = chunker.chunk(document_text)
@@ -87,6 +98,7 @@ class OntologyPipeline:
         )
 
         # Step 3: Rank entities and expand to agent seeds
+        notify("step3_seeds")
         t3 = time.monotonic()
         from litemiro.phase1.entity_ranker import EntityRanker  # noqa: PLC0415
 
@@ -114,6 +126,7 @@ class OntologyPipeline:
         )
 
         # Step 4: Generate agent profiles
+        notify("step4_profiles")
         t4 = time.monotonic()
         from litemiro.phase1.profile_generator import ProfileGenerator  # noqa: PLC0415
 
@@ -128,6 +141,7 @@ class OntologyPipeline:
         )
 
         # Step 5: Initialize memory stores
+        notify("step5_memory")
         t5 = time.monotonic()
         from litemiro.phase1.memory_initializer import MemoryInitializer  # noqa: PLC0415
 
@@ -141,6 +155,7 @@ class OntologyPipeline:
         )
 
         # Step 6: Build output models, validate, serialize
+        notify("step6_serialize")
         t6 = time.monotonic()
         ontology_a = OntologyA(
             seed=cfg.seed,

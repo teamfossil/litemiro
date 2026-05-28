@@ -262,6 +262,14 @@ class OntologyResponse(BaseModel):
     # status == 'completed' 의 단순 별칭. 폴링 측이 boolean 한 줄로 분기할 수
     # 있도록 노출 — plaza 의 ``ready`` 패턴과 같은 의도.
     ready: bool
+    # #126: 현재 진행 중인 step 식별자 (``step0_document`` ~ ``step6_serialize``).
+    # 프론트가 진행 막대 라벨로 사용. completed/failed 후에는 마지막 step 값이
+    # 남아있을 수 있어 ``status`` 와 함께 보고 표시 여부를 정해야 한다.
+    active_step: str | None = None
+    # primary 모델이 provider content filter 에 막혀 fallback chain 으로
+    # 전환됐을 때 그 모델 id. None 이면 primary 사용 중. 프론트 "현재 모델
+    # 변경됨" 배너 트리거.
+    fallback_model: str | None = None
     created_at: datetime
     updated_at: datetime
 

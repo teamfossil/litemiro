@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 from litemiro.api.app import create_app
 from litemiro.api.ontology_store import (
     OntologyContentFilterBlockedError,
+    OntologyProgressCallback,
     OntologyRunResult,
     is_content_filter_error,
 )
@@ -67,8 +68,13 @@ def _success_ontology_runner(*, agent_count: int = 100):
         requirement: str,
         preset: Preset,
         output_dir: Path,
+        on_progress: OntologyProgressCallback,
     ) -> OntologyRunResult:
         del document_path, requirement, preset
+        # #126: 실 pipeline 의 step 시퀀스를 흉내내 store 가 row 에 active_step
+        # 을 박는지 검증할 수 있게 한다.
+        on_progress("step0_document", None)
+        on_progress("step6_serialize", None)
         a, b = _make_fake_ontology_files(output_dir)
         return OntologyRunResult(
             ontology_a_path=a,
@@ -86,8 +92,9 @@ def _failing_ontology_runner():
         requirement: str,
         preset: Preset,
         output_dir: Path,
+        on_progress: OntologyProgressCallback,
     ) -> OntologyRunResult:
-        del document_path, requirement, preset, output_dir
+        del document_path, requirement, preset, output_dir, on_progress
         raise RuntimeError("phase1 boom")
 
     return _run
@@ -102,8 +109,9 @@ def _content_filter_blocked_runner():
         requirement: str,
         preset: Preset,
         output_dir: Path,
+        on_progress: OntologyProgressCallback,
     ) -> OntologyRunResult:
-        del document_path, requirement, preset, output_dir
+        del document_path, requirement, preset, output_dir, on_progress
         raise OntologyContentFilterBlockedError(
             "all models blocked by content filter: ['openrouter/qwen/qwen-plus']"
         )
@@ -352,8 +360,9 @@ class TestPlazaWithOntologyId:
             requirement: str,
             preset: Preset,
             output_dir: Path,
+            on_progress: OntologyProgressCallback,
         ) -> OntologyRunResult:
-            del document_path, requirement, preset, output_dir
+            del document_path, requirement, preset, output_dir, on_progress
             await asyncio.sleep(60)  # 테스트는 이 전에 끝낸다.
             raise AssertionError("should not reach")
 
@@ -388,6 +397,68 @@ class TestPlazaWithOntologyId:
                 json={"ontology_id": "anything", "rounds": 1},
             )
         assert resp.status_code == 503
+
+
+class TestProgressExposure:
+    """#126: ``active_step`` / ``fallback_model`` 이 polling 응답에 흘러 나오는지.
+
+    프론트는 ``GET /api/ontologies/{id}`` 를 폴링해 "Step 4 / 7 (페르소나 생성)"
+    같은 진행 표시를 띄운다. runner 의 on_progress 콜백이 row 로 전파되는
+    경로가 깨지면 status 만 바뀌고 어디서 멈춰있는지 알 수 없다.
+    """
+
+    def test_completed_response_carries_last_step(self, tmp_path: Path) -> None:
+        app = create_app(
+            runner=_noop_plaza_runner,
+            base_dir=tmp_path,
+            ontology_runner=_success_ontology_runner(agent_count=3),
+        )
+        with TestClient(app) as client:
+            document_id = _upload_doc(client)
+            ontology_id = client.post(
+                "/api/ontologies",
+                json={"document_id": document_id, "requirement": "x", "preset": "quick"},
+            ).json()["ontology_id"]
+            body = _wait_ontology(client, ontology_id, terminal={"completed", "failed"})
+        assert body["status"] == "completed"
+        # _success_ontology_runner 가 마지막에 흘린 step.
+        assert body["active_step"] == "step6_serialize"
+        # primary 사용 → fallback_model None.
+        assert body["fallback_model"] is None
+
+    def test_fallback_runner_reports_model(self, tmp_path: Path) -> None:
+        """fallback chain 진입을 흉내내는 runner — 두 번째 모델로 전환됨을 신호."""
+
+        async def _fallback_runner(
+            *,
+            document_path: Path,
+            requirement: str,
+            preset: Preset,
+            output_dir: Path,
+            on_progress: OntologyProgressCallback,
+        ) -> OntologyRunResult:
+            del document_path, requirement, preset
+            on_progress("step0_document", "openrouter/openai/gpt-4o-mini")
+            on_progress("step6_serialize", "openrouter/openai/gpt-4o-mini")
+            a, b = _make_fake_ontology_files(output_dir)
+            return OntologyRunResult(
+                ontology_a_path=a, ontology_b_path=b, agent_count=5
+            )
+
+        app = create_app(
+            runner=_noop_plaza_runner,
+            base_dir=tmp_path,
+            ontology_runner=_fallback_runner,
+        )
+        with TestClient(app) as client:
+            document_id = _upload_doc(client)
+            ontology_id = client.post(
+                "/api/ontologies",
+                json={"document_id": document_id, "requirement": "x", "preset": "quick"},
+            ).json()["ontology_id"]
+            body = _wait_ontology(client, ontology_id, terminal={"completed", "failed"})
+        assert body["status"] == "completed"
+        assert body["fallback_model"] == "openrouter/openai/gpt-4o-mini"
 
 
 class TestIsContentFilterError:
