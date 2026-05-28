@@ -14,11 +14,13 @@ LLM 호출 없음. 결정적. 같은 입력은 항상 같은 ``AggregationResult
 
 from __future__ import annotations
 
-import json
 import math
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
+
+import structlog
+from pydantic import ValidationError
 
 from litemiro.models import ActionType, RoundEvent
 from litemiro.phase3.models import (
@@ -32,6 +34,8 @@ from litemiro.phase3.models import (
 
 _TOPIC_FLOW_SAMPLE_LIMIT = 10
 _TOP_N = 5
+
+_log = structlog.get_logger(__name__)
 
 
 class DataAggregator:
@@ -59,20 +63,42 @@ class DataAggregator:
 
 
 def _load_events(path: Path) -> list[RoundEvent]:
+    """events.jsonl → RoundEvent 리스트. 깨진 라인은 skip + warning.
+
+    ``api/store.py:_parse_event_log`` 와 동일 lenient 패턴. 같은 jsonl 이
+    SSE 재연결엔 살아있고 ``/report`` 엔 죽는 비대칭을 막는다 — 라운드
+    200 x agent 100 = 20k 라인 jsonl 에서 last-line truncate 같은 partial
+    write 한 줄로 보고서 전체가 사망하면 ROI 가 안 맞는다. 구조화 로그
+    (``data_aggregator_event_skipped`` / ``..._skipped_total``) 로 카운트가
+    호출자에게 흘러간다 — 후속에서 ``AggregationResult`` 노출 후보.
+    """
     events: list[RoundEvent] = []
+    skipped = 0
     with path.open(encoding="utf-8") as fh:
         for lineno, raw in enumerate(fh, start=1):
             stripped = raw.strip()
             if not stripped:
                 continue
             try:
-                payload = json.loads(stripped)
-            except json.JSONDecodeError as exc:
-                raise ValueError(f"{path}:{lineno} JSON 파싱 실패: {exc.msg}") from exc
-            try:
-                events.append(RoundEvent.model_validate(payload))
-            except Exception as exc:
-                raise ValueError(f"{path}:{lineno} RoundEvent 검증 실패: {exc}") from exc
+                events.append(RoundEvent.model_validate_json(stripped))
+            except ValidationError as exc:
+                skipped += 1
+                # 첫 줄만 — pydantic 메시지 본문은 멀티라인이고 라운드당 같은
+                # 사유로 다발 발생할 수 있어 로그가 시끄럽지 않게 자른다.
+                first_line = str(exc).splitlines()[0] if str(exc) else ""
+                _log.warning(
+                    "data_aggregator_event_skipped",
+                    path=str(path),
+                    lineno=lineno,
+                    error=first_line[:200],
+                )
+    if skipped:
+        _log.warning(
+            "data_aggregator_skipped_total",
+            path=str(path),
+            skipped=skipped,
+            kept=len(events),
+        )
     return events
 
 
