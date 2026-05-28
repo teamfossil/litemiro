@@ -66,16 +66,48 @@ def _load_ontology_a(onto_path: Path) -> OntologyA | None:
     return OntologyA.model_validate(raw)
 
 
-def _read_follow_edges(path: Path) -> tuple[list[tuple[str, str]], dict[str, int]]:
-    """events.jsonl 에서 FOLLOW 엣지 + 받은 follow 수 추출.
+# engagement → influence 가중치 (#132 B). LIKE 가벼운 동의 = 1, REPOST 가
+# follower 망 전파 = 2, QUOTE 본인 의견 추가 = 3, FOLLOW 영구 구독 = 5. raw
+# in-degree (FOLLOW only) 정규화는 sim 의 follower=0 long-tail 에서 노드 크기
+# 차별이 0 으로 떨어졌다 (이슈 본문의 measurement).
+_INFLUENCE_WEIGHTS: dict[ActionType, int] = {
+    ActionType.LIKE_POST: 1,
+    ActionType.REPOST: 2,
+    ActionType.QUOTE_POST: 3,
+    ActionType.FOLLOW: 5,
+}
 
-    파일 부재 / 빈 파일 → ``([], {})`` — layout 은 엣지 0 으로도 결정적이라
-    호출자가 그대로 진행. last-line truncate 같은 파싱 실패는 그 라인만 건너뛴다.
+
+def _author_from_post_id(post_id: str) -> str | None:
+    """``{agent_id}_r{round:04d}`` 에서 author 추출.
+
+    Phase 2 ``core.round_manager.derive_post_id`` 가 만드는 결정적 포맷에
+    의존. 외부 주입 / 구버전 events.jsonl 처럼 포맷이 깨진 라인은 ``None``
+    을 돌려 호출자가 그 한 줄을 카운팅에서 빼게 한다.
+    """
+    head, sep, _ = post_id.rpartition("_r")
+    return head if sep and head else None
+
+
+def _read_engagement(
+    path: Path,
+) -> tuple[list[tuple[str, str]], dict[str, int], dict[str, int]]:
+    """events.jsonl 1-pass — layout edges + raw follower 수 + engagement score.
+
+    반환 3-tuple:
+    - ``edges`` — FOLLOW 엣지 리스트, ``compute_layout`` 의 force-directed 입력.
+    - ``follower_counts`` — FOLLOW 받은 raw 카운트, 응답의 ``follower_count`` 표시용.
+    - ``influence_scores`` — ``_INFLUENCE_WEIGHTS`` 가중합. LIKE/REPOST/QUOTE 의 author
+      는 ``target_post_id`` 의 결정적 포맷에서 ``_author_from_post_id`` 로 도출.
+
+    파일 부재 / 빈 파일 → ``([], {}, {})``. last-line truncate / 알려지지 않은
+    action_type 라인은 그 한 줄만 건너뛴다.
     """
     edges: list[tuple[str, str]] = []
-    influence: dict[str, int] = {}
+    follower_counts: dict[str, int] = {}
+    influence_scores: dict[str, int] = {}
     if not path.exists():
-        return edges, influence
+        return edges, follower_counts, influence_scores
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
@@ -83,11 +115,26 @@ def _read_follow_edges(path: Path) -> tuple[list[tuple[str, str]], dict[str, int
             event = RoundEvent.model_validate_json(line)
         except ValidationError:
             continue
-        target = event.action.target_agent_id
-        if event.action.type is ActionType.FOLLOW and target is not None:
+        action_type = event.action.type
+        weight = _INFLUENCE_WEIGHTS.get(action_type)
+        if weight is None:
+            continue
+        if action_type is ActionType.FOLLOW:
+            target = event.action.target_agent_id
+            if target is None:
+                continue
             edges.append((event.agent_id, target))
-            influence[target] = influence.get(target, 0) + 1
-    return edges, influence
+            follower_counts[target] = follower_counts.get(target, 0) + 1
+            influence_scores[target] = influence_scores.get(target, 0) + weight
+            continue
+        target_post = event.action.target_post_id
+        if target_post is None:
+            continue
+        author = _author_from_post_id(target_post)
+        if author is None:
+            continue
+        influence_scores[author] = influence_scores.get(author, 0) + weight
+    return edges, follower_counts, influence_scores
 
 
 router = APIRouter(prefix="/api/plazas", tags=["plazas"])
@@ -363,16 +410,16 @@ async def get_layout(plaza_id: str, request: Request) -> PlazaLayoutResponse:
         )
 
     if record.event_log_path is not None:
-        edges, follower_counts = await asyncio.to_thread(
-            _read_follow_edges, Path(record.event_log_path)
+        edges, follower_counts, influence_scores = await asyncio.to_thread(
+            _read_engagement, Path(record.event_log_path)
         )
     else:
-        edges, follower_counts = [], {}
+        edges, follower_counts, influence_scores = [], {}, {}
 
     profiles = list(ontology.agents.values())
     agent_ids = [p.agent_id for p in profiles]
     coords = await asyncio.to_thread(compute_layout, agent_ids, edges, seed=plaza_seed(plaza_id))
-    max_follow = max(follower_counts.values(), default=0)
+    max_score = max(influence_scores.values(), default=0)
     items = [
         PlazaLayoutAgentItem(
             id=p.agent_id,
@@ -381,7 +428,7 @@ async def get_layout(plaza_id: str, request: Request) -> PlazaLayoutResponse:
             x=coords[p.agent_id][0],
             y=coords[p.agent_id][1],
             follower_count=follower_counts.get(p.agent_id, 0),
-            influence=(follower_counts.get(p.agent_id, 0) / max_follow) if max_follow > 0 else 0.0,
+            influence=((influence_scores.get(p.agent_id, 0) / max_score) if max_score > 0 else 0.0),
             avatar_seed=_avatar_seed(p.agent_id),
         )
         for p in profiles
