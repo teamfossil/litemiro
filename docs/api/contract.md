@@ -220,10 +220,13 @@ Casting 화면이 슬롯에 띄울 앵커 리스트. plaza 에 묶인 `ontology_
 
 ## `GET /api/plazas/{plaza_id}/layout`
 
-Plaza 부감 뷰 화면이 노드를 배치할 때 쓸 좌표 + 영향력. plaza 의 events.jsonl
-에서 FOLLOW 엣지를 모아 Fruchterman-Reingold force-directed layout 을 돌린다
-(numpy, networkx 불필요). 시드는 `plaza_id` 해시 — 같은 plaza 면 폴링/리로드
-어디서 불러도 좌표가 안 튄다.
+Plaza 부감 뷰 화면이 노드를 배치할 때 쓸 좌표 + 영향력. 좌표는 의미 차원 직접
+매핑 — `x = ontology_a.profile.ideology` (Phase 1 이 박은 정적 좌-우 spectrum,
+0=비판적/1=우호적), `y = 같은 plaza 내 활동량 (DO_NOTHING 제외 액션 카운트)
+최댓값 정규화`. 같은 plaza 면 폴링/리로드 어디서 불러도 x 는 안 튀고 y 는
+라운드가 가며 monotonically 증가한다. FR force-directed 을 떼낸 이유는 sim 의
+follower=0 long-tail 에서 1D 로 압축되는 측정값 때문 — 정적 prior + 라이브
+활동량으로 갈라 노드가 한 점에 뭉치는 걸 피한다 (#133).
 
 `/agents` 와 같은 게이팅 — pending / running 에도 **200** 으로 떨어진다. 단
 events.jsonl 이 아직 안정적이지 않으므로 `ready: false` + `agents: []` 로
@@ -240,13 +243,13 @@ events.jsonl 이 아직 안정적이지 않으므로 `ready: false` + `agents: [
   "agents": [
     {
       "id": "agent_001", "name": "AI 기본법", "role": "AIRegulationPolicy",
-      "x": 0.42, "y": 0.71,
+      "x": 0.65, "y": 1.0,
       "influence": 1.0, "follower_count": 5,
       "avatar_seed": 2853741920
     },
     {
       "id": "agent_002", "name": "스타트업 협회", "role": "IndustryGroup",
-      "x": 0.13, "y": 0.55,
+      "x": 0.30, "y": 0.4,
       "influence": 0.4, "follower_count": 2,
       "avatar_seed": 1937204815
     }
@@ -257,7 +260,11 @@ events.jsonl 이 아직 안정적이지 않으므로 `ready: false` + `agents: [
 - `ready`: `true` 면 sim 라운드 끝나 events.jsonl 이 안정적 (composing /
   completed / failed). `false` 면 `agents=[]` — pending / running 인 동안만
   떨어진다. 프론트는 `ready` 로 부감 뷰 빈 상태 / 채워진 상태를 분기.
-- `x` / `y`: `[0.0, 1.0]` 정규화 좌표. 프론트가 캔버스 크기 곱해 그린다.
+- `x`: `ontology_a` 의 `AgentProfile.ideology` 그대로 (`[0.0, 1.0]`, 0=비판적,
+  1=우호적). 정적이라 plaza 진행과 무관 — `/agents` 와 같은 값.
+- `y`: 같은 plaza 내 활동량 (events.jsonl 의 DO_NOTHING 제외 액션 카운트) 최댓값
+  정규화 `[0.0, 1.0]`. 라운드가 가면 monotonically 증가 (활동 없는 agent 는 0.0).
+  모든 agent 의 활동량이 0 이면 전부 0.0.
 - `follower_count`: events.jsonl 의 FOLLOW 이벤트에서 해당 agent 가 받은
   follow 수 (절대값).
 - `influence`: 같은 plaza 내 engagement-weighted score 최댓값으로 정규화한
@@ -270,8 +277,9 @@ events.jsonl 이 아직 안정적이지 않으므로 `ready: false` + `agents: [
   맞춰 늘릴 여지.
 - `404`: 존재하지 않는 `plaza_id`, 또는 `ontology_a_path` 가 디스크에 없는 경우.
 - `500`: ontology_a 가 있지만 스키마 파싱 실패.
-- events.jsonl 자체가 없으면 (`--fake` 모드 등) 엣지 0 으로 계산 — `ready`
-  는 record status 기준이라 ontology_a 만 있으면 그래도 `true` 로 떨어진다.
+- events.jsonl 자체가 없으면 (`--fake` 모드 등) 활동량 / follower / influence 모두 0
+  으로 계산. `y` 는 전 agent 0.0, `x` 는 ontology 의 ideology 그대로. `ready` 는
+  record status 기준이라 ontology_a 만 있으면 그래도 `true` 로 떨어진다.
 
 ## `GET /api/plazas/{plaza_id}/report`
 

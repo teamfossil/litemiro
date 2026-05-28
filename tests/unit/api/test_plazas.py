@@ -971,6 +971,114 @@ class TestGetLayout:
         assert by_id["a01"]["follower_count"] == 1
         assert by_id["a02"]["follower_count"] == 0
 
+    def test_x_axis_is_ideology(self, tmp_path: Path) -> None:
+        """``x`` 는 ``AgentProfile.ideology`` 그대로 (#133).
+
+        FR force-directed 는 폐기 — 좌-우 spectrum 으로 정적 ideology 를 직결한다.
+        """
+        onto_a = _write_ontology_a(
+            tmp_path / "ontology_a.json",
+            [
+                ("a01", "A1", "Role", 0.1),
+                ("a02", "A2", "Role", 0.5),
+                ("a03", "A3", "Role", 0.9),
+            ],
+        )
+        app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/plazas",
+                json={
+                    "ontology_a_path": str(onto_a),
+                    "ontology_b_path": "/tmp/b.json",
+                    "rounds": 1,
+                },
+            ).json()
+            plaza_id = created["plaza_id"]
+            _wait_until(client, plaza_id, terminal={"completed", "failed"})
+            resp = client.get(f"/api/plazas/{plaza_id}/layout")
+        by_id = {a["id"]: a for a in resp.json()["agents"]}
+        assert by_id["a01"]["x"] == 0.1
+        assert by_id["a02"]["x"] == 0.5
+        assert by_id["a03"]["x"] == 0.9
+
+    def test_y_axis_is_activity_normalized(self, tmp_path: Path) -> None:
+        """``y`` 는 활동량 (보낸 액션 수) 의 plaza 내 max 정규화 (#133).
+
+        활동량 = "광장에서 얼마나 적극적으로 발화 중인가" — 라이브 동안 monotonically
+        증가하는 dimension. 영향력 (받은 임팩트) 과 직교.
+        """
+        onto_a = _write_ontology_a(
+            tmp_path / "ontology_a.json",
+            [
+                ("a01", "A1", "Role", 0.5),
+                ("a02", "A2", "Role", 0.5),
+                ("a03", "A3", "Role", 0.5),
+            ],
+        )
+        # 보낸 액션: a01 = 4, a02 = 1, a03 = 0. max=4 → a01=1.0, a02=0.25, a03=0.0.
+        events: list[tuple[int, str, dict[str, str]]] = [
+            (0, "a01", {"type": "CREATE_POST", "content": "x"}),
+            (1, "a01", {"type": "LIKE_POST", "target_post_id": "a02_r0000"}),
+            (1, "a01", {"type": "REPOST", "target_post_id": "a02_r0000"}),
+            (
+                2,
+                "a01",
+                {"type": "QUOTE_POST", "target_post_id": "a02_r0000", "content": "x"},
+            ),
+            (0, "a02", {"type": "CREATE_POST", "content": "y"}),
+        ]
+        app = create_app(runner=_events_writing_runner(events), base_dir=tmp_path)
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/plazas",
+                json={
+                    "ontology_a_path": str(onto_a),
+                    "ontology_b_path": "/tmp/b.json",
+                    "rounds": 3,
+                },
+            ).json()
+            plaza_id = created["plaza_id"]
+            _wait_until(client, plaza_id, terminal={"completed", "failed"})
+            resp = client.get(f"/api/plazas/{plaza_id}/layout")
+        by_id = {a["id"]: a for a in resp.json()["agents"]}
+        assert by_id["a01"]["y"] == 1.0
+        assert by_id["a02"]["y"] == 0.25
+        assert by_id["a03"]["y"] == 0.0
+
+    def test_do_nothing_excluded_from_activity(self, tmp_path: Path) -> None:
+        """``DO_NOTHING`` 은 activity 합산에서 빠진다 (#133).
+
+        "발동했지만 아무것도 안 했다" 는 발화 의미가 없으므로 적극성 카운트에서 제외.
+        round 가 늘어도 DO_NOTHING 만 한 agent 의 y 는 0 으로 깔린다.
+        """
+        onto_a = _write_ontology_a(
+            tmp_path / "ontology_a.json",
+            [("a01", "A1", "Role", 0.5), ("a02", "A2", "Role", 0.5)],
+        )
+        events: list[tuple[int, str, dict[str, str]]] = [
+            (0, "a01", {"type": "CREATE_POST", "content": "hi"}),
+            (1, "a02", {"type": "DO_NOTHING"}),
+            (2, "a02", {"type": "DO_NOTHING"}),
+        ]
+        app = create_app(runner=_events_writing_runner(events), base_dir=tmp_path)
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/plazas",
+                json={
+                    "ontology_a_path": str(onto_a),
+                    "ontology_b_path": "/tmp/b.json",
+                    "rounds": 3,
+                },
+            ).json()
+            plaza_id = created["plaza_id"]
+            _wait_until(client, plaza_id, terminal={"completed", "failed"})
+            resp = client.get(f"/api/plazas/{plaza_id}/layout")
+        by_id = {a["id"]: a for a in resp.json()["agents"]}
+        # a01 1번 발화, a02 0번 (DO_NOTHING 만) → max=1, a01=1.0, a02=0.0.
+        assert by_id["a01"]["y"] == 1.0
+        assert by_id["a02"]["y"] == 0.0
+
     def test_skips_lines_with_unparseable_post_id(self, tmp_path: Path) -> None:
         """``target_post_id`` 가 ``{agent}_r{n:04d}`` 포맷이 아니면 그 한 줄 skip.
 

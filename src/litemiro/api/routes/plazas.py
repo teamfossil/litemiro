@@ -21,7 +21,6 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from pydantic import ValidationError
 
 from litemiro.api import db as _db
-from litemiro.api.layout import compute_layout, plaza_seed
 from litemiro.api.models import (
     CreatePlazaRequest,
     CreatePlazaResponse,
@@ -91,23 +90,24 @@ def _author_from_post_id(post_id: str) -> str | None:
 
 def _read_engagement(
     path: Path,
-) -> tuple[list[tuple[str, str]], dict[str, int], dict[str, int]]:
-    """events.jsonl 1-pass — layout edges + raw follower 수 + engagement score.
+) -> tuple[dict[str, int], dict[str, int], dict[str, int]]:
+    """events.jsonl 1-pass — follower_counts + influence_scores + activity_counts.
 
     반환 3-tuple:
-    - ``edges`` — FOLLOW 엣지 리스트, ``compute_layout`` 의 force-directed 입력.
     - ``follower_counts`` — FOLLOW 받은 raw 카운트, 응답의 ``follower_count`` 표시용.
     - ``influence_scores`` — ``_INFLUENCE_WEIGHTS`` 가중합. LIKE/REPOST/QUOTE 의 author
       는 ``target_post_id`` 의 결정적 포맷에서 ``_author_from_post_id`` 로 도출.
+    - ``activity_counts`` — agent 가 라운드 동안 발동한 액션 수 (DO_NOTHING 제외).
+      ``/layout`` 의 ``y`` 축 (#133) — "광장에서 얼마나 적극적으로 발화 중인가".
 
-    파일 부재 / 빈 파일 → ``([], {}, {})``. last-line truncate / 알려지지 않은
+    파일 부재 / 빈 파일 → ``({}, {}, {})``. last-line truncate / 알려지지 않은
     action_type 라인은 그 한 줄만 건너뛴다.
     """
-    edges: list[tuple[str, str]] = []
     follower_counts: dict[str, int] = {}
     influence_scores: dict[str, int] = {}
+    activity_counts: dict[str, int] = {}
     if not path.exists():
-        return edges, follower_counts, influence_scores
+        return follower_counts, influence_scores, activity_counts
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
@@ -116,6 +116,8 @@ def _read_engagement(
         except ValidationError:
             continue
         action_type = event.action.type
+        if action_type is not ActionType.DO_NOTHING:
+            activity_counts[event.agent_id] = activity_counts.get(event.agent_id, 0) + 1
         weight = _INFLUENCE_WEIGHTS.get(action_type)
         if weight is None:
             continue
@@ -123,7 +125,6 @@ def _read_engagement(
             target = event.action.target_agent_id
             if target is None:
                 continue
-            edges.append((event.agent_id, target))
             follower_counts[target] = follower_counts.get(target, 0) + 1
             influence_scores[target] = influence_scores.get(target, 0) + weight
             continue
@@ -134,7 +135,7 @@ def _read_engagement(
         if author is None:
             continue
         influence_scores[author] = influence_scores.get(author, 0) + weight
-    return edges, follower_counts, influence_scores
+    return follower_counts, influence_scores, activity_counts
 
 
 router = APIRouter(prefix="/api/plazas", tags=["plazas"])
@@ -410,23 +411,25 @@ async def get_layout(plaza_id: str, request: Request) -> PlazaLayoutResponse:
         )
 
     if record.event_log_path is not None:
-        edges, follower_counts, influence_scores = await asyncio.to_thread(
+        follower_counts, influence_scores, activity_counts = await asyncio.to_thread(
             _read_engagement, Path(record.event_log_path)
         )
     else:
-        edges, follower_counts, influence_scores = [], {}, {}
+        follower_counts, influence_scores, activity_counts = {}, {}, {}
 
     profiles = list(ontology.agents.values())
-    agent_ids = [p.agent_id for p in profiles]
-    coords = await asyncio.to_thread(compute_layout, agent_ids, edges, seed=plaza_seed(plaza_id))
     max_score = max(influence_scores.values(), default=0)
+    max_activity = max(activity_counts.values(), default=0)
+    # x / y 의미 분리 (#133). FR force-directed 결과는 sim 의 follower=0 long-tail
+    # 에서 1D 로 압축돼 양 극단 64%, 좌표 중복 25% 가 측정됐다. x = ideology (정적
+    # 좌-우 spectrum), y = 활동량 (라이브 동안 변하는 발화 적극성) — 둘이 직교한다.
     items = [
         PlazaLayoutAgentItem(
             id=p.agent_id,
             name=p.name,
             role=p.entity_type,
-            x=coords[p.agent_id][0],
-            y=coords[p.agent_id][1],
+            x=p.ideology,
+            y=((activity_counts.get(p.agent_id, 0) / max_activity) if max_activity > 0 else 0.0),
             follower_count=follower_counts.get(p.agent_id, 0),
             influence=((influence_scores.get(p.agent_id, 0) / max_score) if max_score > 0 else 0.0),
             avatar_seed=_avatar_seed(p.agent_id),
