@@ -595,8 +595,8 @@ export default function ReportDemoMock() {
             </div>
             <h1 className="lm-rep__head-title">주 4일제 도입 시뮬레이션 리포트</h1>
             <div className="lm-rep__head-meta">
+              <span>{lm.SEED.title}</span>
               <span>광장 ID · {lm.SEED.id}</span>
-              <span>2026 · 05 · 23 · 18:42</span>
               <span>{nAgents}명 · {nRounds}라운드</span>
             </div>
           </div>
@@ -605,9 +605,6 @@ export default function ReportDemoMock() {
               광장으로
             </Button>
             <Button kind="secondary" onClick={handlePrintPdf}>PDF</Button>
-            <Button kind="primary" trailing={<ArrowGlyph dir="right" />}>
-              공유
-            </Button>
           </div>
         </header>
 
@@ -779,16 +776,10 @@ export default function ReportDemoMock() {
           </div>
         </ReportSection>
 
-        {/* FOOTER */}
+        {/* FOOTER — production 과 동일하게 status 만 표시 (mock 은 항상 completed) */}
         <footer className="lm-rep__foot">
           <div className="lm-rep__foot-meta">
-            <span>LiteMiro v3.4 · 생성 시각 2026-05-23 18:42 KST</span>
-          </div>
-          <div className="lm-rep__foot-actions">
-            <Button kind="secondary">새 시드로 다시 시뮬레이션</Button>
-            <Button kind="primary" trailing={<ArrowGlyph dir="right" />}>
-              이 리포트 저장
-            </Button>
+            <span>광장 상태 · completed</span>
           </div>
         </footer>
       </div>

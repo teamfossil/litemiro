@@ -7,10 +7,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { lm } from '@/data/mock';
 import type { GroupId, PlazaNode } from '@/data/types';
-import { AvatarSVG, Badge, RoleSwatch, Button, Stat, Pill, ArrowGlyph } from '@/components/atoms';
+import { AvatarSVG, RoleSwatch, Button, Stat, Pill, ArrowGlyph } from '@/components/atoms';
 import { ScreenHeader } from '@/components/chrome';
 import { useScreenNav } from '@/lib/nav';
-import { api } from '@/api/client';
+import { api, type PlazaReportResponse } from '@/api/client';
 import { mapBackendRoleToRoleId } from '@/lib/roles';
 
 interface PlazaFiltersState {
@@ -268,9 +268,6 @@ function PlazaTooltip({ node, x, y }: { node: PlazaNode; x: number; y: number })
       <div className="lm-plaza__tooltip-who">
         <RoleSwatch roleId={node.role} size={10} />
         <span>{role.name}</span>
-        {node.kind === 'derived' && <Badge tone="outline">derived</Badge>}
-        {node.kind === 'derived-viral' && <Badge>viral</Badge>}
-        {node.kind === 'anchor' && <Badge tone="anchor">앵커</Badge>}
       </div>
       {node.name && <div className="lm-plaza__tooltip-name">{node.name}</div>}
       <div className="lm-plaza__tooltip-stats">
@@ -278,7 +275,7 @@ function PlazaTooltip({ node, x, y }: { node: PlazaNode; x: number; y: number })
           입장 <b>{ideologyLabel(node.x)}</b>
         </span>
         <span>
-          화제성 <b>{Math.round(node.influence * 1000).toLocaleString()}</b>
+          영향력 <b>{Math.round(node.influence * 1000).toLocaleString()}</b>
         </span>
       </div>
     </div>
@@ -298,15 +295,11 @@ function ideologyLabel(x: number): string {
 function DrillInPanel({ node, onClose }: { node: PlazaNode | null; onClose: () => void }) {
   if (!node) return null;
   const role = lm.ROLE_BY_ID[node.role];
-  const isAnchor = node.kind === 'anchor';
-  const isViral = node.kind === 'derived-viral';
-  const quotes = lm.QUOTES[node.id] || (isViral ? lm.QUOTES['n-viral-47'] : []);
 
   return (
     <aside className="lm-drill" role="dialog" aria-label={`${node.name} 상세`}>
       <header className="lm-drill__head">
         <div className="lm-drill__head-meta">
-          <Badge tone={isAnchor ? 'anchor' : 'default'}>{isAnchor ? '앵커' : isViral ? 'viral derived' : 'derived'}</Badge>
           <span className="lm-drill__head-role">
             <RoleSwatch roleId={node.role} size={10} /> {role.name}
           </span>
@@ -317,51 +310,31 @@ function DrillInPanel({ node, onClose }: { node: PlazaNode | null; onClose: () =
       </header>
 
       <div className="lm-drill__hero">
-        {isAnchor && node.avatar ? (
+        {node.avatar ? (
           <AvatarSVG roleId={node.role} pose={node.avatar.pose} prop={node.avatar.prop} expr={node.avatar.expr} size={96} />
         ) : (
           <div className="lm-drill__hero-dot" style={{ background: node.color }} />
         )}
         <div className="lm-drill__hero-text">
           <div className="lm-drill__hero-name">{node.name || `${role.name} (익명)`}</div>
-          {node.title && <div className="lm-drill__hero-title">{role.name} · {node.title}</div>}
-          {node.bio && <p className="lm-drill__hero-bio">{node.bio}</p>}
         </div>
       </div>
 
       <div className="lm-drill__stats">
         <Stat
-          label="화제성"
+          label="영향력"
           value={Math.round(node.influence * 10000).toLocaleString()}
-          delta={isAnchor ? '상위 ' + Math.max(0.1, (1 - node.influence) * 100).toFixed(1) + '%' : undefined}
+          delta="follow 가중 정규화 [0,1]"
         />
-        <Stat label="팔로워" value={isAnchor ? '218' : '34'} delta={isAnchor ? '+184 (이 광장에서)' : '+9'} />
-        <Stat label="교차 인용" value={quotes.reduce((s, q) => s + (q.cross || 0), 0) || (isViral ? 92 : 0)} delta="진영 밖 청자" />
       </div>
 
       <div className="lm-drill__ideology">
-        <span className="lm-drill__ideology-label">입장</span>
+        <span className="lm-drill__ideology-label">위치</span>
         <div className="lm-drill__ideology-track">
           <span className="lm-drill__ideology-thumb" style={{ left: `${node.x * 100}%`, background: node.color }} />
         </div>
         <span className="lm-drill__ideology-value">{ideologyLabel(node.x)}</span>
       </div>
-
-      <section className="lm-drill__quotes">
-        <h3 className="lm-drill__quotes-h">핵심 발언 — {quotes.length}</h3>
-        {quotes.length === 0 && <div className="lm-drill__empty">이 인격은 아직 영향력 임계치를 넘지 않아 발언이 드릴인에 보관되지 않았어요.</div>}
-        {quotes.map((q, i) => (
-          <article key={i} className="lm-drill__quote">
-            <p className="lm-drill__quote-text">"{q.text}"</p>
-            <div className="lm-drill__quote-meta">
-              <span>R{q.round}</span>
-              <span>인용 {q.citations}</span>
-              <span>전파 {q.propagations}</span>
-              {q.cross > 0 && <span>교차 {q.cross}</span>}
-            </div>
-          </article>
-        ))}
-      </section>
     </aside>
   );
 }
@@ -377,7 +350,7 @@ function CloseGlyph() {
 // --------------------------------------------------------------------
 // PlazaFilters
 // --------------------------------------------------------------------
-function PlazaFilters({ filters, onChange, totalNodes }: { filters: PlazaFiltersState; onChange: (f: PlazaFiltersState) => void; totalNodes: number }) {
+function PlazaFilters({ filters, onChange, totalNodes, nRounds }: { filters: PlazaFiltersState; onChange: (f: PlazaFiltersState) => void; totalNodes: number; nRounds: number | null }) {
   const toggleGroup = (g: GroupId) => {
     const next = filters.groups.includes(g) ? filters.groups.filter((x) => x !== g) : [...filters.groups, g];
     onChange({ ...filters, groups: next });
@@ -401,11 +374,13 @@ function PlazaFilters({ filters, onChange, totalNodes }: { filters: PlazaFilters
         <Pill active={filters.influenceOnly} onClick={() => onChange({ ...filters, influenceOnly: !filters.influenceOnly })}>
           영향력 상위만
         </Pill>
-        <Pill onClick={() => undefined}>
-          <span style={{ fontFamily: 'var(--mono)', fontSize: 'var(--t-micro)' }}>
-            R{lm.ROUND_META.current}/{lm.ROUND_META.total}
-          </span>
-        </Pill>
+        {nRounds !== null && (
+          <Pill onClick={() => undefined}>
+            <span style={{ fontFamily: 'var(--mono)', fontSize: 'var(--t-micro)' }}>
+              R{nRounds}/{nRounds}
+            </span>
+          </Pill>
+        )}
       </div>
     </div>
   );
@@ -432,6 +407,7 @@ export default function Plaza() {
   const [hoverId, setHover] = useState<string | null>(null);
   const [mouse, setMouse] = useState({ x: 0, y: 0 });
   const [filters, setFilters] = useState<PlazaFiltersState>({ groups: [], influenceOnly: false });
+  const [report, setReport] = useState<PlazaReportResponse | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
   // /layout fetch — composing/completed 부터 의미 있는 응답. pending/running 은
@@ -462,6 +438,24 @@ export default function Plaza() {
       })
       .catch(() => {
         // mock 유지.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [plazaId]);
+
+  // /report fetch — eyebrow / subtitle 의 n_rounds, total actions 용. 빈 응답
+  // 이거나 미수신이면 mock fallback 안 쓰고 empty subtitle.
+  useEffect(() => {
+    if (!plazaId) return;
+    let cancelled = false;
+    api
+      .getReport(plazaId)
+      .then((res) => {
+        if (!cancelled) setReport(res);
+      })
+      .catch(() => {
+        // 실패 시 report=null → eyebrow/subtitle 의 빈 상태로 떨어짐.
       });
     return () => {
       cancelled = true;
@@ -505,9 +499,17 @@ export default function Plaza() {
       <PersonaList nodes={allNodes} selectedId={selectedId} hoverId={hoverId} onSelect={setSelected} onHover={setHover} />
       <div className="lm-plaza__shellpad">
         <ScreenHeader
-          eyebrow={`Phase 5 · 종료 광장 · R${lm.ROUND_META.current}/${lm.ROUND_META.total}`}
+          eyebrow={
+            report
+              ? `Phase 5 · 종료 광장 · R${report.n_rounds}/${report.rounds_total}`
+              : 'Phase 5 · 종료 광장'
+          }
           title="광장이 닫혔어요."
-          subtitle={`${allNodes.length}명의 인격이 ${lm.ROUND_META.total} 라운드 동안 ${lm.ROUND_META.counts.utterances.toLocaleString()}건을 발화했어요. 위에서 내려다본 결과예요.`}
+          subtitle={
+            report
+              ? `${report.n_agents}명의 인격이 ${report.n_rounds} 라운드 동안 ${report.n_events.toLocaleString()}건의 액션을 일으켰어요. 위에서 내려다본 결과예요.`
+              : '위에서 내려다본 광장 결과예요.'
+          }
           meta={
             <>
               <Stat label="비판적" value={distrib.pro} align="right" />
@@ -527,7 +529,7 @@ export default function Plaza() {
           }
         />
 
-        <PlazaFilters filters={filters} onChange={setFilters} totalNodes={allNodes.length} />
+        <PlazaFilters filters={filters} onChange={setFilters} totalNodes={allNodes.length} nRounds={report?.n_rounds ?? null} />
 
         {/* 지도 표기 가이드 — 광장 외부, 박스 없이 인라인 */}
         <div className="lm-plaza__guide">

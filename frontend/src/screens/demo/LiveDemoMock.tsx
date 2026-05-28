@@ -235,26 +235,29 @@ function ActionItem({ action, agents }: { action: Action; agents: AgentRegistry 
 }
 
 interface LiveStats {
-  round: number; utterances: number; likes: number; reposts: number; citations: number;
-  follows: number; followers: number; activeAgents: number; feedSize: number;
-  tokens: number; latency: string; fallbackPct: string;
+  round: number;
+  utterances: number;
+  likes: number;
+  reposts: number;
+  citations: number;
+  follows: number;
+  feedSize: number;
 }
-function computeStats(actions: Action[], round: number, total: number): LiveStats {
+function computeStats(actions: Action[], round: number): LiveStats {
   const upto = actions.filter((a) => a.round <= round);
   const utterances = upto.filter((a) => a.type === 'CREATE_POST' || a.type === 'QUOTE_POST').length;
   const likes = upto.filter((a) => a.type === 'LIKE').length;
   const reposts = upto.filter((a) => a.type === 'REPOST').length;
   const citations = upto.filter((a) => a.type === 'QUOTE_POST').length;
   const follows = upto.filter((a) => a.type === 'FOLLOW').length;
-  const settle = round / total;
   return {
-    round, utterances, likes, reposts, citations, follows,
-    followers: 1240 + Math.round(follows * 0.78),
-    activeAgents: Math.min(312, 96 + Math.round(settle * 216)),
+    round,
+    utterances,
+    likes,
+    reposts,
+    citations,
+    follows,
     feedSize: upto.length,
-    tokens: upto.length * 180 + round * 220,
-    latency: (1.05 + 0.35 * Math.sin(round / 4) + 0.15 * (1 - settle)).toFixed(2),
-    fallbackPct: Math.max(0, 4.2 - settle * 2.4).toFixed(1),
   };
 }
 
@@ -288,17 +291,12 @@ function LiveSidebar({ actions, agents, round, total, stats, onClose }: {
       </header>
       <section className="lm-live__stats-grid">
         <div className="lm-live__stat"><span className="lm-live__stat-k">라운드</span><span className="lm-live__stat-v">{stats.round} <small>/ {total}</small></span></div>
-        <div className="lm-live__stat"><span className="lm-live__stat-k">활성 에이전트</span><span className="lm-live__stat-v">{stats.activeAgents}</span></div>
         <div className="lm-live__stat"><span className="lm-live__stat-k">피드 크기</span><span className="lm-live__stat-v">{stats.feedSize.toLocaleString()}</span></div>
         <div className="lm-live__stat"><span className="lm-live__stat-k">발언</span><span className="lm-live__stat-v">{stats.utterances.toLocaleString()}</span></div>
         <div className="lm-live__stat"><span className="lm-live__stat-k">호응</span><span className="lm-live__stat-v">{stats.likes.toLocaleString()}</span></div>
         <div className="lm-live__stat"><span className="lm-live__stat-k">전파</span><span className="lm-live__stat-v">{stats.reposts.toLocaleString()}</span></div>
         <div className="lm-live__stat"><span className="lm-live__stat-k">인용</span><span className="lm-live__stat-v">{stats.citations.toLocaleString()}</span></div>
         <div className="lm-live__stat"><span className="lm-live__stat-k">팔로우 변화</span><span className="lm-live__stat-v">+{stats.follows.toLocaleString()}</span></div>
-        <div className="lm-live__stat"><span className="lm-live__stat-k">팔로워</span><span className="lm-live__stat-v">{stats.followers.toLocaleString()}</span></div>
-        <div className="lm-live__stat lm-live__stat--micro"><span className="lm-live__stat-k">토큰</span><span className="lm-live__stat-v lm-live__stat-v--mono">{stats.tokens.toLocaleString()}</span></div>
-        <div className="lm-live__stat lm-live__stat--micro"><span className="lm-live__stat-k">LLM 지연</span><span className="lm-live__stat-v lm-live__stat-v--mono">{stats.latency}s</span></div>
-        <div className="lm-live__stat lm-live__stat--micro"><span className="lm-live__stat-k">fallback</span><span className="lm-live__stat-v lm-live__stat-v--mono">{stats.fallbackPct}%</span></div>
       </section>
       <section className="lm-live__feed" aria-live="polite">
         <div className="lm-live__feed-head">
@@ -344,7 +342,7 @@ export default function LiveDemoMock() {
   const settle = progress;
   const isCompleted = progress >= 1;
   const status = isCompleted ? { tag: '광장 종료', text: '결과를 확인하세요.' } : liveStatus(round, total);
-  const stats = useMemo(() => computeStats(allActions, round, total), [allActions, round, total]);
+  const stats = useMemo(() => computeStats(allActions, round), [allActions, round]);
 
   return (
     <div className={`lm-live ${sidebarOpen ? 'is-sidebar-open' : ''}`}>
@@ -359,7 +357,6 @@ export default function LiveDemoMock() {
           <div className="lm-live__head-right">
             <Stat label="라운드" value={`${round} / ${total}`} align="right" />
             <Stat label="발언" value={stats.utterances.toLocaleString()} align="right" />
-            <Stat label="활성 에이전트" value={stats.activeAgents} align="right" />
             {!sidebarOpen && (
               <Button kind="secondary" onClick={() => setSidebarOpen(true)}>활동 피드 열기</Button>
             )}
