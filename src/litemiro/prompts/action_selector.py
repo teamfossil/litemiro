@@ -124,6 +124,11 @@ _BEHAVIOR_TENDENCY_LABELS: tuple[tuple[str, str], ...] = (
 _FOLLOW_RATE_FALLBACK = 0.2
 _LIKE_RATE_FALLBACK = 0.4
 
+# _authors_block 의 author 별 sample post snippet 길이. feed_block 의 120 보다
+# 짧게 — author 섹션은 여러 author 가 나란히 있어 줄당 길이 압축이 필요하고,
+# stance 추론에는 첫 문장 정도면 충분. #142 hub pattern 완화용 stance hint.
+_SAMPLE_LEN = 80
+
 
 def compose_system(agent_id: str, context: ActionContext) -> str:
     """Build the system prompt — persona card + behavior hints + schema."""
@@ -240,21 +245,28 @@ def _feed_block(context: ActionContext) -> str:
 
 def _authors_block(context: ActionContext) -> str:
     """Feed 의 author 들을 별도로 묶어 노출. 각 author 가 몇 개 post 로
-    등장했는지 + 이미 follow 중인지를 표시 — LLM 이 새 FOLLOW 후보 (아직
-    follow 안 했고 stance 정합인 author) 를 식별할 수 있게 한다. 강제
-    가 아니라 정보 제공 — FOLLOW 결정은 여전히 모델의 판단에 맡긴다.
+    등장했는지 + 이미 follow 중인지 + 그 author 의 대표 post snippet 을
+    표시 — LLM 이 새 FOLLOW 후보 (아직 follow 안 했고 stance 정합인
+    author) 를 식별할 수 있게 한다. snippet 은 feed 의 hot order 에서
+    그 author 가 처음 등장한 post (= 그 author 의 가장 hot 한 post) 의
+    첫 ``_SAMPLE_LEN`` 글자. agent 의 ideology 는 사적 정보라 표시 불가
+    — 대신 post 본문으로 stance 추론. #142 의 hub pattern (stance
+    mismatch FOLLOW 22%) 완화. 강제가 아니라 정보 제공 — FOLLOW 결정은
+    여전히 모델의 판단에 맡긴다.
     """
     if not context.feed:
         return ""
     self_id = context.agent.agent_id
     counts: dict[str, int] = {}
     order: list[str] = []
+    sample: dict[str, str] = {}
     for post in context.feed:
         author = post.author_id
         if author == self_id:
             continue
         if author not in counts:
             order.append(author)
+            sample[author] = post.content[:_SAMPLE_LEN]
         counts[author] = counts.get(author, 0) + 1
     if not counts:
         return ""
@@ -263,6 +275,7 @@ def _authors_block(context: ActionContext) -> str:
     for author in sorted(order, key=lambda a: (-counts[a], a)):
         tag = "already following" if author in following else "not yet followed"
         lines.append(f"  - @{author} ({counts[author]} posts) — {tag}")
+        lines.append(f"      sample: {sample[author]}")
     return "\n".join(lines)
 
 

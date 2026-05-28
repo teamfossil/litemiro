@@ -36,6 +36,7 @@ import pytest
 from litemiro.action.selector import ActionSelector
 from litemiro.interfaces import ActionSelectorLike, LLMClient
 from litemiro.models import Action, ActionContext, ActionType, Agent, LLMResponse, Post
+from litemiro.prompts.action_selector import compose_user
 
 
 def _agent(
@@ -739,6 +740,54 @@ class TestLLMMetaTracking:
         assert result.action == Action(type=ActionType.DO_NOTHING)
         assert result.llm_meta.fallback_used is True
         assert result.llm_meta.tokens_used == 74
+
+
+class TestAuthorsBlockSample:
+    """#142: _authors_block 의 각 author 에 sample post snippet 첨부.
+
+    PR #140 가 author 의 등장 수 + follow 여부를 노출했지만 ideology 정보
+    가 사적이라 LLM 이 stance 정합도를 판단하기 위한 신호가 부족했고,
+    실제 15-라운드 시뮬에서 follower-followee ideology diff 0.2~0.5
+    중간 mismatch 가 22% 발생. 각 author 의 첫 등장 post 본문을 같이
+    노출해 stance 추론 단서를 제공한다.
+    """
+
+    def test_each_author_line_followed_by_sample(self) -> None:
+        p1 = _post("p1", author="alice", content="ai will transform productivity")
+        p2 = _post("p2", author="bob", content="regulation must come first")
+        p3 = _post("p3", author="alice", content="another post by alice")
+        rendered = compose_user(_ctx(feed=(p1, p2, p3)))
+        assert "Authors in your feed" in rendered
+        # alice 2 posts, bob 1 post. sample 은 각 author 의 첫 등장 (= hot
+        # order 최상위) post 의 content prefix.
+        assert "@alice (2 posts) — not yet followed" in rendered
+        assert "sample: ai will transform productivity" in rendered
+        assert "@bob (1 posts) — not yet followed" in rendered
+        assert "sample: regulation must come first" in rendered
+
+    def test_sample_truncates_at_eighty_chars(self) -> None:
+        long = "x" * 200
+        rendered = compose_user(_ctx(feed=(_post("p1", author="alice", content=long),)))
+        assert "sample: " + ("x" * 80) in rendered
+        # 81 글자는 잘려야 함.
+        assert "sample: " + ("x" * 81) not in rendered
+
+    def test_already_following_tag_preserved(self) -> None:
+        ctx = ActionContext(
+            agent=_agent(),
+            feed=(_post("p1", author="alice", content="hi"),),
+            following_ids=frozenset({"alice"}),
+            round_num=1,
+        )
+        rendered = compose_user(ctx)
+        assert "@alice (1 posts) — already following" in rendered
+        assert "sample: hi" in rendered
+
+    def test_self_authored_posts_excluded(self) -> None:
+        # 본인 post 는 author 섹션에서 빠져야 follow 후보 노이즈가 안 생긴다.
+        feed = (_post("p1", author="me", content="my own post"),)
+        rendered = compose_user(_ctx(feed=feed))
+        assert "Authors in your feed" not in rendered
 
 
 def test_protocol_is_satisfied() -> None:
