@@ -135,6 +135,12 @@ function CastingLoading() {
     };
   }, [ontologyId, rounds, preset, labelParam, navigate]);
 
+  // preset 별 기대 소요. quick 1분, standard 2분, full 8분 정도가 정상 분포 —
+  // 1.5× 넘으면 사용자에 "정상이니 그대로 두세요" 신호를 명시. 분 단위 dead-screen
+  // 에서 사용자가 "탭 닫고 나갈까" 고민할 정공.
+  const expectedSec = preset === 'quick' ? 60 : preset === 'full' ? 480 : 120;
+  const isOverdue = phase === 'polling' && elapsedSec > expectedSec * 1.5;
+
   const headTitle =
     phase === 'failed'
       ? '문제가 발생했어요'
@@ -146,7 +152,9 @@ function CastingLoading() {
       ? (error ?? '알 수 없는 오류')
       : phase === 'launching'
         ? '곧 자동으로 다음 단계로 넘어갑니다.'
-        : `LLM 호출이 진행되고 있어요 · ${formatElapsed(elapsedSec)} 경과`;
+        : isOverdue
+          ? `평소보다 조금 더 걸리고 있어요 · ${formatElapsed(elapsedSec)} 경과. 그대로 두면 곧 완료돼요.`
+          : `LLM 호출이 진행되고 있어요 · ${formatElapsed(elapsedSec)} 경과`;
 
   return (
     <div className="lm-cast">
