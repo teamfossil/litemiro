@@ -95,10 +95,12 @@ class PlazaAgentsResponse(BaseModel):
 
 
 class PlazaLayoutAgentItem(BaseModel):
-    """Plaza 부감 뷰의 노드 1개. ``compute_layout`` 의 결정적 좌표 + ontology_a
-    의 시각화 메타 (name/role) + events.jsonl 누적의 영향력 (follower count).
+    """Plaza 부감 뷰의 노드 1개. ``ontology_a`` 의 시각화 메타 (name/role) +
+    의미 차원 좌표 (x = ideology, y = 활동량) + engagement-weighted 영향력.
 
     ``x`` / ``y`` 는 ``[0.0, 1.0]`` 정규화 — 프론트가 캔버스 크기 곱해 그린다.
+    의미 분리는 #133 — 기존 FR force-directed 가 sim 의 follower=0 long-tail
+    에서 1D 로 압축되는 측정값 때문에 정적 prior + 라이브 활동량으로 갈랐다.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -106,10 +108,13 @@ class PlazaLayoutAgentItem(BaseModel):
     id: str
     name: str
     role: str
+    # x = profile.ideology — Phase 1 이 박은 정적 좌-우 spectrum (0=비판적, 1=우호적).
     x: float = Field(ge=0.0, le=1.0)
+    # y = 같은 plaza 내 활동량 (DO_NOTHING 제외 카운트) 최댓값 정규화. 라운드가 가면
+    # monotonically 증가 — "광장에서 얼마나 적극적으로 발화 중인가".
     y: float = Field(ge=0.0, le=1.0)
-    # 같은 plaza 내 follower_count 최댓값으로 정규화한 [0.0, 1.0]. 노드 크기/색
-    # 매핑에 그대로 곱해 쓴다. 최댓값 노드 = 1.0. 모두 0 follow 면 전부 0.0.
+    # 같은 plaza 내 engagement-weighted score (LIKE x1 + REPOST x2 + QUOTE x3 + FOLLOW x5)
+    # 최댓값 정규화 [0.0, 1.0]. 노드 크기/색 매핑에 그대로 곱해 쓴다 (#132).
     influence: float = Field(ge=0.0, le=1.0)
     # 받은 follow 수 절대값 — 정규화 전 raw. 노드 호버 툴팁/디버깅 용.
     follower_count: int = Field(ge=0)
