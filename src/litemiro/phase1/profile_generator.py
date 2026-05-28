@@ -38,6 +38,11 @@ class ProfileGenerator:
         self._llm = llm
         self._model = model
         self._semaphore = asyncio.Semaphore(max_concurrency)
+        # generate() 호출 중 fallback profile 로 떨어진 agent 수. #109:
+        # batch 전체 실패 (retry exhaust) / parse 실패 / agent_id 누락 세
+        # 경로 모두 카운트. logger.warning 만으로는 사용자가 알아채기
+        # 어려워 호출자가 후처리 (CLI 출력 / 메트릭 기록) 할 수 있게 노출.
+        self.fallback_count: int = 0
 
     async def generate(
         self, seeds: list[AgentSeed], simulation_requirement: str
@@ -81,6 +86,7 @@ class ProfileGenerator:
                 profiles = await self._call_with_retry(user_prompt)
             except Exception:
                 logger.warning("LLM batch failed for %d seeds, using fallback", len(batch))
+                self.fallback_count += len(batch)
                 return [self._build_fallback_profile(seed) for seed in batch]
 
             seed_map = {s.agent_id: s for s in batch}
@@ -95,12 +101,14 @@ class ProfileGenerator:
                     result.append(_parse_profile(item, profile_seed))
                 except Exception:
                     logger.warning("Profile parse failed for %s, using fallback", agent_id)
+                    self.fallback_count += 1
                     result.append(self._build_fallback_profile(profile_seed))
 
             # fill any seeds that didn't get a profile
             returned_ids = {p.agent_id for p in result}
             for seed in batch:
                 if seed.agent_id not in returned_ids:
+                    self.fallback_count += 1
                     result.append(self._build_fallback_profile(seed))
 
             return result

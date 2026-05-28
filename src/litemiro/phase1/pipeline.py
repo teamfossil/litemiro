@@ -43,6 +43,9 @@ class OntologyPipeline:
     def __init__(self, config: PipelineConfig, llm: Phase1LLMClient) -> None:
         self._config = config
         self._llm = llm
+        # Step 4 (profile_generator) 의 fallback 카운트 — run() 후 CLI 가
+        # 읽어 사용자에게 노출. #109: silent fallback 19% 사례 가시화.
+        self.profile_fallback_count: int = 0
 
     async def run(  # noqa: PLR0915 — 7 step 시퀀스 + 검증/직렬화 → 자연스레 길다. 분할은 리팩토링 사안.
         self, *, on_progress: Callable[[str], None] | None = None
@@ -130,13 +133,14 @@ class OntologyPipeline:
         t4 = time.monotonic()
         from litemiro.phase1.profile_generator import ProfileGenerator  # noqa: PLC0415
 
-        profiles: list[AgentProfile] = await ProfileGenerator(
-            llm=self._llm, model=cfg.model
-        ).generate(seeds, cfg.requirement)
+        profile_generator = ProfileGenerator(llm=self._llm, model=cfg.model)
+        profiles: list[AgentProfile] = await profile_generator.generate(seeds, cfg.requirement)
+        self.profile_fallback_count = profile_generator.fallback_count
         agents: dict[str, AgentProfile] = {p.agent_id: p for p in profiles}
         log.info(
             "step4_profiles_generated",
             profile_count=len(profiles),
+            fallback_count=profile_generator.fallback_count,
             elapsed=f"{time.monotonic() - t4:.2f}s",
         )
 

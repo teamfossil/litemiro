@@ -65,6 +65,9 @@ async def test_generate_profiles(
     assert profiles[0].topics == ["정치", "경제"]
     assert profiles[0].behavior_tendency.follow_rate == 0.35
     assert profiles[1].behavior_tendency.follow_rate == 0.15
+    # 정상 경로는 fallback 카운트 0 — #109 silent fallback 가시화 후
+    # 정상 케이스의 노이즈가 안 생기는지 확인.
+    assert gen.fallback_count == 0
 
 
 @pytest.mark.asyncio
@@ -92,6 +95,37 @@ async def test_fallback_on_bad_response(fake_llm: Callable[..., Phase1LLMClient]
     assert profiles[0].ideology == 0.5  # fallback default
     assert profiles[0].skeleton["source_entity_id"] == "e1"
     assert profiles[0].topics == ["Journalist", "김기자"]
+    # #109: retry exhaust 로 배치 전체 fallback → seed 수만큼 카운트.
+    assert gen.fallback_count == 1
+
+
+@pytest.mark.asyncio
+async def test_fallback_count_includes_missing_agent_ids(
+    fake_llm: Callable[..., Phase1LLMClient],
+    sample_agent_seeds: list[AgentSeed],
+) -> None:
+    """LLM 이 일부 seed 의 agent_id 만 반환하면 누락 seed 가 fallback 으로 떨어지고
+    그 수가 카운트에 잡혀야 한다. 정상 응답 1건 + 누락 1건 → fallback_count == 1.
+    """
+    partial = json.dumps(
+        [
+            {
+                "agent_id": "agent_0001",
+                "personality": "분석적",
+                "speech_style": "보도체",
+                "background": "정치부 기자",
+                "ideology": 0.3,
+                "topics": ["정치"],
+                "sensitive_topics": [],
+                "behavior_tendency": {},
+            }
+        ]
+    )
+    llm = fake_llm(partial)
+    gen = ProfileGenerator(llm=llm, model="test")
+    profiles = await gen.generate(sample_agent_seeds, "req")
+    assert len(profiles) == 2
+    assert gen.fallback_count == 1
 
 
 @pytest.mark.asyncio
