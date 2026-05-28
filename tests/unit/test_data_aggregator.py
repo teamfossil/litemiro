@@ -246,22 +246,42 @@ class TestAggregateFromJsonl:
         result = DataAggregator.aggregate(path)
         assert result.n_events == 1
 
-    def test_malformed_json_raises_with_line_number(self, tmp_path: Path) -> None:
+    def test_malformed_json_line_is_skipped(self, tmp_path: Path) -> None:
+        # 한 줄만 깨졌다고 보고서 전체가 죽으면 안 된다. ``api/store.py``
+        # ``_parse_event_log`` 와 동일 lenient 패턴 — 같은 jsonl 이 SSE 재연결엔
+        # 살아있고 ``/report`` 엔 죽는 비대칭을 막는다.
         path = tmp_path / "events.jsonl"
-        path.write_text("not json\n", encoding="utf-8")
-        with pytest.raises(ValueError, match=r":1 JSON 파싱 실패"):
-            DataAggregator.aggregate(path)
-
-    def test_validation_failure_raises_with_line_number(self, tmp_path: Path) -> None:
-        path = tmp_path / "events.jsonl"
-        # round_num must be >= 0
         path.write_text(
-            '{"round_num":-1,"timestamp":"2026-04-01T10:00:00+00:00","agent_id":"a",'
+            "not json\n"
+            '{"round_num":0,"timestamp":"2026-04-01T10:00:00+00:00","agent_id":"a",'
             '"action":{"type":"DO_NOTHING"}}\n',
             encoding="utf-8",
         )
-        with pytest.raises(ValueError, match=r":1 RoundEvent 검증 실패"):
-            DataAggregator.aggregate(path)
+        result = DataAggregator.aggregate(path)
+        assert result.n_events == 1
+
+    def test_validation_failure_line_is_skipped(self, tmp_path: Path) -> None:
+        # round_num < 0 한 줄을 끼워도 나머지는 집계된다.
+        path = tmp_path / "events.jsonl"
+        path.write_text(
+            '{"round_num":-1,"timestamp":"2026-04-01T10:00:00+00:00","agent_id":"a",'
+            '"action":{"type":"DO_NOTHING"}}\n'
+            '{"round_num":0,"timestamp":"2026-04-01T10:00:00+00:00","agent_id":"a",'
+            '"action":{"type":"DO_NOTHING"}}\n',
+            encoding="utf-8",
+        )
+        result = DataAggregator.aggregate(path)
+        assert result.n_events == 1
+        assert result.n_rounds == 1
+
+    def test_all_lines_corrupt_returns_empty(self, tmp_path: Path) -> None:
+        # 전부 깨졌으면 빈 집계 — DataAggregator 자체는 빈 events 도 정상 처리.
+        path = tmp_path / "events.jsonl"
+        path.write_text('not json\n{"x":1}\nbroken\n', encoding="utf-8")
+        result = DataAggregator.aggregate(path)
+        assert result.n_events == 0
+        assert result.n_agents == 0
+        assert result.n_rounds == 0
 
 
 class TestQaMetrics:
