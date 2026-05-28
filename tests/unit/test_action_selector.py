@@ -472,6 +472,27 @@ class TestPhase1PersonaSchema:
         # 모호했다. 의도된 산수 (absolute weights + remainder = QUOTE) 를 잠근다.
         assert "reply_rate is the total reaction probability" in system
         assert "remainder (reply_rate - like_rate - repost_rate) goes to QUOTE" in system
+        # post_rate cue — debug4 측정에서 r1 이후 CREATE_POST 가 ≈0 으로 떨어지는
+        # cold-start 후 망각을 막으려고 두 축이 직교라는 점을 따로 박아뒀다.
+        assert "post_rate is a separate axis from reply_rate" in system
+
+    async def test_post_rate_cue_omitted_when_post_rate_absent(self) -> None:
+        # behavior_tendency 가 post_rate 키를 빠뜨린 (구버전 또는 외부 박은) 경우엔
+        # CREATE_POST 직교 cue 가 등장하지 않아야 prompt 가 거짓 신호를 흘리지 않는다.
+        agent = _agent(
+            "me",
+            persona_traits={
+                "behavior_tendency": {
+                    "reply_rate": 0.5,
+                    "repost_rate": 0.2,
+                    "like_rate": 0.4,
+                },
+            },
+        )
+        llm = _FakeLLM(_payload(ActionType.DO_NOTHING))
+        await _selector(llm).select_action("me", _ctx(agent=agent))
+        system = llm.calls[0][0]
+        assert "post_rate is a separate axis from reply_rate" not in system
 
     async def test_umbrella_note_omitted_when_reply_rate_absent(self) -> None:
         agent = _agent(
