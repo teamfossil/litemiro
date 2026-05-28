@@ -187,13 +187,19 @@ def _behavior_hint(context: ActionContext) -> str:
         return ""
     line = "Behavior tendencies (0..1, higher = more likely): " + "; ".join(bits) + "."
     # reply_rate 와 like_rate / repost_rate 가 동시에 등장하면 LLM 이 둘을 곱해
-    # 야 할지 (중복 가중) umbrella+subtype 으로 봐야 할지 모호하다 — #120 리뷰.
-    # 의도된 의미를 명시: reply_rate 가 umbrella, 나머지 둘이 그 안에서의 tilt.
+    # 야 할지 (중복 가중) umbrella+subtype 으로 봐야 할지 모호 — #120 리뷰. 첫
+    # 보강 (umbrella/tilt 표현, #120) 도 "tilt within that umbrella" 가 ratio /
+    # 곱 / absolute 어느 셋인지 갈라져 LLM 별 분포가 흔들렸다 (#122). 의도된 산수
+    # 를 직접 박는다: reply_rate 가 총량, like_rate 와 repost_rate 가 그 안의
+    # absolute share, 나머지 = QUOTE. debug4 의 LIKE 41% / QUOTE 29% 도 이
+    # 해석에 정합 (Phase 1 default 0.668/0.4/0.2 → LIKE 60%, REPOST 30%, QUOTE
+    # 10% 의 noisy 근사).
     if "reply_rate" in bt:
         line += (
-            " Note: 'react to others' posts overall' is the umbrella reaction "
-            "probability — 'press LIKE on aligned posts' and 'repost' tilt "
-            "within that umbrella (not on top of it); whatever remains is QUOTE."
+            " Note: reply_rate is the total reaction probability split across "
+            "LIKE / REPOST / QUOTE. like_rate and repost_rate are absolute weights "
+            "within that total — the remainder (reply_rate - like_rate - repost_rate) "
+            "goes to QUOTE."
         )
     return line
 

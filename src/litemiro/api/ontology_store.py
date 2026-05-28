@@ -45,6 +45,31 @@ class OntologyRunResult:
     agent_count: int
 
 
+class OntologyContentFilterBlockedError(RuntimeError):
+    """provider-side content moderation 이 입력을 거절했을 때 ``_run`` 이 raise.
+
+    Alibaba Qwen 시리즈의 ``data_inspection_failed`` 가 대표 케이스 — 한국 정치/
+    사회 sensitive topic PDF 에서 종종 발동 (#121). fallback chain 도 모두
+    막혔을 때 친화화 메시지로 row.error 컬럼에 박힌다.
+    """
+
+
+def is_content_filter_error(exc: BaseException) -> bool:
+    """provider content moderation 차단 여부를 메시지 substring 으로 식별.
+
+    LiteLLM 이 OpenRouter 의 raw provider 에러를 그대로 wrapping 해 던지므로
+    구조적 분류가 불가능 — 문자열 매칭으로 ``data_inspection_failed`` (Qwen /
+    Alibaba) 와 OpenAI 류 ``content_policy_violation`` 을 동시에 잡는다. 다른
+    provider 의 식별자가 늘어나면 여기서 같이 추가.
+    """
+    text = str(exc).lower()
+    return (
+        "data_inspection_failed" in text
+        or "inappropriate content" in text
+        or "content_policy_violation" in text
+    )
+
+
 class OntologyRunner(Protocol):
     async def __call__(
         self,
@@ -138,6 +163,20 @@ class OntologyStore:
             row.error = "cancelled"
             _db.upsert_ontology(self._conn, row)
             raise
+        except OntologyContentFilterBlockedError as exc:
+            # fallback chain 도 막혔을 때만 도달 — runner 가 이미 모든 모델
+            # 을 시도. 사용자에게는 generic stacktrace 대신 원인 + 다음 행동
+            # 을 알려줘야 한다 (#121 의 "인격 생성 실패" UX 손실 회피).
+            log.warning(
+                "ontology_blocked_by_content_filter",
+                extra={"ontology_id": row.ontology_id, "detail": str(exc)},
+            )
+            row.status = "failed"
+            row.error = (
+                "선택한 모델의 콘텐츠 필터에 막혔습니다. "
+                "다른 자료로 시도하거나 관리자에게 모델 변경을 문의하세요."
+            )
+            _db.upsert_ontology(self._conn, row)
         except Exception as exc:
             log.exception("ontology_generation_failed", extra={"ontology_id": row.ontology_id})
             row.status = "failed"

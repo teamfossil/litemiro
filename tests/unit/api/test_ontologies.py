@@ -17,7 +17,11 @@ from typing import Any
 from fastapi.testclient import TestClient
 
 from litemiro.api.app import create_app
-from litemiro.api.ontology_store import OntologyRunResult
+from litemiro.api.ontology_store import (
+    OntologyContentFilterBlockedError,
+    OntologyRunResult,
+    is_content_filter_error,
+)
 from litemiro.api.store import ProgressCallback, RunnerOutcome
 from litemiro.phase1.models import Preset
 
@@ -85,6 +89,24 @@ def _failing_ontology_runner():
     ) -> OntologyRunResult:
         del document_path, requirement, preset, output_dir
         raise RuntimeError("phase1 boom")
+
+    return _run
+
+
+def _content_filter_blocked_runner():
+    """fallback chain 까지 모두 막힌 케이스를 시뮬레이션 — friendly msg 확인용."""
+
+    async def _run(
+        *,
+        document_path: Path,
+        requirement: str,
+        preset: Preset,
+        output_dir: Path,
+    ) -> OntologyRunResult:
+        del document_path, requirement, preset, output_dir
+        raise OntologyContentFilterBlockedError(
+            "all models blocked by content filter: ['openrouter/qwen/qwen-plus']"
+        )
 
     return _run
 
@@ -210,6 +232,32 @@ class TestCreateOntology:
         assert body["status"] == "failed"
         assert body["ready"] is False
         assert body["error"] == "phase1 boom"
+
+    def test_content_filter_blocked_marks_failed_with_friendly_message(
+        self, tmp_path: Path
+    ) -> None:
+        # #121 의 UX 손실 회피 — generic "인격 생성 실패" 대신 원인 + 다음 행동을 노출.
+        app = create_app(
+            runner=_noop_plaza_runner,
+            base_dir=tmp_path,
+            ontology_runner=_content_filter_blocked_runner(),
+        )
+        with TestClient(app) as client:
+            document_id = _upload_doc(client)
+            created = client.post(
+                "/api/ontologies",
+                json={
+                    "document_id": document_id,
+                    "requirement": "x",
+                    "preset": "quick",
+                },
+            ).json()
+            body = _wait_ontology(client, created["ontology_id"], terminal={"completed", "failed"})
+        assert body["status"] == "failed"
+        assert body["ready"] is False
+        assert body["error"] is not None
+        assert "콘텐츠 필터" in body["error"]
+        assert "다른 자료" in body["error"]
 
 
 class TestGetOntology:
@@ -340,3 +388,32 @@ class TestPlazaWithOntologyId:
                 json={"ontology_id": "anything", "rounds": 1},
             )
         assert resp.status_code == 503
+
+
+class TestIsContentFilterError:
+    """``is_content_filter_error`` 의 substring 매칭. LiteLLM 이 provider raw 에러를
+    그대로 wrapping 해 던지므로 메시지 식별이 유일한 분류 수단이다 — 식별자
+    누락 시 fallback chain 이 발동 안 한다."""
+
+    def test_detects_qwen_data_inspection_failed(self) -> None:
+        exc = RuntimeError(
+            'OpenrouterException - {"error":{"message":"Provider returned error",'
+            '"code":400,"metadata":{"raw":"{\\"error\\":{'
+            '\\"message\\":\\"Input data may contain inappropriate content...\\",'
+            '\\"type\\":\\"data_inspection_failed\\",'
+            '\\"code\\":\\"data_inspection_failed\\"}}"}}'
+        )
+        assert is_content_filter_error(exc) is True
+
+    def test_detects_inappropriate_content_phrase(self) -> None:
+        exc = RuntimeError("Input data may contain Inappropriate content")
+        assert is_content_filter_error(exc) is True
+
+    def test_detects_openai_content_policy_violation(self) -> None:
+        exc = RuntimeError("BadRequestError: content_policy_violation")
+        assert is_content_filter_error(exc) is True
+
+    def test_ignores_unrelated_errors(self) -> None:
+        assert is_content_filter_error(RuntimeError("rate limit exceeded")) is False
+        assert is_content_filter_error(TimeoutError("read timeout")) is False
+        assert is_content_filter_error(ValueError("bad json")) is False
