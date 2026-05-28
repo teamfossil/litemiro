@@ -3,7 +3,10 @@
 기동 시 ``LiteLLMClient`` + ``STEmbedder`` 를 한 번만 만들어 ``RealPlazaRunner``
 에 주입한다. sentence-transformers 모델 로딩이 수 초 걸리는데 매 plaza 마다
 새로 만들면 첫 라운드 응답이 늘어진다. ``--fake`` 플래그는 LLM 없이 API 만
-띄울 때 사용 — 프론트 전반 흐름만 확인할 때 편하다.
+띄울 때 사용 — 프론트 Seed → Ontology → Casting → Report 전 흐름을 LLM 키
+없이 닫는다. fake 모드는 (1) dev fixture ontology 를 그대로 베껴 OntologyStore
+에 흘리고 (2) 합성 events.jsonl 을 만들어 /report 가 0/0/0 으로 죽지 않게
+하고 (3) stub markdown 한 장을 composer 대신 돌려준다.
 """
 
 from __future__ import annotations
@@ -11,22 +14,99 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import shutil
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from dotenv import find_dotenv, load_dotenv
 
 from litemiro.api.app import create_app
-from litemiro.api.composer import RealPlazaComposer
+from litemiro.api.composer import ComposerOutcome, RealPlazaComposer
 from litemiro.api.ontology_store import OntologyRunResult
 from litemiro.api.runner import RealPlazaRunner
+from litemiro.api.sample_fixtures import DEFAULT_ONTOLOGY_A_PATH, DEFAULT_ONTOLOGY_B_PATH
 from litemiro.api.store import RunnerOutcome
+from litemiro.models import Action, ActionType, RoundEvent
 
 if TYPE_CHECKING:
     from litemiro.api.ontology_store import OntologyRunner
     from litemiro.api.store import PlazaComposer, PlazaRunner, ProgressCallback
     from litemiro.phase1.models import Preset
+
+
+# 한 라운드 안에서 agent 인덱스를 회전시키면서 6 종을 골고루 섞는다. DO_NOTHING
+# 도 포함 — /report 의 카테고리 분포가 비어 보이지 않도록.
+_FAKE_ACTION_CYCLE: tuple[ActionType, ...] = (
+    ActionType.CREATE_POST,
+    ActionType.LIKE_POST,
+    ActionType.REPOST,
+    ActionType.QUOTE_POST,
+    ActionType.FOLLOW,
+    ActionType.DO_NOTHING,
+)
+
+
+def _build_fake_action(
+    *, action_type: ActionType, round_num: int, agent_index: int, other_agent_id: str
+) -> Action:
+    """``ActionType`` 별 required 필드만 채운 결정적 합성 action.
+
+    ``Action`` 의 model validator 가 type ↔ target/content 매칭을 강제 — 잘못
+    채우면 검증 실패. round/index 만으로 재현 가능한 deterministic 값이라
+    같은 plaza 를 두 번 만들어도 동일 jsonl 이 나온다.
+    """
+    if action_type == ActionType.CREATE_POST:
+        return Action(type=action_type, content=f"fake post r={round_num} a={agent_index}")
+    if action_type == ActionType.LIKE_POST:
+        return Action(type=action_type, target_post_id=f"fake-post-r0-a{agent_index}")
+    if action_type == ActionType.REPOST:
+        return Action(type=action_type, target_post_id=f"fake-post-r0-a{agent_index}")
+    if action_type == ActionType.QUOTE_POST:
+        return Action(
+            type=action_type,
+            target_post_id=f"fake-post-r0-a{agent_index}",
+            content=f"fake quote r={round_num} a={agent_index}",
+        )
+    if action_type == ActionType.FOLLOW:
+        return Action(type=action_type, target_agent_id=other_agent_id)
+    return Action(type=action_type)  # DO_NOTHING
+
+
+def _write_fake_events(*, ontology_a_path: Path, rounds: int, event_log_path: Path) -> None:
+    """OntologyA 의 agent_id 풀로 라운드 x agent 합성 events.jsonl 작성.
+
+    ActionType 6 종을 (round + agent_index) % 6 으로 회전 → 카테고리 / follower
+    flow / hot post 집계 모두 0 으로 떨어지지 않는다. /agents 와 같은 ontology
+    fixture 에서 id 를 뽑으므로 캐스팅 100명 vs report 0명 같은 화면 간 충돌도
+    같이 해소된다.
+    """
+    from litemiro.phase1.models import OntologyA  # noqa: PLC0415
+
+    ontology_a = OntologyA.model_validate_json(ontology_a_path.read_text(encoding="utf-8"))
+    agent_ids = list(ontology_a.agents.keys())
+    if not agent_ids:
+        return
+    event_log_path.parent.mkdir(parents=True, exist_ok=True)
+    now = datetime.now(UTC).replace(microsecond=0)
+    with event_log_path.open("w", encoding="utf-8") as fh:
+        for r in range(rounds):
+            for i, agent_id in enumerate(agent_ids):
+                action_type = _FAKE_ACTION_CYCLE[(r + i) % len(_FAKE_ACTION_CYCLE)]
+                other = agent_ids[(i + 1) % len(agent_ids)]
+                event = RoundEvent(
+                    round_num=r,
+                    timestamp=now,
+                    agent_id=agent_id,
+                    action=_build_fake_action(
+                        action_type=action_type,
+                        round_num=r,
+                        agent_index=i,
+                        other_agent_id=other,
+                    ),
+                )
+                fh.write(event.to_jsonl() + "\n")
 
 
 async def _noop_runner(
@@ -39,16 +119,77 @@ async def _noop_runner(
     checkpoint_dir: Path,
     on_progress: ProgressCallback,
 ) -> RunnerOutcome:
-    """``--fake`` 모드용: 라운드만큼 잠깐 sleep 하고 진행률을 채운다.
+    """``--fake`` 모드용: 합성 events.jsonl 한 번 쓰고 진행률만 라운드 단위 폴링용으로 채운다.
 
-    프론트 폴링/상태 머신을 검증할 때 LLM 키 없이도 닫히도록 둔다.
+    이전엔 events 작성 없이 sleep + on_progress 만 돌려 /agents·/layout 은 100명인데
+    /report 는 0/0/0 으로 떨어졌었음. 프론트 화면 간 숫자가 충돌해 fake 의
+    "프론트 전 흐름 검증" 가치가 없었던 게 동기.
     """
-    del plaza_id, ontology_a_path, ontology_b_path
-    del event_log_path, checkpoint_dir
+    del plaza_id, ontology_b_path, checkpoint_dir
+    await asyncio.to_thread(
+        _write_fake_events,
+        ontology_a_path=ontology_a_path,
+        rounds=rounds,
+        event_log_path=event_log_path,
+    )
     for r in range(rounds):
         await asyncio.sleep(0)
         on_progress(rounds_done=r + 1)
     return RunnerOutcome()
+
+
+async def _noop_ontology_runner(
+    *,
+    document_path: Path,
+    requirement: str,
+    preset: Preset,
+    output_dir: Path,
+) -> OntologyRunResult:
+    """``--fake`` 모드 Phase 1: dev fixture 두 ontology 를 그대로 복사해서 return.
+
+    실 Phase 1 은 분 단위 LLM. fake 는 같은 fixture (``sample_quick_preset_
+    ontology_*.json``) 를 결과 디렉터리로 복사해 OntologyStore 가 정상 completed
+    로 인식하게 한다 — Seed 화면이 LLM 키 없이 닫혀 Casting 까지 이어진다.
+    """
+    from litemiro.phase1.models import OntologyA  # noqa: PLC0415
+
+    del document_path, requirement, preset
+    # 단일 동기 호출 — event-loop 블록 무시 가능. real ontology runner 와 같은 패턴.
+    output_dir.mkdir(parents=True, exist_ok=True)  # noqa: ASYNC240
+    target_a = output_dir / "ontology_a_persona.json"
+    target_b = output_dir / "ontology_b_memory.json"
+    await asyncio.to_thread(shutil.copyfile, DEFAULT_ONTOLOGY_A_PATH, target_a)
+    await asyncio.to_thread(shutil.copyfile, DEFAULT_ONTOLOGY_B_PATH, target_b)
+    ontology_a = OntologyA.model_validate_json(target_a.read_text(encoding="utf-8"))
+    return OntologyRunResult(
+        ontology_a_path=target_a,
+        ontology_b_path=target_b,
+        agent_count=ontology_a.agent_count,
+    )
+
+
+async def _noop_composer(*, plaza_id: str, event_log_path: Path, preset: Preset) -> ComposerOutcome:
+    """``--fake`` 보고서 합성: LLM 호출 없이 placeholder markdown + 합성 events 의 결정적 집계.
+
+    events.jsonl 이 있으면 ``DataAggregator`` 만 돌려 ``aggregation`` 을 채운다
+    (store 가 record 에 캐싱 → /report 가 매 호출마다 재집계 안 함). markdown 은
+    fake 임을 알리는 한 줄짜리 placeholder. events 가 없으면 ``RealPlazaComposer``
+    와 동일하게 ``markdown=None``.
+    """
+    from litemiro.phase3.data_aggregator import DataAggregator  # noqa: PLC0415
+
+    del plaza_id, preset
+    # ``RealPlazaComposer.__call__`` 와 같은 단일 stat — async to_thread 까지 갈
+    # 가치 없음.
+    if not event_log_path.exists():  # noqa: ASYNC240
+        return ComposerOutcome(markdown=None)
+    aggregation = DataAggregator.aggregate(event_log_path)
+    markdown = (
+        "# Fake plaza report\n\n"
+        "이 광장은 `--fake` 모드로 생성된 더미입니다. "
+        "실제 LLM 호출 없이 합성 events 로 채워졌습니다.\n"
+    )
+    return ComposerOutcome(markdown=markdown, aggregation=aggregation)
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -197,12 +338,12 @@ def main(argv: list[str] | None = None) -> int:
     composer: PlazaComposer | None
     ontology_runner: OntologyRunner | None
     if args.fake:
-        # --fake 는 LLM 키 없이도 닫혀야 한다 — composer/ontology_runner 도 함께
-        # 비운다. POST /api/ontologies 는 503 으로 응답해 프론트가 /documents 만
-        # 단독으로 검증할 수 있도록.
+        # --fake 는 LLM 키 없이 Seed→Casting→Report 까지 닫는다 — runner/composer/
+        # ontology_runner 셋 다 noop 으로 깐다. 셋 중 하나만 None 으로 두면 라우트
+        # 미등록 (#1) 또는 빈 집계 (#2) 같은 비대칭이 다시 생긴다.
         runner = _noop_runner
-        composer = None
-        ontology_runner = None
+        composer = _noop_composer
+        ontology_runner = _noop_ontology_runner
     else:
         if not os.environ.get("OPENROUTER_API_KEY"):
             print(
