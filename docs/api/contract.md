@@ -189,8 +189,8 @@ Casting 화면이 슬롯에 띄울 앵커 리스트. plaza 에 묶인 `ontology_
 {
   "plaza_id": "ab12cd34...",
   "agents": [
-    { "id": "agent_001", "name": "AI 기본법", "role": "AIRegulationPolicy", "ideology": 0.65, "topics": ["AI 규제 기본 원칙"], "avatar_seed": 2853741920 },
-    { "id": "agent_002", "name": "스타트업 협회", "role": "IndustryGroup", "ideology": 0.30, "topics": [...], "avatar_seed": 1937204815 }
+    { "id": "agent_001", "name": "AI 기본법", "role": "AIRegulationPolicy", "ideology": 0.65, "topics": ["AI 규제 기본 원칙"], "base_influence": 0.43, "avatar_seed": 2853741920 },
+    { "id": "agent_002", "name": "스타트업 협회", "role": "IndustryGroup", "ideology": 0.30, "topics": [...], "base_influence": 0.58, "avatar_seed": 1937204815 }
   ]
 }
 ```
@@ -199,6 +199,13 @@ Casting 화면이 슬롯에 띄울 앵커 리스트. plaza 에 묶인 `ontology_
 - `role`: `AgentProfile.entity_type` raw 값 — 백엔드는 enum 으로 안 좁힌다 (새 카테고리 추가될 때마다 백엔드 패치하지 않으려고). 프론트가 아래 매핑 테이블로 `RoleId` 로 좁힌다.
 - `ideology`: 0.0 ~ 1.0. **0.0 = 진보 / 1.0 = 보수** (Phase 1 ontology 추출 단계 의미). 0.5 근처는 중도/판단 보류.
 - `topics`: `AgentProfile.topics`. 자유 문자열 리스트.
+- `base_influence`: 0.0 ~ 1.0. `behavior_tendency` 가중합으로 산출한 prior 영향력. Phase 2 가 도는 동안의 engagement-weighted `/layout` `influence` 와 달리 sim 결과와 무관하고 ontology 만으로 결정되는 "광장 진입 전" 정적 기대치. Casting 화면이 "주역" 같은 노출 우선순위 / Badge 분기에 쓴다. 가중치 (합 = 1.0 → 결과는 항상 [0, 1]):
+  - `post_rate × 0.45` — 새 post 생성, 다른 agent feed 진입 (가장 강한 신호)
+  - `reply_rate × 0.20` — LIKE / REPOST / QUOTE total reaction
+  - `repost_rate × 0.15` — 재공유로 노출 증폭
+  - `controversy_affinity × 0.15` — 광장에서 회자될 가능성
+  - `follow_rate × 0.05` — out-degree (본인 영향력 prior 와 약한 상관)
+  - `like_rate` 는 `reply_rate` 의 split 의 일부 (`reply_rate = like + repost + quote` 정의) 라 별도 가중치를 안 박는다.
 - `avatar_seed`: `sha256(agent_id)[:4]` 의 uint32. 같은 plaza/같은 agent 면 reload·재연결에서도 동일 — 프론트 deterministic avatar 가 안 튄다. 백엔드가 직접 계산하는 이유는 프론트 해시 알고리즘 변경/언어 차이로 시드 어긋나는 걸 막기 위해.
 - `404`: 존재하지 않는 `plaza_id`, 또는 `ontology_a_path` 가 디스크에 없는 경우.
 - `500`: 파일이 있지만 스키마 파싱 실패 — Phase 1 산출이 손상된 경우.

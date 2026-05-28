@@ -81,6 +81,12 @@ class PlazaAgentItem(BaseModel):
     role: str
     ideology: float = Field(ge=0.0, le=1.0)
     topics: list[str] = Field(default_factory=list)
+    # behavior_tendency 가중합으로 산출한 prior 영향력 [0.0, 1.0]. Phase 2 가 도는
+    # 동안의 engagement-weighted ``/layout`` ``influence`` 와 달리 sim 결과와 무관 —
+    # ontology 만으로 결정되는 "광장 진입 전" 정적 기대치. Casting 화면이 "주역" 같은
+    # 노출 우선순위 / Badge 분기에 쓴다. 산출 가중치는 ``docs/api/contract.md`` 의
+    # ``/agents`` 섹션 SSoT.
+    base_influence: float = Field(ge=0.0, le=1.0)
     # agent_id 의 sha256 앞 4바이트 → uint32. 같은 plaza/같은 agent 면 reload·재연결에서도
     # 같은 값이 와서 프론트 deterministic avatar 가 안 튄다. 백엔드가 직접 계산하는 이유는
     # 프론트 해시 알고리즘 변경/언어 차이로 시드가 어긋나는 걸 막기 위해.

@@ -650,6 +650,10 @@ class TestGetAgents:
         assert by_id["agent_001"]["role"] == "AIRegulationPolicy"
         assert by_id["agent_001"]["ideology"] == 0.65
         assert by_id["agent_001"]["topics"] == ["agent_001-topic"]
+        # 픽스처의 behavior_tendency 디폴트 (post=0.5, reply=0.3, repost=0.2,
+        # controversy=0.5; like/follow 는 BehaviorTendency 디폴트 0.4/0.2) 로 산출:
+        # 0.5*0.45 + 0.3*0.20 + 0.2*0.15 + 0.5*0.15 + 0.2*0.05 = 0.4.
+        assert by_id["agent_001"]["base_influence"] == pytest.approx(0.4)
         # avatar_seed 는 결정적 uint32. 라우트 helper 와 같은 알고리즘 (sha256[:4]).
         seed = by_id["agent_001"]["avatar_seed"]
         assert isinstance(seed, int)
@@ -738,6 +742,81 @@ class TestGetAgents:
             resp = client.get(f"/api/plazas/{created['plaza_id']}/agents")
         assert resp.status_code == 404
         assert "ontology_a" in resp.json()["detail"]
+
+    def test_base_influence_uses_behavior_tendency_weights(self, tmp_path: Path) -> None:
+        """behavior_tendency 가 다르면 base_influence 도 다르게 산출되는지 — 가중치
+        SSoT 회귀. 디폴트 1명 + 모든 rate=1.0 1명 + 모든 rate=0.0 1명 비교.
+        """
+        onto_path = tmp_path / "ontology_a.json"
+        # _write_ontology_a 가 behavior_tendency 의 일부만 override 가능 — 본
+        # 테스트는 산출식 회귀 가드라 fixture 우회하고 raw dict 직접 작성.
+        bt_max = {
+            "post_rate": 1.0,
+            "reply_rate": 1.0,
+            "repost_rate": 1.0,
+            "like_rate": 1.0,
+            "follow_rate": 1.0,
+            "controversy_affinity": 1.0,
+        }
+        bt_min = {
+            "post_rate": 0.0,
+            "reply_rate": 0.0,
+            "repost_rate": 0.0,
+            "like_rate": 0.0,
+            "follow_rate": 0.0,
+            "controversy_affinity": 0.0,
+        }
+
+        def _agent_dict(aid: str, bt: dict[str, float]) -> dict[str, Any]:
+            return {
+                "agent_id": aid,
+                "name": aid,
+                "entity_type": "Role",
+                "origin": "extracted",
+                "derived_from": None,
+                "skeleton": {},
+                "ideology": 0.5,
+                "topics": [],
+                "sensitive_topics": [],
+                "personality": "",
+                "speech_style": "",
+                "background": "",
+                "behavior_tendency": bt,
+                "initial_following": [],
+            }
+
+        data = {
+            "version": 1,
+            "seed": 42,
+            "agent_count": 2,
+            "preset": "quick",
+            "source_document": "test-doc",
+            "simulation_requirement": "test-req",
+            "generated_at": "2026-05-28T00:00:00+00:00",
+            "ontology": {"entity_types": [], "edge_types": []},
+            "agents": {
+                "max_agent": _agent_dict("max_agent", bt_max),
+                "min_agent": _agent_dict("min_agent", bt_min),
+            },
+        }
+        onto_path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+        app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/plazas",
+                json={
+                    "ontology_a_path": str(onto_path),
+                    "ontology_b_path": "/tmp/b.json",
+                    "rounds": 1,
+                },
+            ).json()
+            body = client.get(f"/api/plazas/{created['plaza_id']}/agents").json()
+
+        by_id = {a["id"]: a for a in body["agents"]}
+        # 가중치 합 = 1.0 → 모든 rate=1.0 면 1.0, 모든 rate=0.0 면 0.0.
+        assert by_id["max_agent"]["base_influence"] == pytest.approx(1.0)
+        assert by_id["min_agent"]["base_influence"] == pytest.approx(0.0)
 
 
 def _follow_jsonl(*follows: tuple[int, str, str]) -> str:
