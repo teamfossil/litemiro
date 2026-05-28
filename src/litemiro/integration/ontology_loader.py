@@ -121,6 +121,7 @@ class OntologyLoader:
         ontology_b: OntologyB,
         embedder: EmbedderLike | None = None,
         similarity_threshold: float = _DEFAULT_SIMILARITY_THRESHOLD,
+        raise_on_extracted_mismatch: bool = False,
     ) -> tuple[ConsistencyWarning, ...]:
         """Section 6.5 페르소나-메모리 어휘 정합성 검출.
 
@@ -137,10 +138,16 @@ class OntologyLoader:
           쌍은 의미가 가까워도 모두 warning. 단위 테스트가 임베딩 모델 로딩 없이
           돌게 두는 백워드 호환 경로.
 
-        MVP 는 warning 만 — hard-error 승격은 옵션 B threshold calibration 측정
-        뒤 결정 (이슈 #21 / contract §8.4).
+        ``raise_on_extracted_mismatch=True`` 면 §8.4 의 hard-error 게이트가 켜진다 —
+        ``embedder`` 가 주어진 상태에서 ``origin=EXTRACTED`` 에이전트가 cosine
+        threshold 미만이면 ``ValueError`` 로 거부. ``derived`` 는 메모리 토픽
+        결정 시퀀스가 미정착이라 보수적으로 warning 만 흘린다. ``embedder=None``
+        legacy 경로는 의미 비교가 불가능하므로 본 인자와 무관하게 warning-only.
+        opt-in 디폴트는 ``False`` — 측정 / 단위 테스트 / 디버깅 호출은 기존
+        시그니처 그대로 분포를 받는다 (`docs/decisions/0001-persona-memory-cosine-threshold.md`).
         """
         warnings: list[ConsistencyWarning] = []
+        fatal: list[ConsistencyWarning] = []
         embed_cache: dict[str, tuple[float, ...]] = {}
 
         for aid in sorted(ontology_a.agents):
@@ -180,6 +187,21 @@ class OntologyLoader:
                 max_similarity=warning.max_similarity,
             )
             warnings.append(warning)
+            if (
+                raise_on_extracted_mismatch
+                and embedder is not None
+                and profile.origin == AgentOrigin.EXTRACTED
+            ):
+                fatal.append(warning)
+
+        if fatal:
+            sample = ", ".join(w.agent_id for w in fatal[:5])
+            suffix = "..." if len(fatal) > 5 else ""
+            raise ValueError(
+                f"§6.5 persona-memory cosine mismatch: extracted {len(fatal)} 명이 "
+                f"threshold ({similarity_threshold}) 미만 ({sample}{suffix}). "
+                f"docs/decisions/0001-persona-memory-cosine-threshold.md 참조."
+            )
         return tuple(warnings)
 
     @staticmethod
@@ -294,13 +316,19 @@ def _max_pairwise_cosine(
 
 def _cosine(a: tuple[float, ...], b: tuple[float, ...]) -> float:
     """일반 cosine. STEmbedder 는 이미 L2 정규화돼 dot product 와 동치지만
-    fake / 미정규화 embedder 도 같은 함수로 닫기 위해 정의대로 계산한다."""
+    fake / 미정규화 embedder 도 같은 함수로 닫기 위해 정의대로 계산한다.
+
+    부동소수 누적 오차로 결과가 [-1, 1] 을 살짝 벗어나는 경우가 있어
+    (예: 정규화된 같은 벡터 자기 자신끼리 1.0000000000000002),
+    ``ConsistencyWarning.max_similarity`` 의 Pydantic ``le=1`` 제약을
+    깨트리지 않도록 정의역으로 다시 clamp.
+    """
     dot = sum(x * y for x, y in zip(a, b, strict=True))
     na = math.sqrt(sum(x * x for x in a))
     nb = math.sqrt(sum(x * x for x in b))
     if na == 0.0 or nb == 0.0:
         return 0.0
-    return dot / (na * nb)
+    return max(-1.0, min(1.0, dot / (na * nb)))
 
 
 def _build_agent(profile: AgentProfile, store: MemoryStore | None) -> Agent:

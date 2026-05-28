@@ -223,17 +223,20 @@ store = StateStore(
 3. **agent_count 일관성** — `len(OntologyA.agents) == OntologyA.agent_count`.
 4. **재현성** — 동일 입력 + 동일 seed → 동일 `Agent` 튜플, 동일 `SocialGraph.to_dict()`.
 5. **페르소나–메모리 모순 검출** — `OntologyLoader.validate_consistency(*, ontology_a,
-   ontology_b, embedder=None, similarity_threshold=0.4)` 가 각 `agent_id` 에 대해
-   페르소나 토픽 묶음과 `SemanticMemory.topics` 합집합을 비교한다. `embedder` 가
-   주어지면 (**옵션 B**, `#58`) 두 묶음을 임베딩 후 **max pairwise cosine** 이
-   `similarity_threshold` 미만이면 warning — 페르소나 (LLM 추상 개념) 와 메모리
-   (NER 엔티티) 의 어휘공간이 달라도 의미 매칭이 잡힌다. `embedder=None` 은
-   legacy set intersection 경로 (단위 테스트가 모델 로딩 없이 돌게 두는 백워드
-   호환). MVP 는 warning 만, 후속 단계에서 hard error 승격 검토 (§8.4). **빈
-   `semantic` 리스트는 warning 면제** (cold start). `ConsistencyWarning.max_similarity`
-   는 임베딩 경로에서만 채워지며 threshold calibration 시 분포 관측에 쓴다.
-   `run_simulation` 은 `FeedEngine` 용으로 이미 인스턴스화된 embedder 를 재사용해
-   모델 로딩이 한 번에 묶이게 한다.
+   ontology_b, embedder=None, similarity_threshold=0.4, raise_on_extracted_mismatch=False)`
+   가 각 `agent_id` 에 대해 페르소나 토픽 묶음과 `SemanticMemory.topics` 합집합을
+   비교한다. `embedder` 가 주어지면 (**옵션 B**, `#58`) 두 묶음을 임베딩 후
+   **max pairwise cosine** 이 `similarity_threshold` 미만이면 warning — 페르소나
+   (LLM 추상 개념) 와 메모리 (NER 엔티티) 의 어휘공간이 달라도 의미 매칭이 잡힌다.
+   `embedder=None` 은 legacy set intersection 경로 (단위 테스트가 모델 로딩 없이
+   돌게 두는 백워드 호환). `raise_on_extracted_mismatch=True` 면 §8.4 의
+   hard-error 게이트가 켜진다 — `embedder` + `origin=EXTRACTED` 조합에서 미만 시
+   `ValueError`. `derived` 는 메모리 토픽 결정 시퀀스가 미정착이라 warning 유지.
+   **빈 `semantic` 리스트는 warning 면제** (cold start). `ConsistencyWarning.
+   max_similarity` 는 임베딩 경로에서만 채워지며 threshold calibration 시 분포
+   관측에 쓴다. `run_simulation` 은 `FeedEngine` 용으로 이미 인스턴스화된 embedder
+   를 재사용해 모델 로딩이 한 번에 묶이게 하고, `raise_on_extracted_mismatch=True`
+   를 켜서 production 게이트로 동작.
 
 ### 6.1 Reference fixtures
 
@@ -328,23 +331,40 @@ quick 1 회 토큰 비용을 `C(rate)` 라 할 때 (라운드 수 / 에이전트
 프리셋 활성률 측정값이 ±0.1 가드 안**, **(c) 가드 이탈 시 위 비율표로 재산정**
 3 점을 답변한다. (`#60`)
 
-### 8.4 페르소나–메모리 모순 hard-error 승격 기준
+### 8.4 페르소나–메모리 모순 hard-error 승격 (2026-05-28 결정)
 
-Section 6 step 5 의 warning 을 hard error 로 올리는 조건 — 옵션 B 임베딩 cosine
-경로 (`#58`) 기준으로 측정:
+`docs/decisions/0001-persona-memory-cosine-threshold.md` 의 calibration 측정으로
+승격 완료. 핵심 결과 (3 seed × 100 agents quick, active 69):
 
-1. **threshold calibration** — `similarity_threshold=0.4` 디폴트로 Phase 1 quick
-   프리셋을 3 회 이상 실행해 `ConsistencyWarning.max_similarity` 분포를 수집한다.
-   warning rate 가 안정적으로 **5% 미만** 이면 (그 이상이면 threshold 가 너무
-   엄격한 신호) 다음 단계로,
-2. 발생 사례가 모두 derived agent (`origin=derived`) 또는 빈 `topics` 등 의도적
-   cold start 로 설명 가능하면,
-3. extracted agent 의 모순은 hard error 로 승격하고 (`origin == EXTRACTED` 한정),
-   `OntologyLoader.load` 가 `ValueError` 로 거부.
+| 경로                          | warning | rate     |
+| ----------------------------- | ------- | -------- |
+| legacy (set intersection)     | 54 / 69 | **78.3%** |
+| 옵션 B cosine, threshold=0.40 | 0 / 69  | **0.0%**  |
 
-calibration 측정치와 승격 결정은 ADR (`docs/decisions/`) 로 별도 기록한다.
-**owner: C** (Loader 측 hard error 게이트) + **B** (관측 데이터 수집 + threshold
-민감도).
+옵션 B 의 cosine 분포는 min=0.574 / p50=0.743 / max=1.000 / mean=0.781 이라
+threshold=0.40 과 마진 0.17 이상. threshold sweep 으로 0.55 까지 warning 0건,
+0.60 에서 5건 (7.2%) 발생. 디폴트 `similarity_threshold=0.40` 유지가 안전.
+
+승격 형태:
+
+1. `OntologyLoader.validate_consistency(..., raise_on_extracted_mismatch=True)` 가
+   `embedder` + `origin=EXTRACTED` 조합에서 threshold 미만 시 `ValueError`. opt-in
+   디폴트는 `False` 라 측정 / 단위 테스트 / 디버깅 호출은 분포만 받고 backward-
+   compat. production 진입점 `integration/run.py:run_simulation` 만 `True` 로 켠다.
+2. `derived` 에이전트는 보수적으로 warning 유지 — 메모리 토픽 결정 시퀀스가 추상
+   개념 공간으로 정착되기 전 단계라, derived 까지 hard-error 확대는 별도 측정
+   후로 분리.
+3. 부수 fix — `_cosine` 결과를 `[-1, 1]` 로 clamp. 부동소수 누적 오차
+   (`1.0000000000000002`) 가 `ConsistencyWarning.max_similarity` 의 `Field(le=1.0)`
+   를 깨던 production ValidationError 의 근본 fix.
+
+calibration 재실행: `uv run --extra embedding python scripts/measure_persona_memory
+_cosine.py runs/persona-mem-remeasure`. 입력 ontology 는 `runs/` (gitignore) 또는
+`litemiro-ontology --preset quick --seed {42,43,44}` 로 재생성.
+
+**owner: B** (관측 + threshold 민감도 + opt-in 게이트 구현) + **C** (Loader hard-
+error 경계 합의). 한계 / 후속 (단일 도메인 코퍼스, cos=1.000 군집 추적, derived
+확대) 은 ADR-0001 후속 절에.
 
 ## 9. Owner 분담
 
