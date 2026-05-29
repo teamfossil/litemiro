@@ -50,6 +50,11 @@ _SYSTEM_PROMPT = (
     "'총 게시물' 같은 표현을 쓸 때는 `total_posts_created` (CREATE+QUOTE+REPOST 합) 를 인용하고, "
     "본문 있는 게시물만 가리킬 때는 `n_content_posts` 를 명시한다. "
     "top_* 리스트가 있다면 상위 3 명까지는 실명·수치를 함께 인용하라. "
+    "각 분포의 *_concentration 블록 (n_unique·top5_share·gini) 은 상위 N 명 너머의 "
+    "롱테일 집중도를 가리킨다 — 허브 집중 vs 분산을 논할 때 gini 와 top5_share 를 "
+    "근거로 인용하라. n_amplifications 는 REPOST 액션 건수와 동일한 값 (본문 없는 "
+    "재게시) 이며, QUOTE_POST 는 본문이 있어 n_content_posts 로 집계되는 별개 항목이다 "
+    "— 둘을 같은 증폭 수치로 혼동하지 말라. "
     "통계 밖의 사실은 추측하지 않으며, 데이터가 없는 항목은 '관측되지 않음' 으로 명시한다."
 )
 

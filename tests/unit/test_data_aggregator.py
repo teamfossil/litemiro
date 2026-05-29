@@ -205,6 +205,103 @@ class TestAggregateEvents:
         assert agg["avg_do_nothing_ratio"] == pytest.approx((0.5 + 0.0 + 1.0) / 3)
         assert agg["max_do_nothing_ratio"] == pytest.approx(1.0)
 
+    def test_topic_flow_samples_round_robin_across_rounds(self) -> None:
+        # 라운드 0 에 8 개, 라운드 1·2 에 1 개씩 (총 10 = limit). 이벤트 순서대로
+        # 앞 10 개를 자르면 라운드 0 이 표본을 독점하지만, round-robin 은 후반
+        # 라운드도 표본에 넣는다.
+        events = [
+            _event(
+                round_num=0, agent_id=f"a{i}", action_type=ActionType.CREATE_POST, content=f"r0-{i}"
+            )
+            for i in range(8)
+        ]
+        events.append(
+            _event(round_num=1, agent_id="b", action_type=ActionType.CREATE_POST, content="r1")
+        )
+        events.append(
+            _event(round_num=2, agent_id="c", action_type=ActionType.CREATE_POST, content="r2")
+        )
+        topic = DataAggregator.aggregate_events(events).categories[CATEGORY_TOPIC_FLOW]
+        assert len(topic["samples"]) == 10
+        assert {s["round_num"] for s in topic["samples"]} == {0, 1, 2}
+
+    def test_topic_flow_samples_not_dominated_by_first_round(self) -> None:
+        # 라운드 0 에 15 개, 라운드 1 에 5 개. 순서 절단이면 표본 10 개가 전부
+        # 라운드 0 이지만, round-robin 은 라운드 1 의 5 개를 모두 표본에 넣고
+        # 라운드 순으로 정렬해 돌려준다.
+        events = [
+            _event(
+                round_num=0, agent_id=f"a{i}", action_type=ActionType.CREATE_POST, content=f"r0-{i}"
+            )
+            for i in range(15)
+        ]
+        events += [
+            _event(
+                round_num=1, agent_id=f"b{i}", action_type=ActionType.CREATE_POST, content=f"r1-{i}"
+            )
+            for i in range(5)
+        ]
+        samples = DataAggregator.aggregate_events(events).categories[CATEGORY_TOPIC_FLOW]["samples"]
+        rounds = [s["round_num"] for s in samples]
+        assert len(samples) == 10
+        assert rounds.count(1) == 5  # 후반 라운드가 사라지지 않음
+        assert rounds == sorted(rounds)  # 라운드 순 정렬
+
+    def test_distribution_concentration_for_skewed_activity(self) -> None:
+        # a 3, b 1, c 1 → 고유 3, 상위5 = 전부(0.5 미만 아님), gini 양수.
+        events = [
+            _event(round_num=0, agent_id="a", action_type=ActionType.LIKE_POST, target_post_id="p"),
+            _event(round_num=0, agent_id="a", action_type=ActionType.LIKE_POST, target_post_id="p"),
+            _event(round_num=0, agent_id="a", action_type=ActionType.DO_NOTHING),
+            _event(round_num=0, agent_id="b", action_type=ActionType.LIKE_POST, target_post_id="p"),
+            _event(round_num=0, agent_id="c", action_type=ActionType.DO_NOTHING),
+        ]
+        conc = DataAggregator.aggregate_events(events).categories[CATEGORY_ACTION_DISTRIBUTION][
+            "agent_activity_concentration"
+        ]
+        assert conc["n_unique"] == 3
+        assert conc["top5_share"] == pytest.approx(1.0)
+        assert 0.0 < conc["gini"] < 1.0
+
+    def test_gini_zero_for_uniform_distribution(self) -> None:
+        events = [
+            _event(round_num=0, agent_id=a, action_type=ActionType.DO_NOTHING)
+            for a in ("a", "b", "c", "d")
+        ]
+        conc = DataAggregator.aggregate_events(events).categories[CATEGORY_ACTION_DISTRIBUTION][
+            "agent_activity_concentration"
+        ]
+        assert conc["n_unique"] == 4
+        assert conc["gini"] == pytest.approx(0.0)
+
+    def test_top5_share_below_one_with_long_tail(self) -> None:
+        # 10 명이 각 1 행동 → 상위 5 점유율 0.5, gini 0. top_* 리스트(상위 10)
+        # 너머 분포가 없으니 롱테일은 균등.
+        events = [
+            _event(round_num=0, agent_id=f"a{i:02d}", action_type=ActionType.DO_NOTHING)
+            for i in range(10)
+        ]
+        conc = DataAggregator.aggregate_events(events).categories[CATEGORY_ACTION_DISTRIBUTION][
+            "agent_activity_concentration"
+        ]
+        assert conc["n_unique"] == 10
+        assert conc["top5_share"] == pytest.approx(0.5)
+        assert conc["gini"] == pytest.approx(0.0)
+
+    def test_network_and_poster_concentration_exposed(self) -> None:
+        events = [
+            _event(round_num=0, agent_id="a", action_type=ActionType.FOLLOW, target_agent_id="hub"),
+            _event(round_num=0, agent_id="b", action_type=ActionType.FOLLOW, target_agent_id="hub"),
+            _event(round_num=0, agent_id="c", action_type=ActionType.CREATE_POST, content="x"),
+            _event(round_num=0, agent_id="c", action_type=ActionType.CREATE_POST, content="y"),
+        ]
+        cats = DataAggregator.aggregate_events(events).categories
+        net = cats[CATEGORY_NETWORK_METRICS]
+        assert net["followee_concentration"]["n_unique"] == 1  # hub 한 명만 수신
+        assert net["follower_concentration"]["n_unique"] == 2  # a, b 발신
+        topic = cats[CATEGORY_TOPIC_FLOW]
+        assert topic["poster_concentration"]["n_unique"] == 1  # c 만 작성
+
     def test_aggregation_is_deterministic_for_same_input(self) -> None:
         events = [
             _event(round_num=0, agent_id="b", action_type=ActionType.LIKE_POST, target_post_id="p"),
