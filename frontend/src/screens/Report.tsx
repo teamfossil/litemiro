@@ -247,10 +247,10 @@ export default function Report() {
 
   useEffect(() => {
     if (!plazaId) return;
-    let cancelled = false;
-    api.getReport(plazaId).then((res) => { if (!cancelled) setBackendReport(res); }).catch(() => {});
-    api.getLayout(plazaId).then((res) => { if (!cancelled) setLayout(res); }).catch(() => {});
-    return () => { cancelled = true; };
+    const ac = new AbortController();
+    api.getReport(plazaId, ac.signal).then((res) => { setBackendReport(res); }).catch(() => {});
+    api.getLayout(plazaId, ac.signal).then((res) => { setLayout(res); }).catch(() => {});
+    return () => ac.abort();
   }, [plazaId]);
 
   // /layout 의 agents 를 MiniPlaza 가 먹는 PlazaNode 형태로 변환. ready=false 면 빈 배열.

@@ -5,7 +5,7 @@
 // 실 제품: generateLiveActions() → SSE /stream 의 event:"action" 으로 교체.
 // =====================================================================
 
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { lm } from '@/data/mock';
 import type { Action, ActionType, Agent, AgentRegistry, PlazaNode } from '@/data/types';
@@ -342,21 +342,24 @@ export default function Live() {
   // /agents 한 번만 — 광장 ID 고정이라 갱신 불필요.
   useEffect(() => {
     if (!plazaId) return;
-    let cancelled = false;
-    api.getAgents(plazaId)
-      .then((res) => { if (!cancelled) setRawAgents(res.agents); })
+    const ac = new AbortController();
+    api.getAgents(plazaId, ac.signal)
+      .then((res) => { setRawAgents(res.agents); })
       .catch(() => {});
-    return () => { cancelled = true; };
+    return () => ac.abort();
   }, [plazaId]);
 
-  // /layout 은 sim 진행 중엔 ready=false 라 status 가 composing/completed 로 바뀔 때 한 번 더.
+  // /layout 은 sim 진행 중엔 ready=false 라 좌표가 비어 있다 — 의미 있는 응답이
+  // 떨어지는 composing/completed 진입 시점에만 한 번 받는다. running 단계마다
+  // 재호출하면 ready=false 응답만 받느라 헛돈다.
   useEffect(() => {
     if (!plazaId) return;
-    let cancelled = false;
-    api.getLayout(plazaId)
-      .then((res) => { if (!cancelled && res.ready) setLayoutAgents(res.agents); })
+    if (phaseStatus !== 'composing' && phaseStatus !== 'completed') return;
+    const ac = new AbortController();
+    api.getLayout(plazaId, ac.signal)
+      .then((res) => { if (res.ready) setLayoutAgents(res.agents); })
       .catch(() => {});
-    return () => { cancelled = true; };
+    return () => ac.abort();
   }, [plazaId, phaseStatus]);
 
   // 사이드바 피드에 필요한 agent_id → name/role 매핑.
@@ -374,9 +377,19 @@ export default function Live() {
 
   const nodes = useMemo<PlazaNode[]>(() => buildLiveNodes(rawAgents, layoutAgents), [rawAgents, layoutAgents]);
 
+  // 마지막으로 카운트에 반영한 액션의 timestamp (ISO 8601). EventSource 가 끊겼다
+  // 재연결하면 백엔드가 actions_snapshot 을 다시 보내는데, 이 게이트가 없으면
+  // (a) snapshot 이 onAction 으로 이미 bump 된 카운터를 과거값으로 덮어쓰거나
+  // (b) snapshot 직후 같은 액션이 개별 action 으로 또 들어와 이중 카운트된다.
+  // events.jsonl 은 append-only 시간순이라 timestamp 단조 증가를 게이트로 쓴다.
+  const lastActionTsRef = useRef<string>('');
+
   // SSE — progress / status / action / actions_snapshot.
   useEffect(() => {
     if (!plazaId) return;
+    // 재연결마다 effect 가 다시 도는 게 아니므로(dep 는 plazaId 만) 게이트는
+    // 스트림 수명 동안 유지된다. 새 plazaId 진입 시에만 초기화.
+    lastActionTsRef.current = '';
     // 백엔드 ActionType ('LIKE_POST') 와 frontend mock ActionType ('LIKE') 의 wire
     // 차이를 여기서 정규화. ACTION_LABELS / computeStats 가 mock 키만 보므로
     // SSE 의 'LIKE_POST' 를 매핑 안 하면 ActionItem 렌더에서 undefined.tone throw.
@@ -398,12 +411,20 @@ export default function Live() {
         setTotal(e.rounds_total);
       },
       onAction: (e) => {
+        // 게이트보다 과거이거나 같은 액션은 이미 snapshot/이전 action 에 반영됨 — skip.
+        if (e.timestamp <= lastActionTsRef.current) return;
+        lastActionTsRef.current = e.timestamp;
         const act = toAction(e);
         setLiveActions((prev) => (prev.length >= 40 ? [...prev.slice(1), act] : [...prev, act]));
         setCounters((c) => bumpCounters(c, act.type));
       },
       onActionsSnapshot: (e) => {
+        // snapshot 은 누적 카운트의 진실값 — 그대로 리셋. 재연결 후 들어와도
+        // 카운터를 snapshot 기준으로 다시 맞춘다. 이후 개별 action 은 게이트로
+        // 중복을 막으므로, 게이트를 snapshot 의 마지막(=최신) timestamp 로 올린다.
         const all = e.actions.map(toAction);
+        const lastTs = e.actions.length > 0 ? e.actions[e.actions.length - 1].timestamp : '';
+        if (lastTs) lastActionTsRef.current = lastTs;
         setLiveActions(all.slice(-40));
         setCounters(countActions(all));
       },

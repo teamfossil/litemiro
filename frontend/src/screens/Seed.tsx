@@ -5,7 +5,7 @@
 // Seed 는 "광장 열기" 버튼을 짧게 잠그고 바로 Casting 으로 넘긴다.
 // =====================================================================
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ScreenHeader } from '@/components/chrome';
 import { Button, ArrowGlyph } from '@/components/atoms';
@@ -211,6 +211,11 @@ export default function Seed() {
   const [planId, setPlanId] = useState<Preset>('standard');
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<string | null>(null);
+  // 진행 중인 업로드의 AbortController — 큰 파일 업로드 도중 화면을 떠나면 끊는다.
+  const uploadAcRef = useRef<AbortController | null>(null);
+
+  // 언마운트 시 진행 중인 업로드 취소.
+  useEffect(() => () => uploadAcRef.current?.abort(), []);
 
   const plan = SEED_PLANS.find((p) => p.id === planId)!;
   const busy = phase !== 'idle';
@@ -232,13 +237,18 @@ export default function Seed() {
     }
 
     setPhase('uploading');
+    const ac = new AbortController();
+    uploadAcRef.current = ac;
     try {
-      const res = await api.uploadDocument(f);
+      const res = await api.uploadDocument(f, ac.signal);
       setDoc(res);
     } catch (e) {
-      setError(formatError(e, '업로드 실패'));
+      // abort 는 화면 이탈에 따른 정상 취소 — 에러로 표시하지 않는다.
+      if (!ac.signal.aborted) setError(formatError(e, '업로드 실패'));
     } finally {
-      setPhase('idle');
+      // 다른 업로드가 이미 시작돼 ref 를 덮어썼다면 건드리지 않는다.
+      if (uploadAcRef.current === ac) uploadAcRef.current = null;
+      if (!ac.signal.aborted) setPhase('idle');
     }
   };
 
