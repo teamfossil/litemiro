@@ -17,7 +17,8 @@
   padding: var(--s-8) var(--s-10);
   display: flex; flex-direction: column;
   gap: var(--s-7);
-  overflow: hidden;
+  overflow-y: auto;   /* scroll if the viewport is too SHORT, instead of
+                         clipping — prevents HERO overflowing onto HOW */
   min-height: 0;
 }
 .lm-landing__top {
@@ -38,7 +39,8 @@
   gap: var(--s-5);
   flex: 1 1 auto;
   justify-content: center;
-  min-height: 0;
+  min-height: auto;   /* never shrink below content — the old min-height:0 let
+                         the huge h1 + tagline overflow onto the HOW row */
 }
 .lm-landing__eyebrow {
   display: inline-flex; align-items: center; gap: var(--s-2);
@@ -62,7 +64,7 @@
 }
 .lm-landing__h1 {
   margin: 0;
-  font-size: clamp(calc(72px * var(--scale)), calc(9vw * var(--scale)), calc(140px * var(--scale)));
+  font-size: clamp(40px, 9vw, 116px);
   line-height: 0.96;
   letter-spacing: -0.045em;
   font-weight: 600;
@@ -256,9 +258,51 @@
   font-weight: 600;
 }
 
-/* ---------- RESPONSIVE ---------- */
+/* ---------- RESPONSIVE — 4-breakpoint normalization (SSoT region matrix) ----------
+   region   | mobile ≤480      | tablet 481–1024 | laptop 1025–1366 | desktop 1367+
+   HERO     | stack, fluid h1  | stack           | resize           | left col
+   HOW      | stack vertical   | 3-col           | 3-col            | 3-col
+   CTA      | full-width stack | row             | row              | row
+   RECENT   | tappable cards   | list            | list             | list
+   PLAZA-VIZ| 16/10 band (top) | band (top)      | right col        | right col
+   At ≤1024 the page stacks and .lm-shell__main scrolls (set in chrome.css);
+   no region is allowed to crush to 0. */
+
+/* laptop — same 2-col, tighter padding */
+@media (max-width: 1366px) {
+  .lm-landing__left { padding: var(--s-7) var(--s-8); gap: var(--s-6); }
+  .lm-landing__verdict-card { left: var(--s-6); right: var(--s-6); bottom: var(--s-6); }
+}
+
+/* tablet — STACK: plaza viz becomes a top band, content flows below (page scrolls) */
 @media (max-width: 1024px) {
-  .lm-landing { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
-  .lm-landing__right { aspect-ratio: 16/9; max-height: 40vh; }
-  .lm-landing__verdict-card { display: none; }
+  .lm-landing {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
+    height: auto; min-height: 100%;
+    overflow: visible;
+  }
+  .lm-landing__right { order: -1; height: min(380px, 42vh); aspect-ratio: auto; }
+  .lm-landing__verdict-card { left: var(--s-6); right: var(--s-6); bottom: var(--s-5); }
+  .lm-landing__left { overflow: visible; min-height: 0; padding: var(--s-7) var(--s-8) var(--s-8); }
+  .lm-landing__hero { flex: 0 0 auto; justify-content: flex-start; }
+}
+
+/* mobile — REDESIGN: viz = 16/10 hero band with verdict overlay; HERO left-aligned;
+   HOW a vertical numbered list; CTA full-width; RECENT tappable cards; page scrolls */
+@media (max-width: 480px) {
+  .lm-landing { grid-template-rows: auto auto; }
+  .lm-landing__right { order: -1; height: auto; aspect-ratio: 16 / 10; width: 100%; }
+  .lm-landing__verdict-card { left: var(--s-4); right: var(--s-4); bottom: var(--s-4); padding: var(--s-4) var(--s-5); }
+  .lm-landing__verdict-text { font-size: var(--t-small); }
+  .lm-landing__left { padding: var(--s-6) var(--s-5) var(--s-7); gap: var(--s-6); }
+  .lm-landing__top { padding-top: var(--s-1); }
+  .lm-landing__hero { gap: var(--s-4); }
+  .lm-landing__tagline { font-size: var(--t-body); max-width: none; }
+  .lm-landing__how { grid-template-columns: 1fr; gap: var(--s-4); padding: var(--s-5) 0; }
+  .lm-landing__how-step { flex-direction: row; align-items: baseline; gap: var(--s-3); }
+  .lm-landing__how-n { min-width: 2ch; }
+  .lm-landing__cta { flex-direction: column; align-items: stretch; gap: var(--s-3); }
+  .lm-landing__cta .lm-btn { width: 100%; justify-content: center; }
+  .lm-landing__recent-card { grid-template-columns: 12px 1fr auto; padding: var(--s-3); }
 }

@@ -375,11 +375,56 @@
   border-radius: calc(2px * var(--scale));
 }
 
-/* ---------- RESPONSIVE ---------- */
-@media (max-width: 1100px) {
+/* ---------- RESPONSIVE — 4-breakpoint normalization ----------
+   ≤1024 the page SCROLLS (via .lm-shell__main): the map gets a generous fixed
+   height so it stays legible, and the activity feed flows beneath it. */
+
+/* laptop — narrow the feed column slightly */
+@media (max-width: 1366px) {
   .lm-live.is-sidebar-open { grid-template-columns: 1fr 380px; }
+  .lm-live__head { padding: var(--s-4) var(--s-7) var(--s-3); }
+  .lm-live__foot { padding: var(--s-3) var(--s-7) var(--s-4); }
 }
-@media (max-width: 900px) {
-  .lm-live.is-sidebar-open { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
-  .lm-live__sidebar { border-left: 0; border-top: 1px solid var(--rule); max-height: 40vh; }
+
+/* tablet + mobile — stacked & scrolling: tall legible map, feed flows below */
+@media (max-width: 1024px) {
+  .lm-live,
+  .lm-live.is-sidebar-open {
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 auto;        /* grow to content height (override base flex:1) */
+    overflow: visible;     /* don't clip the feed; .lm-shell__main scrolls */
+    height: auto;
+    min-height: 100%;
+  }
+  .lm-live__main {
+    flex: 0 0 auto;
+    height: min(620px, 78vh);   /* tall, legible map */
+    min-height: 420px;
+  }
+  .lm-live__canvas { min-height: 0; }
+  .lm-live__sidebar {
+    flex: 0 0 auto;        /* natural height, flows below the map */
+    border-left: 0;
+    border-top: 1px solid var(--rule);
+    min-height: 0;
+  }
+  .lm-live__feed { min-height: 0; }
+  .lm-live__feed-list { overflow: visible; }   /* page scroll, not nested */
+  .lm-live__head-right .lm-stat__value { white-space: nowrap; }
+  /* the 6-cell stats grid duplicates the round/발언 counters already in the
+     header — hide it on stacked layouts so the feed gets full width */
+  .lm-live__stats-grid { display: none; }
+  .lm-live.is-sidebar-open .lm-live__head-right .lm-stat { display: flex; }
+}
+
+@media (max-width: 480px) {
+  .lm-live__main { height: min(520px, 82vh); min-height: 360px; }
+  .lm-live__head { padding: var(--s-4) var(--s-4) var(--s-3); gap: var(--s-3); }
+  .lm-live__head-right { gap: var(--s-5); flex: 0 0 auto; }
+  .lm-live__status-text { font-size: var(--t-body); white-space: normal; }
+  .lm-live__foot { padding: var(--s-3) var(--s-4) var(--s-4); }
+  .lm-live__foot-actions .lm-btn { width: 100%; justify-content: center; }
+  .lm-live__canvas-axis { left: var(--s-4); right: var(--s-4); }
+  .lm-live__agent-name { max-width: 140px; }
 }

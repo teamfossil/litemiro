@@ -410,7 +410,62 @@
   cursor: not-allowed;
 }
 
-/* ---------- RESPONSIVE ---------- */
-@media (max-width: 1100px) {
-  .lm-seed__grid { grid-template-columns: 1fr; }
+/* ---------- RESPONSIVE — 4-breakpoint normalization ----------
+   region: HEADER / UPLOAD / REQUIREMENT / PLANS / CHECKOUT.
+   At ≤1024 the grid stacks and the page scrolls via .lm-shell__main. */
+
+/* laptop — tighten gutters, keep 2-col */
+@media (max-width: 1366px) {
+  .lm-seed__pad { padding: 0 var(--s-7) var(--s-6); }
+  .lm-seed__grid { gap: var(--s-6); }
+}
+
+/* tablet — UPLOAD over PLANS (stack); the page grows and scrolls */
+@media (max-width: 1024px) {
+  .lm-seed, .lm-seed__pad { overflow: visible; }
+  .lm-seed__grid {
+    grid-template-columns: 1fr;
+    grid-auto-rows: min-content;
+    align-items: stretch;
+    gap: var(--s-7);
+    flex: 0 0 auto;
+    padding-bottom: var(--s-7);
+  }
+  .lm-seed__drop { min-height: 200px; }
+}
+
+/* mobile — single column; plan cards reflow to stacked rows; footer stacks;
+   file-meta wraps so a long hash can't force horizontal scroll */
+@media (max-width: 480px) {
+  .lm-seed__pad { padding: 0 var(--s-4) var(--s-5); }
+  .lm-seed__grid { gap: var(--s-6); }
+  .lm-seed__drop { padding: var(--s-6) var(--s-4); min-height: 180px; }
+  .lm-seed__drop-h { font-size: var(--t-h3); }
+  .lm-seed__drop-sub { font-size: var(--t-body); }
+  .lm-seed__drop-icon svg { width: 48px; height: 48px; }
+  .lm-seed__section-h { font-size: var(--t-h4); }
+  .lm-seed__file-info { min-width: 0; }
+  .lm-seed__file-meta { flex-wrap: wrap; }
+  .lm-seed__file-meta span { overflow-wrap: anywhere; }
+
+  /* plan card: radio + name + cost on row 1, stats on row 2, desc row 3 */
+  .lm-seed__plan {
+    grid-template-columns: 24px 1fr auto;
+    grid-template-rows: auto auto auto;
+    column-gap: var(--s-3);
+    row-gap: var(--s-2);
+    padding: var(--s-4);
+  }
+  .lm-seed__plan-name { grid-column: 2; grid-row: 1; font-size: var(--t-h4); }
+  .lm-seed__plan-cost { grid-column: 3; grid-row: 1; font-size: var(--t-h4); }
+  .lm-seed__plan-stats { grid-column: 2 / span 2; grid-row: 2; gap: var(--s-2); flex-wrap: wrap; }
+  .lm-seed__plan-desc { grid-column: 2 / span 2; grid-row: 3; }
+
+  .lm-seed__footer {
+    flex-direction: column; align-items: stretch; gap: var(--s-3);
+    position: sticky; bottom: 0;
+    background: var(--paper);
+    padding-bottom: var(--s-3);
+  }
+  .lm-seed__footer .lm-btn { width: 100%; justify-content: center; }
 }

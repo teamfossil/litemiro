@@ -191,11 +191,50 @@
 .lm-screen-header__meta { display: flex; gap: var(--s-7); }
 .lm-screen-header__actions { display: flex; gap: var(--s-3); }
 
-/* ---------- RESPONSIVE ---------- */
-@media (max-width: 1280px) {
+/* ---------- RESPONSIVE — 4-breakpoint normalization (no global --scale) ----------
+   mobile ≤480 · tablet 481–1024 · laptop 1025–1366 · desktop 1367+
+   Header nav stays functional at every width (scrolls horizontally when tight);
+   the dedicated mobile bottom tab bar is a follow-up change. */
+
+/* laptop — tighten gutters, keep full layout */
+@media (max-width: 1366px) {
+  .lm-header { gap: var(--s-5); padding: 0 var(--s-6); }
+  .lm-screen-header { padding: var(--s-7) 0 var(--s-6); margin-bottom: var(--s-6); }
+}
+
+/* tablet — drop the plaza title; shell main scrolls; screen-header stacks so the
+   Korean title never competes with meta/actions on one row; nav can scroll-x */
+@media (max-width: 1024px) {
   .lm-header { grid-template-columns: auto 1fr auto; gap: var(--s-5); }
   .lm-header__plaza { display: none; }
+  .lm-shell__main { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .lm-header__nav { overflow-x: auto; scrollbar-width: none; }
+  .lm-header__nav::-webkit-scrollbar { display: none; }
+  .lm-header__navitem { flex: 0 0 auto; }
+  .lm-screen-header {
+    flex-direction: column; align-items: flex-start; gap: var(--s-5);
+    padding: var(--s-6) 0 var(--s-5); margin-bottom: var(--s-5);
+  }
+  .lm-screen-header__title { max-width: none; }
+  .lm-screen-header__aside {
+    width: 100%; justify-content: space-between; align-items: flex-end;
+    flex-wrap: wrap; gap: var(--s-5);
+  }
 }
-@media (max-width: 900px) {
-  .lm-header__nav { display: none; }
+
+/* mobile — compact header; nav shows phase numbers only (labels hidden) and
+   scrolls horizontally so all phases stay reachable without a tab bar */
+@media (max-width: 480px) {
+  .lm-header { gap: var(--s-3); padding: 0 var(--s-4); }
+  .lm-header__right { gap: var(--s-2); }
+  .lm-header__nav { gap: 0; padding: calc(3px * var(--scale)); }
+  .lm-header__navitem { padding: calc(6px * var(--scale)) var(--s-2); }
+  .lm-header__navlabel { display: none; }
+  .lm-screen-header {
+    padding: var(--s-5) 0 var(--s-4); margin-bottom: var(--s-4); gap: var(--s-3);
+  }
+  .lm-screen-header__title { font-size: var(--t-h2); }
+  .lm-screen-header__sub { font-size: var(--t-body); }
+  .lm-screen-header__meta { gap: var(--s-5); }
+  .lm-screen-header__actions { flex: 1; }
 }
