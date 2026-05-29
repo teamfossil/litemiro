@@ -28,6 +28,7 @@ def build_context(
         recent_actions=tuple(recent_actions),
         follower_count=social.follower_count(agent.agent_id),
         following_count=social.following_count(agent.agent_id),
+        following_ids=social.following(agent.agent_id),
         round_num=round_num,
     )
 

@@ -128,6 +128,11 @@ _BEHAVIOR_TENDENCY_LABELS: tuple[tuple[str, str], ...] = (
 _FOLLOW_RATE_FALLBACK = 0.2
 _LIKE_RATE_FALLBACK = 0.4
 
+# _authors_block 의 author 별 sample post snippet 길이. feed_block 의 120 보다
+# 짧게 — author 섹션은 여러 author 가 나란히 있어 줄당 길이 압축이 필요하고,
+# stance 추론에는 첫 문장 정도면 충분. #142 hub pattern 완화용 stance hint.
+_SAMPLE_LEN = 80
+
 
 def compose_system(agent_id: str, context: ActionContext) -> str:
     """Build the system prompt — persona card + behavior hints + schema."""
@@ -203,7 +208,13 @@ def _behavior_hint(context: ActionContext) -> str:
             " Note: reply_rate is the total reaction probability split across "
             "LIKE / REPOST / QUOTE. like_rate and repost_rate are absolute weights "
             "within that total — the remainder (reply_rate - like_rate - repost_rate) "
-            "goes to QUOTE."
+            "goes to QUOTE. follow_rate is INDEPENDENT of this split — it triggers "
+            "a FOLLOW action roughly follow_rate fraction of rounds, on top of "
+            "(not instead of) post reactions. Stay close to these tendencies "
+            "across many rounds — do NOT pick the same action every round "
+            "just because it feels safe. A realistic agent mixes reactions, "
+            "occasional follows when an aligned non-followee appears, and "
+            "the occasional new post or pause."
         )
     # post_rate 는 reply_rate 와 직교 — CREATE_POST 의 절대 비율. debug4 측정에서
     # post_rate default 0.5 인데도 r1 이후 CREATE_POST ≈ 0 으로 떨어지는 cold-
@@ -248,6 +259,42 @@ def _feed_block(context: ActionContext) -> str:
     return "\n".join(lines)
 
 
+def _authors_block(context: ActionContext) -> str:
+    """Feed 의 author 들을 별도로 묶어 노출. 각 author 가 몇 개 post 로
+    등장했는지 + 이미 follow 중인지 + 그 author 의 대표 post snippet 을
+    표시 — LLM 이 새 FOLLOW 후보 (아직 follow 안 했고 stance 정합인
+    author) 를 식별할 수 있게 한다. snippet 은 feed 의 hot order 에서
+    그 author 가 처음 등장한 post (= 그 author 의 가장 hot 한 post) 의
+    첫 ``_SAMPLE_LEN`` 글자. agent 의 ideology 는 사적 정보라 표시 불가
+    — 대신 post 본문으로 stance 추론. #142 의 hub pattern (stance
+    mismatch FOLLOW 22%) 완화. 강제가 아니라 정보 제공 — FOLLOW 결정은
+    여전히 모델의 판단에 맡긴다.
+    """
+    if not context.feed:
+        return ""
+    self_id = context.agent.agent_id
+    counts: dict[str, int] = {}
+    order: list[str] = []
+    sample: dict[str, str] = {}
+    for post in context.feed:
+        author = post.author_id
+        if author == self_id:
+            continue
+        if author not in counts:
+            order.append(author)
+            sample[author] = post.content[:_SAMPLE_LEN]
+        counts[author] = counts.get(author, 0) + 1
+    if not counts:
+        return ""
+    following = context.following_ids
+    lines = ["Authors in your feed (FOLLOW candidates are those not yet followed):"]
+    for author in sorted(order, key=lambda a: (-counts[a], a)):
+        tag = "already following" if author in following else "not yet followed"
+        lines.append(f"  - @{author} ({counts[author]} posts) — {tag}")
+        lines.append(f"      sample: {sample[author]}")
+    return "\n".join(lines)
+
+
 def _recent_block(context: ActionContext) -> str:
     if not context.recent_actions:
         return "You have taken no recent actions."
@@ -266,15 +313,16 @@ def _recent_block(context: ActionContext) -> str:
 
 def compose_user(context: ActionContext) -> str:
     """Build the per-round user prompt."""
-    return "\n\n".join(
-        [
-            f"Round: {context.round_num}",
-            f"Followers: {context.follower_count}, Following: {context.following_count}",
-            _feed_block(context),
-            _recent_block(context),
-            "Choose your next action.",
-        ]
-    )
+    sections = [
+        f"Round: {context.round_num}",
+        f"Followers: {context.follower_count}, Following: {context.following_count}",
+        _feed_block(context),
+    ]
+    authors = _authors_block(context)
+    if authors:
+        sections.append(authors)
+    sections.extend([_recent_block(context), "Choose your next action."])
+    return "\n\n".join(sections)
 
 
 __all__ = ["compose_system", "compose_user"]
