@@ -79,6 +79,7 @@ function CastingLoading() {
 
     let cancelled = false;
     let pollTimer: ReturnType<typeof setTimeout> | null = null;
+    const ac = new AbortController();
     const startedAt = Date.now();
     const elapsedTimer = window.setInterval(() => {
       if (!cancelled) setElapsedSec(Math.floor((Date.now() - startedAt) / 1000));
@@ -88,9 +89,10 @@ function CastingLoading() {
       if (cancelled) return;
       let onto: OntologyResponse;
       try {
-        onto = await api.getOntology(ontologyId);
+        onto = await api.getOntology(ontologyId, ac.signal);
       } catch (e) {
-        if (cancelled) return;
+        // abort 는 화면 이탈에 따른 정상 취소 — 에러 상태로 만들지 않는다.
+        if (cancelled || ac.signal.aborted) return;
         setError(formatError(e, '상태 조회 실패'));
         setPhase('failed');
         return;
@@ -130,6 +132,7 @@ function CastingLoading() {
 
     return () => {
       cancelled = true;
+      ac.abort();
       if (pollTimer) clearTimeout(pollTimer);
       window.clearInterval(elapsedTimer);
     };
@@ -215,17 +218,19 @@ function CastingReveal() {
 
   useEffect(() => {
     if (!plazaId) return;
-    let cancelled = false;
+    const ac = new AbortController();
     api
-      .getAgents(plazaId)
+      .getAgents(plazaId, ac.signal)
       .then((res) => {
-        if (!cancelled) setAgents(res.agents);
+        setAgents(res.agents);
       })
       .catch((e) => {
-        if (!cancelled) setError(formatError(e, '인격 목록 조회 실패'));
+        // abort 는 화면 이탈에 따른 정상 취소 — 에러 메시지를 띄우지 않는다.
+        if (ac.signal.aborted) return;
+        setError(formatError(e, '인격 목록 조회 실패'));
       });
     return () => {
-      cancelled = true;
+      ac.abort();
     };
   }, [plazaId]);
 

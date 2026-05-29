@@ -267,10 +267,11 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, signal?: AbortSignal): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
+    signal,
     ...init,
+    headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
@@ -287,12 +288,13 @@ export const api = {
    * 브라우저가 multipart boundary 까지 포함해 자동으로 채우게 두는 게 정공.
    * 직접 application/json 으로 박으면 422 가 떨어진다.
    */
-  uploadDocument: async (file: File): Promise<DocumentResponse> => {
+  uploadDocument: async (file: File, signal?: AbortSignal): Promise<DocumentResponse> => {
     const form = new FormData();
     form.append('file', file);
     const res = await fetch(`${API_BASE}/api/documents`, {
       method: 'POST',
       body: form,
+      signal,
     });
     if (!res.ok) {
       const text = await res.text().catch(() => '');
@@ -300,16 +302,16 @@ export const api = {
     }
     return (await res.json()) as DocumentResponse;
   },
-  getDocument: (documentId: string) =>
-    request<DocumentResponse>(`/api/documents/${encodeURIComponent(documentId)}`),
+  getDocument: (documentId: string, signal?: AbortSignal) =>
+    request<DocumentResponse>(`/api/documents/${encodeURIComponent(documentId)}`, undefined, signal),
 
   createOntology: (body: CreateOntologyRequest) =>
     request<OntologyResponse>('/api/ontologies', {
       method: 'POST',
       body: JSON.stringify(body),
     }),
-  getOntology: (ontologyId: string) =>
-    request<OntologyResponse>(`/api/ontologies/${encodeURIComponent(ontologyId)}`),
+  getOntology: (ontologyId: string, signal?: AbortSignal) =>
+    request<OntologyResponse>(`/api/ontologies/${encodeURIComponent(ontologyId)}`, undefined, signal),
 
   createPlaza: (body: CreatePlazaRequest) =>
     request<CreatePlazaResponse>('/api/plazas', {
@@ -324,14 +326,14 @@ export const api = {
     const q = search.toString();
     return request<PlazaListResponse>(`/api/plazas${q ? `?${q}` : ''}`);
   },
-  getStatus: (plazaId: string) =>
-    request<PlazaStatusResponse>(`/api/plazas/${encodeURIComponent(plazaId)}/status`),
-  getReport: (plazaId: string) =>
-    request<PlazaReportResponse>(`/api/plazas/${encodeURIComponent(plazaId)}/report`),
-  getAgents: (plazaId: string) =>
-    request<PlazaAgentsResponse>(`/api/plazas/${encodeURIComponent(plazaId)}/agents`),
-  getLayout: (plazaId: string) =>
-    request<PlazaLayoutResponse>(`/api/plazas/${encodeURIComponent(plazaId)}/layout`),
+  getStatus: (plazaId: string, signal?: AbortSignal) =>
+    request<PlazaStatusResponse>(`/api/plazas/${encodeURIComponent(plazaId)}/status`, undefined, signal),
+  getReport: (plazaId: string, signal?: AbortSignal) =>
+    request<PlazaReportResponse>(`/api/plazas/${encodeURIComponent(plazaId)}/report`, undefined, signal),
+  getAgents: (plazaId: string, signal?: AbortSignal) =>
+    request<PlazaAgentsResponse>(`/api/plazas/${encodeURIComponent(plazaId)}/agents`, undefined, signal),
+  getLayout: (plazaId: string, signal?: AbortSignal) =>
+    request<PlazaLayoutResponse>(`/api/plazas/${encodeURIComponent(plazaId)}/layout`, undefined, signal),
 
   /**
    * `/status` 폴링 대신 SSE 로 progress / status 이벤트를 push 받는다.
@@ -348,24 +350,37 @@ export const api = {
     const es = new EventSource(url);
     const close = () => es.close();
 
+    // 재연결 중 빈/불완전 페이로드나 malformed JSON 이 한 번 들어와도 스트림 전체가
+    // 죽으면 안 된다. parse 실패 이벤트는 버리되 EventSource 는 그대로 둔다 —
+    // 다음 정상 이벤트로 자연히 복구된다. 실패는 onError 로만 흘려 통지.
+    const parseEvent = <T>(ev: Event): T | null => {
+      try {
+        return JSON.parse((ev as MessageEvent).data) as T;
+      } catch (err) {
+        handlers.onError?.(err instanceof Event ? err : ev);
+        return null;
+      }
+    };
+
     es.addEventListener('progress', (ev) => {
-      const data = JSON.parse((ev as MessageEvent).data) as PlazaProgressEvent;
-      handlers.onProgress?.(data);
+      const data = parseEvent<PlazaProgressEvent>(ev);
+      if (data) handlers.onProgress?.(data);
     });
     es.addEventListener('status', (ev) => {
-      const data = JSON.parse((ev as MessageEvent).data) as PlazaStatusEvent;
+      const data = parseEvent<PlazaStatusEvent>(ev);
+      if (!data) return;
       handlers.onStatus?.(data);
       if (data.status === 'completed' || data.status === 'failed') {
         close();
       }
     });
     es.addEventListener('action', (ev) => {
-      const data = JSON.parse((ev as MessageEvent).data) as PlazaActionEvent;
-      handlers.onAction?.(data);
+      const data = parseEvent<PlazaActionEvent>(ev);
+      if (data) handlers.onAction?.(data);
     });
     es.addEventListener('actions_snapshot', (ev) => {
-      const data = JSON.parse((ev as MessageEvent).data) as PlazaActionsSnapshotEvent;
-      handlers.onActionsSnapshot?.(data);
+      const data = parseEvent<PlazaActionsSnapshotEvent>(ev);
+      if (data) handlers.onActionsSnapshot?.(data);
     });
     if (handlers.onError) {
       es.onerror = handlers.onError;

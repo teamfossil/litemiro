@@ -414,11 +414,11 @@ export default function Plaza() {
   // ready=false → mock 유지.
   useEffect(() => {
     if (!plazaId) return;
-    let cancelled = false;
+    const ac = new AbortController();
     api
-      .getLayout(plazaId)
+      .getLayout(plazaId, ac.signal)
       .then((res) => {
-        if (cancelled || !res.ready || res.agents.length === 0) return;
+        if (!res.ready || res.agents.length === 0) return;
         const nodes: PlazaNode[] = res.agents.map((a) => {
           const roleId = mapBackendRoleToRoleId(a.role);
           const role = lm.ROLE_BY_ID[roleId];
@@ -437,29 +437,25 @@ export default function Plaza() {
         setAllNodes(nodes);
       })
       .catch(() => {
-        // mock 유지.
+        // mock 유지. abort 도 여기로 떨어져 무시된다.
       });
-    return () => {
-      cancelled = true;
-    };
+    return () => ac.abort();
   }, [plazaId]);
 
   // /report fetch — eyebrow / subtitle 의 n_rounds, total actions 용. 빈 응답
   // 이거나 미수신이면 mock fallback 안 쓰고 empty subtitle.
   useEffect(() => {
     if (!plazaId) return;
-    let cancelled = false;
+    const ac = new AbortController();
     api
-      .getReport(plazaId)
+      .getReport(plazaId, ac.signal)
       .then((res) => {
-        if (!cancelled) setReport(res);
+        setReport(res);
       })
       .catch(() => {
-        // 실패 시 report=null → eyebrow/subtitle 의 빈 상태로 떨어짐.
+        // 실패 시 report=null → eyebrow/subtitle 의 빈 상태로 떨어짐. abort 포함.
       });
-    return () => {
-      cancelled = true;
-    };
+    return () => ac.abort();
   }, [plazaId]);
 
   // ESC로 드릴인 닫기.
