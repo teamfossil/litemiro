@@ -150,8 +150,10 @@ def _build_user_prompt(result: AggregationResult, insights: PartialInsights) -> 
         lines.append("")
     lines.append("## 원시 통계 (JSON)")
     lines.append(
-        "분석가 인사이트가 빠뜨린 디테일 — 상위 행위자, 라운드별 추이, "
-        "QaMetrics 등 — 은 아래 통계를 직접 인용해 보고서 본문에서 풀어낼 것."
+        "분석가 인사이트가 빠뜨린 디테일 — 상위 행위자, 라운드별 추이, 분포별 "
+        "집중도(*_concentration: n_unique·top5_share·gini), QaMetrics 등 — 은 아래 "
+        "통계를 직접 인용해 보고서 본문에서 풀어낼 것. n_amplifications 는 REPOST "
+        "건수와 같은 값(본문 없는 증폭)이며 QUOTE_POST 와 구분한다."
     )
     lines.append("```json")
     lines.append(json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str))

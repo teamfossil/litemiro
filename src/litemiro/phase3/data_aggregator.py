@@ -33,7 +33,9 @@ from litemiro.phase3.models import (
 )
 
 _TOPIC_FLOW_SAMPLE_LIMIT = 10
-_TOP_N = 5
+# top_* 리스트 길이. 상위 5 → 10 으로 늘려 롱테일 일부를 직접 노출하고, 그 너머
+# 분포는 `_distribution_summary` 의 gini / top5_share 로 요약한다.
+_TOP_N = 10
 
 _log = structlog.get_logger(__name__)
 
@@ -120,6 +122,7 @@ def _action_distribution(events: list[RoundEvent]) -> dict[str, Any]:
             {"agent_id": aid, "actions": n}
             for aid, n in sorted(per_agent.items(), key=lambda kv: (-kv[1], kv[0]))[:_TOP_N]
         ],
+        "agent_activity_concentration": _distribution_summary(per_agent),
     }
 
 
@@ -142,6 +145,9 @@ def _network_metrics(events: list[RoundEvent]) -> dict[str, Any]:
             {"agent_id": aid, "follows_given": n}
             for aid, n in sorted(follower_counts.items(), key=lambda kv: (-kv[1], kv[0]))[:_TOP_N]
         ],
+        # 상위 N 명 너머 수신/발신 분포의 집중도 — 허브-스포크 vs 분산 정량화.
+        "followee_concentration": _distribution_summary(followee_counts),
+        "follower_concentration": _distribution_summary(follower_counts),
     }
 
 
@@ -150,7 +156,7 @@ def _topic_flow(events: list[RoundEvent]) -> dict[str, Any]:
     "신규 생성된 게시물" 이라는 표현은 CREATE+QUOTE+REPOST 합계가 맞다 (#110).
     반면 content sample 과 top_posters 는 작성자 인사이트용이라 본문이 있는
     CREATE/QUOTE 만 센다 — 두 의미를 한 카운터에 욱여넣지 않고 분리한다."""
-    samples: list[dict[str, Any]] = []
+    candidates_by_round: defaultdict[int, list[dict[str, Any]]] = defaultdict(list)
     posts_per_agent: Counter[str] = Counter()
     posts_per_round: defaultdict[int, int] = defaultdict(int)
     n_amplifications = 0
@@ -158,17 +164,20 @@ def _topic_flow(events: list[RoundEvent]) -> dict[str, Any]:
         if e.action.type in (ActionType.CREATE_POST, ActionType.QUOTE_POST):
             posts_per_agent[e.agent_id] += 1
             posts_per_round[e.round_num] += 1
-            if len(samples) < _TOPIC_FLOW_SAMPLE_LIMIT:
-                samples.append(
-                    {
-                        "round_num": e.round_num,
-                        "agent_id": e.agent_id,
-                        "action": e.action.type.value,
-                        "content": e.action.content or "",
-                    }
-                )
+            # 라운드별로 모아 round-robin 으로 표본을 뽑는다 — 이벤트 순서대로 앞
+            # _TOPIC_FLOW_SAMPLE_LIMIT 개만 자르면 라운드 0 에 쏠려 후반 라운드
+            # 콘텐츠 흐름이 보고서에서 사라졌다.
+            candidates_by_round[e.round_num].append(
+                {
+                    "round_num": e.round_num,
+                    "agent_id": e.agent_id,
+                    "action": e.action.type.value,
+                    "content": e.action.content or "",
+                }
+            )
         elif e.action.type is ActionType.REPOST:
             n_amplifications += 1
+    samples = _round_robin_sample(candidates_by_round, _TOPIC_FLOW_SAMPLE_LIMIT)
     n_content_posts = sum(posts_per_round.values())
     return {
         # [DEPRECATED] "n_posts" 가 "총 게시물" 로 오해돼 REPOST 누락 (#110) 원인이
@@ -179,7 +188,10 @@ def _topic_flow(events: list[RoundEvent]) -> dict[str, Any]:
         # content 가 있는 게시물 (CREATE_POST + QUOTE_POST) — top_posters /
         # samples 와 같은 모집단.
         "n_content_posts": n_content_posts,
-        # REPOST 만 — 본문 없이 인용만 한 amplification.
+        # REPOST 액션 건수와 정확히 같다 — 본문 없이 재게시한 증폭. QUOTE_POST 는
+        # 본문이 있어 여기 들어가지 않고 n_content_posts 로 집계되므로, 보고서는
+        # n_amplifications 와 action_distribution 의 REPOST 카운트를 같은 값으로
+        # 다뤄야 한다 (라벨 모호 해소).
         "n_amplifications": n_amplifications,
         # store/feed 에 새로 등장한 모든 Post 의 합계. ReportComposer 가
         # "총 게시물 N건" 이라 표현할 때 인용해야 하는 정식 키.
@@ -191,6 +203,8 @@ def _topic_flow(events: list[RoundEvent]) -> dict[str, Any]:
             {"agent_id": aid, "posts": n}
             for aid, n in sorted(posts_per_agent.items(), key=lambda kv: (-kv[1], kv[0]))[:_TOP_N]
         ],
+        # 상위 N 명 너머 작성 분포의 집중도 — 소수 헤비 작성자 vs 분산.
+        "poster_concentration": _distribution_summary(posts_per_agent),
         "samples": samples,
     }
 
@@ -340,6 +354,71 @@ def _clamp_unit(value: float) -> float:
     if value > 1.0:
         return 1.0
     return value
+
+
+def _gini(values: list[int]) -> float:
+    """분포의 지니 계수 [0,1] — 0 = 완전 균등, 1 = 한 행위자에 집중.
+
+    top_* 리스트가 가리지 못하는 롱테일의 불평등을 한 수치로 요약한다. 표준
+    정의 (정렬값의 가중 누적합) 를 쓰며, 빈 입력·합 0 은 0.0. 값만 보므로 입력
+    순서와 무관하게 결정적.
+    """
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    n = len(ordered)
+    total = sum(ordered)
+    if total == 0:
+        return 0.0
+    cumulative = sum((i + 1) * x for i, x in enumerate(ordered))
+    return _clamp_unit((2.0 * cumulative) / (n * total) - (n + 1) / n)
+
+
+def _distribution_summary(counts: dict[str, int]) -> dict[str, Any]:
+    """행위자별 카운트 분포의 집중도 요약 — top_* 너머 롱테일 정량화.
+
+    * ``n_unique`` — 분포에 등장한 고유 행위자 수.
+    * ``top5_share`` — 상위 5 행위자가 차지하는 비율 (집중 vs 분산).
+    * ``gini`` — 지니 계수 (롱테일 불평등).
+    """
+    values = [int(v) for v in counts.values()]
+    total = sum(values)
+    if total == 0:
+        return {"n_unique": len(values), "top5_share": 0.0, "gini": 0.0}
+    top5 = sum(sorted(values, reverse=True)[:5])
+    return {
+        "n_unique": len(values),
+        "top5_share": top5 / total,
+        "gini": _gini(values),
+    }
+
+
+def _round_robin_sample(
+    by_round: dict[int, list[dict[str, Any]]], limit: int
+) -> list[dict[str, Any]]:
+    """라운드별 후보를 라운드로빈으로 ``limit`` 까지 뽑아 라운드 순으로 돌려준다.
+
+    이벤트 순서대로 앞에서 자르면 표본이 라운드 0 에 쏠려 후반 라운드 콘텐츠
+    흐름이 보고서에서 사라진다. 라운드 오름차순으로 한 개씩 번갈아 뽑아 모든
+    라운드가 표본에 대표되게 한다. 라운드 안에서는 등장 순서를 유지 — 결정적.
+    """
+    rounds = sorted(by_round)
+    picked: list[dict[str, Any]] = []
+    depth = 0
+    while len(picked) < limit:
+        advanced = False
+        for r in rounds:
+            bucket = by_round[r]
+            if depth < len(bucket):
+                picked.append(bucket[depth])
+                advanced = True
+                if len(picked) >= limit:
+                    break
+        if not advanced:
+            break
+        depth += 1
+    picked.sort(key=lambda s: s["round_num"])
+    return picked
 
 
 __all__ = ["DataAggregator"]
