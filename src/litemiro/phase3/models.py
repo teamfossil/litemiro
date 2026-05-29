@@ -54,6 +54,45 @@ class QaMetrics(BaseModel):
     content_word_entropy_normalized: float = Field(ge=0.0, le=1.0)
 
 
+class PhenomenaMetrics(BaseModel):
+    """OASIS (arXiv:2411.11581) 3 현상의 결정적 프록시 — 정보 확산·집단 양극화·
+    herd 효과. `docs/qa/metrics.md`.
+
+    `QaMetrics` 와 분리한 이유: cascade 메트릭은 [0,1] 정규화가 아니라 정수
+    카운트라 `QaMetrics` 의 `Field(le=1.0)` 규약과 안 맞는다. 양극화 메트릭은
+    ontology 의 `ideology` 가 있어야 계산되므로, ontology 없이 집계하면 `None`
+    (하위호환 — 기존 `aggregate(jsonl_path)` 단일 인자 호출이 그대로 동작).
+
+    OASIS 는 LLM 평가·실세계 RMSE 를 쓰지만 우리는 재현성을 위해 전부 LLM 없는
+    결정적 계산이다 — 같은 입력은 같은 값.
+
+    * `cascade_*` — REPOST/QUOTE `target_post_id` 체인으로 재구성한 전파 트리.
+      depth=재게시 체인 최대 깊이, breadth=한 포스트의 최대 직접 재게시 수,
+      scale=한 캐스케이드에 참여한 고유 에이전트 수. n_cascades=재게시가 1건
+      이상 달린 원본 포스트 수 (표본 크기 — 작으면 depth/breadth 해석 주의).
+    * `follow_ideology_gap` — FOLLOW 엣지의 평균 |Δideology| ([0,1]). 낮을수록
+      비슷한 성향끼리 follow (호모필리 = 양극화 신호). ontology 없으면 None.
+    * `ideology_assortativity` — follow 네트워크의 ideology Pearson 상관
+      ([-1,1]). 양수=동질 선호. 엣지<2 또는 분산 0 이면 None.
+    * `popularity_gini` — 피팔로우 수 분포의 지니 (#153 followee gini 승격).
+      herd = 인기 노드 쏠림. 1=완전 집중, 0=균등.
+    * `early_mover_share` — 전반부 라운드 상위 피팔로우 노드가 후반부 FOLLOW 의
+      몇 비율을 흡수하는가 ([0,1]). 높을수록 "이미 인기있는 노드를 더 follow"
+      하는 herd. 라운드<2 또는 후반부 FOLLOW 0 이면 None.
+    """
+
+    model_config = _FROZEN
+
+    cascade_max_depth: int = Field(ge=0)
+    cascade_max_breadth: int = Field(ge=0)
+    cascade_max_scale: int = Field(ge=0)
+    n_cascades: int = Field(ge=0)
+    follow_ideology_gap: float | None = Field(default=None, ge=0.0, le=1.0)
+    ideology_assortativity: float | None = Field(default=None, ge=-1.0, le=1.0)
+    popularity_gini: float = Field(ge=0.0, le=1.0)
+    early_mover_share: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
 class AggregationResult(BaseModel):
     """`DataAggregator` 산출 — 카테고리별 통계 dict + qa_metrics.
 
@@ -71,6 +110,7 @@ class AggregationResult(BaseModel):
     n_rounds: int = Field(ge=0)
     categories: Mapping[str, Mapping[str, Any]]
     qa_metrics: QaMetrics
+    phenomena: PhenomenaMetrics
 
 
 class CategoryInsight(BaseModel):
@@ -123,6 +163,7 @@ __all__ = [
     "AggregationResult",
     "CategoryInsight",
     "PartialInsights",
+    "PhenomenaMetrics",
     "QaMetrics",
     "ReportConfig",
 ]
