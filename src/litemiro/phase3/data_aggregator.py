@@ -14,6 +14,7 @@ LLM 호출 없음. 결정적. 같은 입력은 항상 같은 ``AggregationResult
 
 from __future__ import annotations
 
+import json
 import math
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -29,6 +30,7 @@ from litemiro.phase3.models import (
     CATEGORY_TIME_SERIES,
     CATEGORY_TOPIC_FLOW,
     AggregationResult,
+    PhenomenaMetrics,
     QaMetrics,
 )
 
@@ -42,12 +44,20 @@ _log = structlog.get_logger(__name__)
 
 class DataAggregator:
     @staticmethod
-    def aggregate(jsonl_path: Path) -> AggregationResult:
+    def aggregate(jsonl_path: Path, ontology_path: Path | None = None) -> AggregationResult:
+        """events.jsonl → 카테고리 통계 + QA/현상 메트릭.
+
+        ``ontology_path`` 가 주어지면 agent 별 ideology 를 로드해 양극화 메트릭을
+        계산한다. 없으면 (기존 단일 인자 호출 그대로) 양극화는 None — 하위호환.
+        """
         events = list(_load_events(jsonl_path))
-        return DataAggregator.aggregate_events(events)
+        ideology = _load_ideology(ontology_path) if ontology_path is not None else None
+        return DataAggregator.aggregate_events(events, ideology=ideology)
 
     @staticmethod
-    def aggregate_events(events: list[RoundEvent]) -> AggregationResult:
+    def aggregate_events(
+        events: list[RoundEvent], ideology: dict[str, float] | None = None
+    ) -> AggregationResult:
         agents = sorted({e.agent_id for e in events})
         rounds = sorted({e.round_num for e in events})
         return AggregationResult(
@@ -61,6 +71,7 @@ class DataAggregator:
                 CATEGORY_TIME_SERIES: _time_series(events),
             },
             qa_metrics=_qa_metrics(events),
+            phenomena=_phenomena_metrics(events, ideology),
         )
 
 
@@ -419,6 +430,171 @@ def _round_robin_sample(
         depth += 1
     picked.sort(key=lambda s: s["round_num"])
     return picked
+
+
+def _load_ideology(ontology_path: Path) -> dict[str, float]:
+    """ontology_a JSON 의 agent 별 ideology([0,1]) 맵.
+
+    Phase 1 산출의 ``agents`` 는 {key: {agent_id, ideology, ...}} dict — value 의
+    ``agent_id`` 로 events 와 join 한다 (둘은 동일 식별자). ideology 누락/비수치
+    agent 는 건너뛴다 (graceful).
+    """
+    with ontology_path.open(encoding="utf-8") as fh:
+        data = json.load(fh)
+    agents = data.get("agents", {})
+    rows = agents.values() if isinstance(agents, dict) else agents
+    result: dict[str, float] = {}
+    for a in rows:
+        if not isinstance(a, dict):
+            continue
+        aid = a.get("agent_id")
+        ideo = a.get("ideology")
+        if isinstance(aid, str) and isinstance(ideo, int | float) and not isinstance(ideo, bool):
+            result[aid] = float(ideo)
+    return result
+
+
+def _phenomena_metrics(
+    events: list[RoundEvent], ideology: dict[str, float] | None
+) -> PhenomenaMetrics:
+    depth, breadth, scale, n_cascades = _cascade_metrics(events)
+    gap, assortativity = _polarization(events, ideology)
+    popularity_gini, early = _herd(events)
+    return PhenomenaMetrics(
+        cascade_max_depth=depth,
+        cascade_max_breadth=breadth,
+        cascade_max_scale=scale,
+        n_cascades=n_cascades,
+        follow_ideology_gap=gap,
+        ideology_assortativity=assortativity,
+        popularity_gini=popularity_gini,
+        early_mover_share=early,
+    )
+
+
+def _cascade_metrics(events: list[RoundEvent]) -> tuple[int, int, int, int]:
+    """REPOST/QUOTE 의 target_post_id 체인으로 전파 트리를 재구성 (정보 확산).
+
+    post_id 는 ``{agent}_r{round:04d}`` (round_manager 보장 — agent 당 라운드당 1
+    액션이라 유일). CREATE_POST 가 루트, REPOST/QUOTE 가 부모를 가리키는 자식.
+    반환: (depth=재게시 체인 최대 깊이, breadth=한 포스트 최대 직접 재게시 수,
+    scale=한 캐스케이드 고유 참여 에이전트 수, n_cascades=재게시 1+ 인 루트 수).
+    post_id 의 round 가 단조 증가라 사이클이 없어 재귀가 종료한다.
+    """
+    children: dict[str, list[str]] = defaultdict(list)
+    author: dict[str, str] = {}
+    nodes: list[str] = []
+    for e in events:
+        if e.action.type not in (
+            ActionType.CREATE_POST,
+            ActionType.QUOTE_POST,
+            ActionType.REPOST,
+        ):
+            continue
+        pid = f"{e.agent_id}_r{e.round_num:04d}"
+        nodes.append(pid)
+        author[pid] = e.agent_id
+        if e.action.type is not ActionType.CREATE_POST and e.action.target_post_id is not None:
+            children[e.action.target_post_id].append(pid)
+    if not nodes:
+        return 0, 0, 0, 0
+    depth_cache: dict[str, int] = {}
+
+    def node_depth(pid: str) -> int:
+        if pid in depth_cache:
+            return depth_cache[pid]
+        kids = children.get(pid, ())
+        depth_cache[pid] = 0 if not kids else 1 + max(node_depth(c) for c in kids)
+        return depth_cache[pid]
+
+    def subtree_authors(pid: str) -> set[str]:
+        acc = {author[pid]} if pid in author else set()
+        for c in children.get(pid, ()):
+            acc |= subtree_authors(c)
+        return acc
+
+    has_parent = {c for kids in children.values() for c in kids}
+    roots = [p for p in nodes if p not in has_parent]
+    max_depth = max(node_depth(p) for p in nodes)
+    max_breadth = max((len(children.get(p, ())) for p in nodes), default=0)
+    max_scale = max((len(subtree_authors(r)) for r in roots), default=0)
+    n_cascades = sum(1 for r in roots if children.get(r))
+    return max_depth, max_breadth, max_scale, n_cascades
+
+
+def _polarization(
+    events: list[RoundEvent], ideology: dict[str, float] | None
+) -> tuple[float | None, float | None]:
+    """FOLLOW 엣지의 ideology 동질성 (집단 양극화). ontology 없으면 (None, None).
+
+    gap=평균 |ideology[follower] - ideology[followee]| ([0,1], 낮을수록 끼리끼리),
+    assortativity=follower/followee ideology Pearson 상관 ([-1,1], 양수=동질 선호).
+    """
+    if not ideology:
+        return None, None
+    follower_ideo: list[float] = []
+    followee_ideo: list[float] = []
+    for e in events:
+        if e.action.type is not ActionType.FOLLOW or e.action.target_agent_id is None:
+            continue
+        f = ideology.get(e.agent_id)
+        t = ideology.get(e.action.target_agent_id)
+        if f is not None and t is not None:
+            follower_ideo.append(f)
+            followee_ideo.append(t)
+    if not follower_ideo:
+        return None, None
+    gap = sum(abs(f - t) for f, t in zip(follower_ideo, followee_ideo, strict=True)) / len(
+        follower_ideo
+    )
+    return _clamp_unit(gap), _pearson(follower_ideo, followee_ideo)
+
+
+def _pearson(xs: list[float], ys: list[float]) -> float | None:
+    """Pearson 상관. 표본 < 2 또는 한쪽 분산 0 이면 None (정의되지 않음)."""
+    n = len(xs)
+    if n < 2:
+        return None
+    mx = sum(xs) / n
+    my = sum(ys) / n
+    sxx = sum((x - mx) ** 2 for x in xs)
+    syy = sum((y - my) ** 2 for y in ys)
+    if sxx <= 0.0 or syy <= 0.0:
+        return None
+    sxy = sum((x - mx) * (y - my) for x, y in zip(xs, ys, strict=True))
+    return max(-1.0, min(1.0, float(sxy / (sxx**0.5 * syy**0.5))))
+
+
+def _herd(events: list[RoundEvent]) -> tuple[float, float | None]:
+    """herd 효과 — 인기 집중(popularity_gini) + early-mover 지속성.
+
+    popularity_gini=피팔로우 수 분포의 지니([0,1], #153 followee gini 승격).
+    early_mover_share=전반부 라운드 상위 5 피팔로우 노드가 후반부 FOLLOW 의 몇
+    비율을 흡수하는가([0,1], 높을수록 "이미 인기있는 노드를 더 follow").
+    """
+    followee_counts: Counter[str] = Counter()
+    timeline: list[tuple[int, str]] = []
+    for e in events:
+        if e.action.type is ActionType.FOLLOW and e.action.target_agent_id is not None:
+            followee_counts[e.action.target_agent_id] += 1
+            timeline.append((e.round_num, e.action.target_agent_id))
+    popularity_gini = _gini(list(followee_counts.values())) if followee_counts else 0.0
+    return popularity_gini, _early_mover_share(timeline)
+
+
+def _early_mover_share(timeline: list[tuple[int, str]]) -> float | None:
+    if not timeline:
+        return None
+    rounds = sorted({r for r, _ in timeline})
+    if len(rounds) < 2:
+        return None
+    split = rounds[len(rounds) // 2]
+    early = [a for r, a in timeline if r < split]
+    late = [a for r, a in timeline if r >= split]
+    if not early or not late:
+        return None
+    top_early = {a for a, _ in Counter(early).most_common(5)}
+    return sum(1 for a in late if a in top_early) / len(late)
 
 
 __all__ = ["DataAggregator"]

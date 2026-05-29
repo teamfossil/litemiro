@@ -536,3 +536,126 @@ class TestQaMetrics:
         first = DataAggregator.aggregate_events(events).qa_metrics.model_dump()
         second = DataAggregator.aggregate_events(events).qa_metrics.model_dump()
         assert first == second
+
+
+class TestPhenomenaMetrics:
+    """OASIS 3 현상 프록시 — 캐스케이드(정보확산)·ideology(양극화)·herd."""
+
+    def test_cascade_chain_depth(self) -> None:
+        # a(CREATE r0) ← b(REPOST r1) ← c(REPOST r2): 재게시의 재게시 체인 깊이 2.
+        events = [
+            _event(round_num=0, agent_id="a", action_type=ActionType.CREATE_POST, content="root"),
+            _event(
+                round_num=1, agent_id="b", action_type=ActionType.REPOST, target_post_id="a_r0000"
+            ),
+            _event(
+                round_num=2, agent_id="c", action_type=ActionType.REPOST, target_post_id="b_r0001"
+            ),
+        ]
+        ph = DataAggregator.aggregate_events(events).phenomena
+        assert ph.cascade_max_depth == 2
+        assert ph.cascade_max_breadth == 1
+        assert ph.cascade_max_scale == 3  # a, b, c
+        assert ph.n_cascades == 1
+
+    def test_cascade_breadth_fan_out(self) -> None:
+        # 원본 1 개를 b·c·d 가 각각 REPOST: breadth 3, depth 1.
+        events = [
+            _event(round_num=0, agent_id="a", action_type=ActionType.CREATE_POST, content="x"),
+            _event(
+                round_num=1, agent_id="b", action_type=ActionType.REPOST, target_post_id="a_r0000"
+            ),
+            _event(
+                round_num=1, agent_id="c", action_type=ActionType.REPOST, target_post_id="a_r0000"
+            ),
+            _event(
+                round_num=1, agent_id="d", action_type=ActionType.REPOST, target_post_id="a_r0000"
+            ),
+        ]
+        ph = DataAggregator.aggregate_events(events).phenomena
+        assert ph.cascade_max_depth == 1
+        assert ph.cascade_max_breadth == 3
+        assert ph.cascade_max_scale == 4
+        assert ph.n_cascades == 1
+
+    def test_cascade_zero_without_reposts(self) -> None:
+        events = [
+            _event(round_num=0, agent_id="a", action_type=ActionType.CREATE_POST, content="x"),
+            _event(
+                round_num=0,
+                agent_id="b",
+                action_type=ActionType.LIKE_POST,
+                target_post_id="a_r0000",
+            ),
+        ]
+        ph = DataAggregator.aggregate_events(events).phenomena
+        assert ph.cascade_max_depth == 0
+        assert ph.cascade_max_breadth == 0
+        assert ph.n_cascades == 0
+
+    def test_polarization_homophily_gap_and_assortativity(self) -> None:
+        # 비슷한 성향끼리 follow: a(0.1)→b(0.15), c(0.9)→d(0.85). gap 작고 assort 양수.
+        events = [
+            _event(round_num=0, agent_id="a", action_type=ActionType.FOLLOW, target_agent_id="b"),
+            _event(round_num=0, agent_id="c", action_type=ActionType.FOLLOW, target_agent_id="d"),
+        ]
+        ideology = {"a": 0.1, "b": 0.15, "c": 0.9, "d": 0.85}
+        ph = DataAggregator.aggregate_events(events, ideology=ideology).phenomena
+        assert ph.follow_ideology_gap == pytest.approx(0.05)
+        assert ph.ideology_assortativity == pytest.approx(1.0)
+
+    def test_polarization_none_without_ideology(self) -> None:
+        events = [
+            _event(round_num=0, agent_id="a", action_type=ActionType.FOLLOW, target_agent_id="b"),
+        ]
+        ph = DataAggregator.aggregate_events(events).phenomena
+        assert ph.follow_ideology_gap is None
+        assert ph.ideology_assortativity is None
+
+    def test_polarization_assortativity_none_for_single_edge(self) -> None:
+        # FOLLOW 엣지 1 개 → Pearson 정의 안 됨(None). gap 은 계산됨.
+        events = [
+            _event(round_num=0, agent_id="a", action_type=ActionType.FOLLOW, target_agent_id="b"),
+        ]
+        ph = DataAggregator.aggregate_events(events, ideology={"a": 0.2, "b": 0.8}).phenomena
+        assert ph.follow_ideology_gap == pytest.approx(0.6)
+        assert ph.ideology_assortativity is None
+
+    def test_herd_popularity_gini(self) -> None:
+        # hub 3 수신, other 1 → gini([1,3]) = 0.25.
+        events = [
+            _event(round_num=0, agent_id="a", action_type=ActionType.FOLLOW, target_agent_id="hub"),
+            _event(round_num=0, agent_id="b", action_type=ActionType.FOLLOW, target_agent_id="hub"),
+            _event(round_num=0, agent_id="c", action_type=ActionType.FOLLOW, target_agent_id="hub"),
+            _event(
+                round_num=0, agent_id="d", action_type=ActionType.FOLLOW, target_agent_id="other"
+            ),
+        ]
+        ph = DataAggregator.aggregate_events(events).phenomena
+        assert ph.popularity_gini == pytest.approx(0.25)
+
+    def test_herd_early_mover_share(self) -> None:
+        # 전반(r0) hub 인기, 후반(r2) FOLLOW 3 중 2 가 hub → 2/3.
+        events = [
+            _event(round_num=0, agent_id="a", action_type=ActionType.FOLLOW, target_agent_id="hub"),
+            _event(round_num=0, agent_id="b", action_type=ActionType.FOLLOW, target_agent_id="hub"),
+            _event(round_num=0, agent_id="c", action_type=ActionType.FOLLOW, target_agent_id="x"),
+            _event(round_num=2, agent_id="d", action_type=ActionType.FOLLOW, target_agent_id="hub"),
+            _event(round_num=2, agent_id="e", action_type=ActionType.FOLLOW, target_agent_id="hub"),
+            _event(round_num=2, agent_id="f", action_type=ActionType.FOLLOW, target_agent_id="y"),
+        ]
+        ph = DataAggregator.aggregate_events(events).phenomena
+        assert ph.early_mover_share == pytest.approx(2 / 3)
+
+    def test_phenomena_deterministic(self) -> None:
+        events = [
+            _event(round_num=0, agent_id="a", action_type=ActionType.CREATE_POST, content="x"),
+            _event(
+                round_num=1, agent_id="b", action_type=ActionType.REPOST, target_post_id="a_r0000"
+            ),
+            _event(round_num=1, agent_id="c", action_type=ActionType.FOLLOW, target_agent_id="a"),
+        ]
+        ideo = {"a": 0.3, "b": 0.7, "c": 0.5}
+        first = DataAggregator.aggregate_events(events, ideology=ideo).phenomena.model_dump()
+        second = DataAggregator.aggregate_events(events, ideology=ideo).phenomena.model_dump()
+        assert first == second
