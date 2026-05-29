@@ -398,3 +398,109 @@
   color: var(--ink-4);
   letter-spacing: var(--ls-mono);
 }
+
+/* =====================================================================
+   RESPONSIVE — 4-breakpoint normalization · PLAZA (signature)
+   region: PERSONA-LIST / HEADER / FILTERS / GUIDE / CANVAS / DRILL
+   - laptop: narrow the list + drill, keep 3-col.
+   - tablet/mobile: persona list becomes a horizontal chip STRIP on top,
+     filter pills scroll horizontally, the map stays fixed-fit at its original
+     size (no page scroll), and the drill-in becomes a bottom SHEET.
+   ===================================================================== */
+@media (max-width: 1366px) {
+  .lm-plaza { grid-template-columns: 232px 1fr 0fr; }
+  .lm-plaza.is-drilled { grid-template-columns: 232px 1fr 400px; }
+  .lm-plaza__shellpad { padding: 0 var(--s-7) var(--s-7); }
+}
+
+@media (max-width: 1024px) {
+  /* FIXED-FIT (no page scroll): persona STRIP on top, filters, then the map
+     fills the remaining height at its original size. */
+  .lm-plaza,
+  .lm-plaza.is-drilled {
+    display: flex; flex-direction: column;
+    height: 100%; min-height: 0;
+  }
+  .lm-plaza__personas {
+    flex: 0 0 auto;
+    background: var(--paper);
+    border-right: 0;
+    border-bottom: 1px solid var(--rule-2);
+    overflow: hidden;
+  }
+  .lm-plaza__personas-head { display: none; }
+  .lm-plaza__personas-list {
+    flex-direction: row;
+    overflow-x: auto; overflow-y: hidden;
+    gap: var(--s-2);
+    padding: var(--s-3) var(--s-6);
+    scrollbar-width: none;
+  }
+  .lm-plaza__personas-list::-webkit-scrollbar { display: none; }
+  .lm-plaza__personas-item {
+    flex: 0 0 auto;
+    grid-template-columns: auto auto;
+    gap: var(--s-2);
+    padding: var(--s-2) var(--s-3);
+    border: 1px solid var(--rule);
+    border-radius: var(--r-pill);
+  }
+  .lm-plaza__personas-role { display: none; }
+  .lm-plaza__personas-name { white-space: nowrap; }
+  .lm-plaza__shellpad { padding: 0 var(--s-6) var(--s-6); min-height: 0; flex: 1; }
+  .lm-plaza__canvas { flex: 1; min-height: 0; }
+
+  /* 진영 filter pills scroll HORIZONTALLY so every group stays reachable */
+  .lm-plaza__filters { gap: var(--s-3); align-items: center; }
+  .lm-plaza__filters-left { min-width: 0; flex: 1; }
+  .lm-plaza__filters-pills {
+    flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px;
+    min-width: 0; scrollbar-width: none;
+  }
+  .lm-plaza__filters-pills::-webkit-scrollbar { display: none; }
+  .lm-plaza__filters-pills .lm-pill { flex: 0 0 auto; }
+  .lm-plaza__filters-right { flex: 0 0 auto; }
+
+  /* drill-in = bottom SHEET pinned to the viewport bottom */
+  .lm-drill {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    max-height: 60%;
+    border-left: 0;
+    border-top: 1px solid var(--ink);
+    border-radius: var(--r-3) var(--r-3) 0 0;
+    box-shadow: 0 -12px 32px rgba(26,24,19,0.14);
+    z-index: 30;
+    animation: lm-drill-up var(--dur-3) var(--ease-out);
+  }
+  @keyframes lm-drill-up {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+  }
+  .lm-drill::before {
+    content: "";
+    position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+    width: 40px; height: 4px; border-radius: 2px;
+    background: var(--rule);
+  }
+  .lm-drill__head { padding-top: var(--s-6); }
+}
+
+@media (max-width: 480px) {
+  .lm-plaza__shellpad { padding: 0 var(--s-4) var(--s-4); }
+  .lm-plaza__personas-list { padding: var(--s-3) var(--s-4); }
+  /* compress the header so the map + sheet fit without page scroll */
+  .lm-plaza .lm-screen-header__sub { display: none; }
+  .lm-plaza .lm-screen-header { padding: var(--s-4) 0 var(--s-3); margin-bottom: var(--s-3); }
+  .lm-plaza__guide { display: none; }
+  /* stack the filter row: 진영 pills (scroll) on top, toggle below.
+     Constrain filters-left to the pad width and let pills scroll inside it. */
+  .lm-plaza__filters { flex-direction: column; align-items: stretch; min-width: 0; gap: var(--s-3); }
+  .lm-plaza__filters-left { width: 100%; min-width: 0; overflow: hidden; gap: var(--s-2); }
+  .lm-plaza__filters-pills { flex: 1 1 auto; min-width: 0; }
+  .lm-plaza__canvas { min-height: 0; }
+  .lm-drill { max-height: 70%; }
+  .lm-drill__hero { padding: var(--s-5); gap: var(--s-4); }
+  .lm-drill__stats { grid-template-columns: 1fr; }
+  .lm-drill__quotes { padding: var(--s-5); }
+}

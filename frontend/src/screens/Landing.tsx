@@ -13,27 +13,49 @@ import { api, ApiError, type PlazaStatus, type PlazaSummaryItem } from '@/api/cl
 
 // --------------------------------------------------------------------
 // HeroPlaza — 우측 영역의 큰 부감 뷰. 정적, 광장 1개 미감.
+// preserveAspectRatio="slice" 로 항상 박스를 꽉 채우고, ≤1024 (가로 밴드
+// 모드) 에서는 컨텐츠를 90° 회전 + viewBox swap 으로 portrait 컴포지션을
+// landscape 박스에 맞춰 다시 채운다.
 // --------------------------------------------------------------------
+function useIsNarrow(maxWidth = 1024): boolean {
+  const [narrow, setNarrow] = useState<boolean>(() =>
+    typeof window !== 'undefined' && window.innerWidth <= maxWidth
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${maxWidth}px)`);
+    const onChange = (e: MediaQueryListEvent) => setNarrow(e.matches);
+    setNarrow(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, [maxWidth]);
+  return narrow;
+}
+
 export function HeroPlaza() {
   const nodes = useMemo(() => lm.generatePlaza({ seed: 42, n: 220 }), []);
   const W = 760;
   const H = 1080;
   const sorted = useMemo(() => [...nodes].sort((a, b) => a.influence - b.influence), [nodes]);
+  const rotated = useIsNarrow();
+  const vbW = rotated ? H : W;
+  const vbH = rotated ? W : H;
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" className="lm-landing__hero-svg">
-      <line x1={W * 0.5} x2={W * 0.5} y1={40} y2={H - 40} stroke="#C9C1AD" strokeWidth="1" strokeDasharray="3 8" opacity="0.5" />
-      {sorted.map((n) => {
-        const cx = n.x * W;
-        const cy = n.y * H;
-        const r = lm.nodeRadius(n.influence, 1.6, 30);
-        return (
-          <g key={n.id}>
-            {n.influence > 0.4 && <circle cx={cx} cy={cy + 1.6} r={r * 1.02} fill="#000" opacity="0.08" />}
-            <circle cx={cx} cy={cy} r={r} fill={n.color} opacity="0.92" />
-            {n.anchor && <circle cx={cx} cy={cy} r={r + 3} fill="none" stroke={n.color} strokeWidth="1" opacity="0.32" />}
-          </g>
-        );
-      })}
+    <svg viewBox={`0 0 ${vbW} ${vbH}`} preserveAspectRatio="xMidYMid slice" className="lm-landing__hero-svg">
+      <g transform={rotated ? `translate(${H} 0) rotate(90)` : undefined}>
+        <line x1={W * 0.5} x2={W * 0.5} y1={40} y2={H - 40} stroke="#C9C1AD" strokeWidth="1" strokeDasharray="3 8" opacity="0.5" />
+        {sorted.map((n) => {
+          const cx = n.x * W;
+          const cy = n.y * H;
+          const r = lm.nodeRadius(n.influence, 1.6, 30);
+          return (
+            <g key={n.id}>
+              {n.influence > 0.4 && <circle cx={cx} cy={cy + 1.6} r={r * 1.02} fill="#000" opacity="0.08" />}
+              <circle cx={cx} cy={cy} r={r} fill={n.color} opacity="0.92" />
+              {n.anchor && <circle cx={cx} cy={cy} r={r + 3} fill="none" stroke={n.color} strokeWidth="1" opacity="0.32" />}
+            </g>
+          );
+        })}
+      </g>
     </svg>
   );
 }
@@ -98,7 +120,7 @@ function formatRelative(iso: string): string {
 // --------------------------------------------------------------------
 // ScreenLanding — 메인
 // --------------------------------------------------------------------
-const RECENT_PAGE_SIZE = 5;
+const RECENT_PAGE_SIZE = 4;
 
 export default function Landing() {
   const go = useScreenNav();

@@ -42,24 +42,31 @@
   --positive:      #4F7B6E;
   --negative:      #B85138;
 
-  /* ---- 0. SCALE — 전역 UI 배율. 1.0 = 디자인 원본 크기. ---- */
-  --scale: 0.8;
+  /* ---- 0a. BREAKPOINTS — 5단계 ---- */
+  --bp-sm:  480px;   /* 큰 모바일 */
+  --bp-md:  768px;   /* 태블릿 */
+  --bp-lg: 1024px;   /* 작은 노트북 */
+  --bp-xl: 1366px;   /* 노트북 */
+
+  /* ---- 0b. SCALE — hairline fine-tuning 훅 (항상 1, 토큰 값에 이미 0.75 반영). ---- */
+  --scale: 1;
 
   /* ---- 6. TYPOGRAPHY ---- */
   --font:  "Pretendard Variable", Pretendard, -apple-system, system-ui, sans-serif;
   --mono:  "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --serif: "EB Garamond", "Times New Roman", serif;
 
-  /* type ramp — body=16 기준, 1.25 scale, --scale 로 균등 축소 */
-  --t-display:   calc(72px * var(--scale));
-  --t-h1:        calc(44px * var(--scale));
-  --t-h2:        calc(32px * var(--scale));
-  --t-h3:        calc(24px * var(--scale));
-  --t-h4:        calc(20px * var(--scale));
-  --t-body:      calc(16px * var(--scale));
-  --t-small:     calc(14px * var(--scale));
-  --t-micro:     calc(12px * var(--scale));
-  --t-mono:      calc(13px * var(--scale));
+  /* type ramp — Figma 시안(0.75× 베이스) 의 실 픽셀값. fluid clamp 로 floor/ceil
+     보장. desktop(1367+) 은 ceil, mobile(≤480) 은 floor 로 바닥. */
+  --t-display:   clamp(33px, 3.9vw, 54px);
+  --t-h1:        clamp(23px, 2.55vw, 33px);
+  --t-h2:        clamp(18px, 1.8vw, 24px);
+  --t-h3:        clamp(15px, 1.35vw, 18px);
+  --t-h4:        clamp(13px, 0.975vw, 15px);
+  --t-body:      clamp(11px, 0.79vw, 12px);
+  --t-small:     clamp(10px, 0.71vw, 11px);
+  --t-micro:     9px;
+  --t-mono:      10px;
 
   --lh-tight:    1.05;
   --lh-snug:     1.2;
@@ -71,24 +78,24 @@
   --ls-mono:     0.02em;
   --ls-eyebrow:  0.06em;
 
-  /* ---- 7. SPACING — 4px grid, --scale 로 균등 축소 ---- */
-  --s-1:   calc(4px * var(--scale));
-  --s-2:   calc(8px * var(--scale));
-  --s-3:   calc(12px * var(--scale));
-  --s-4:   calc(16px * var(--scale));
-  --s-5:   calc(20px * var(--scale));
-  --s-6:   calc(24px * var(--scale));
-  --s-7:   calc(32px * var(--scale));
-  --s-8:   calc(40px * var(--scale));
-  --s-9:   calc(48px * var(--scale));
-  --s-10:  calc(64px * var(--scale));
-  --s-11:  calc(80px * var(--scale));
-  --s-12:  calc(96px * var(--scale));
+  /* ---- 7. SPACING — 4px grid × 0.75 ---- */
+  --s-1:   3px;
+  --s-2:   6px;
+  --s-3:   9px;
+  --s-4:   12px;
+  --s-5:   15px;
+  --s-6:   18px;
+  --s-7:   24px;
+  --s-8:   30px;
+  --s-9:   36px;
+  --s-10:  48px;
+  --s-11:  60px;
+  --s-12:  72px;
 
   /* ---- 8. RADII ---- */
-  --r-1:   2px;   /* 작은 태그, 인풋 */
-  --r-2:   4px;   /* 카드, 버튼 — 기본 */
-  --r-3:   8px;   /* 큰 패널 */
+  --r-1:   2px;   /* 작은 태그, 인풋 (1.5 → 가독을 위한 2px floor) */
+  --r-2:   3px;   /* 카드, 버튼 — 기본 */
+  --r-3:   6px;   /* 큰 패널 */
   --r-pill: 999px;
 
   /* ---- 9. SHADOWS — 종이감 유지, 강하게 X ---- */
@@ -96,9 +103,9 @@
   --shadow-2: 0 4px 12px rgba(26, 24, 19, 0.06);
   --shadow-3: 0 12px 28px rgba(26, 24, 19, 0.10);
 
-  /* "종이 위 종이" 효과 — sharp offset (Memphis-paper), --scale 로 균등 축소 */
-  --shadow-paper: calc(6px * var(--scale)) calc(6px * var(--scale)) 0 var(--sand);
-  --shadow-paper-soft: calc(4px * var(--scale)) calc(4px * var(--scale)) 0 var(--card);
+  /* "종이 위 종이" 효과 — sharp offset (Memphis-paper) */
+  --shadow-paper: 5px 5px 0 var(--sand);
+  --shadow-paper-soft: 3px 3px 0 var(--card);
 
   /* ---- 10. MOTION ---- */
   --ease-out:  cubic-bezier(0.22, 1, 0.36, 1);
@@ -108,10 +115,35 @@
   --dur-2:  220ms;   /* 토글, 패널 슬라이드 */
   --dur-3:  400ms;   /* 화면 트랜지션 */
 
-  /* ---- 11. LAYOUT — --scale 로 균등 축소 ---- */
-  --max-width: calc(1680px * var(--scale));
-  --header-h:  calc(64px * var(--scale));
-  --sidebar-w: calc(320px * var(--scale));
+  /* ---- 11. LAYOUT ---- */
+  --max-width: 1260px;
+  --header-h:  48px;
+  --sidebar-w: 240px;
+}
+
+/* =====================================================================
+   BREAKPOINT 별 DISCRETE 토큰 OVERRIDE (전부 0.75× 반영)
+   ---------------------------------------------------------------------
+   간격/레이아웃 컨테이너만 단계 조정. 타이포는 위 clamp() 가 담당.
+   mobile ≤480 · tablet 481–1024 · laptop 1025–1366 · desktop 1367+
+   ===================================================================== */
+/* laptop */
+@media (max-width: 1366px) {
+  :root { --header-h: 45px; --sidebar-w: 216px; --max-width: 1024px; }
+}
+/* tablet */
+@media (max-width: 1024px) {
+  :root {
+    --s-9: 30px; --s-10: 36px; --s-11: 42px; --s-12: 54px;
+    --header-h: 42px; --sidebar-w: 195px;
+  }
+}
+/* mobile */
+@media (max-width: 480px) {
+  :root {
+    --s-7: 18px; --s-8: 24px; --s-9: 24px; --s-10: 30px; --s-11: 36px; --s-12: 42px;
+    --header-h: 39px;
+  }
 }
 
 * { box-sizing: border-box; }

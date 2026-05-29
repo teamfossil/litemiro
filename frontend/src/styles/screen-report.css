@@ -748,6 +748,31 @@
   .lm-rep__inf-col-cite, .lm-rep__inf-col-rep { display: none; }
 }
 
+/* tablet + mobile — report scrolls at every size; collapse the multi-col grids */
+@media (max-width: 1024px) {
+  .lm-rep__pad { padding-left: var(--s-7); padding-right: var(--s-7); }
+  .lm-rep__sum-grid { grid-template-columns: 1fr; }
+  .lm-rep__cost-grid { grid-template-columns: repeat(2, 1fr); }
+  .lm-rep__social-metrics { grid-template-columns: repeat(2, 1fr); }
+  .lm-rep__head { flex-direction: column; align-items: flex-start; gap: var(--s-4); }
+  .lm-rep__head-actions { flex-wrap: wrap; }
+}
+@media (max-width: 480px) {
+  .lm-rep__pad { padding: var(--s-5) var(--s-4); }
+  .lm-rep__head-title { font-size: var(--t-h1); white-space: normal; }
+  .lm-rep__sum-stats { grid-template-columns: 1fr 1fr; }
+  .lm-rep__cost-grid { grid-template-columns: 1fr 1fr; }
+  .lm-rep__social-metrics { grid-template-columns: 1fr 1fr; }
+  .lm-rep__action-row {
+    grid-template-columns: 56px 1fr auto;
+    grid-template-rows: auto auto;
+    row-gap: var(--s-1);
+  }
+  .lm-rep__action-bar { grid-column: 1 / -1; grid-row: 2; }
+  .lm-rep__hero-text { font-size: var(--t-h4); }
+  .lm-rep__head-actions .lm-btn { flex: 1; justify-content: center; }
+}
+
 /* ---------- PRINT (브라우저 "PDF 로 저장") ----------
    화면용 chrome / 액션 버튼 / 박스 스크롤 잘림 제거.
    섹션 단위 page-break, 배경/strong 색상 보존. */
