@@ -37,6 +37,7 @@ dependencies = [
   "tomli>=2.0; python_version<'3.11'",
   "PyPDF2>=3.0,<5",
   "python-dotenv>=1.0,<2",
+  "python-multipart>=0.0.29",
 ]
 
 [project.optional-dependencies]
