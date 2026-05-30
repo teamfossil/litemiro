@@ -70,6 +70,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to events.jsonl produced by litemiro-run",
     )
     parser.add_argument(
+        "--ontology-a",
+        type=Path,
+        default=None,
+        help=(
+            "Optional Phase 1 ontology_a JSON. 주어지면 agent ideology 를 로드해 집단 "
+            "양극화 메트릭(follow_ideology_gap·assortativity)을 계산한다 — 없으면 양극화는 None."
+        ),
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=None,
@@ -131,7 +140,7 @@ async def _run(
     테스트가 직접 부르는 경계로 두어 main 의 ``LiteLLMClient`` 인스턴스화
     단계를 우회한다 — 실 OpenRouter 키 없이도 fake LLM 으로 닫힌다.
     """
-    aggregation = DataAggregator.aggregate(args.events)
+    aggregation = DataAggregator.aggregate(args.events, args.ontology_a)
     config = ReportConfig(
         preset=args.preset,
         analyzer_model=args.analyzer_model,

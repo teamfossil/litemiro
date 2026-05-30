@@ -21,7 +21,7 @@ from litemiro.phase3 import (
     ReportComposer,
     ReportConfig,
 )
-from litemiro.phase3.models import QaMetrics
+from litemiro.phase3.models import PhenomenaMetrics, QaMetrics
 
 
 class _FakeLLM:
@@ -62,6 +62,13 @@ def _result() -> AggregationResult:
             action_entropy_normalized=0.0,
             follow_clustering_coefficient=0.0,
             content_word_entropy_normalized=0.0,
+        ),
+        phenomena=PhenomenaMetrics(
+            cascade_max_depth=0,
+            cascade_max_breadth=0,
+            cascade_max_scale=0,
+            n_cascades=0,
+            popularity_gini=0.0,
         ),
     )
 

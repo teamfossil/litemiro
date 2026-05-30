@@ -28,6 +28,7 @@ from litemiro.phase3.models import (
     CATEGORY_NETWORK_METRICS,
     CATEGORY_TIME_SERIES,
     CATEGORY_TOPIC_FLOW,
+    PhenomenaMetrics,
     QaMetrics,
 )
 
@@ -37,6 +38,16 @@ def _zero_qa() -> QaMetrics:
         action_entropy_normalized=0.0,
         follow_clustering_coefficient=0.0,
         content_word_entropy_normalized=0.0,
+    )
+
+
+def _zero_phenomena() -> PhenomenaMetrics:
+    return PhenomenaMetrics(
+        cascade_max_depth=0,
+        cascade_max_breadth=0,
+        cascade_max_scale=0,
+        n_cascades=0,
+        popularity_gini=0.0,
     )
 
 
@@ -116,6 +127,7 @@ def _stub_result() -> AggregationResult:
             },
         },
         qa_metrics=_zero_qa(),
+        phenomena=_zero_phenomena(),
     )
 
 
