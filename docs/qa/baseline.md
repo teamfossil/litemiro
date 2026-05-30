@@ -18,7 +18,6 @@
 | metric | mean | std | min | max |
 |---|---|---|---|---|
 | action_entropy_normalized | 0.7918 | 0.0347 | 0.749 | 0.849 |
-| follow_clustering_coefficient | 0.0438 | 0.0332 | 0.000 | 0.089 |
 | content_word_entropy_normalized | 0.9443 | 0.0026 | 0.938 | 0.947 |
 | cascade_max_depth | 1.3636 | 0.6742 | 1.000 | 3.000 |
 | cascade_max_breadth | 7.8182 | 3.4588 | 3.000 | 14.000 |
@@ -46,7 +45,10 @@ entropy 등에서 ±2σ 밖으로 일관되게 떨어져 표본 편향이 의심
 - **안정** (게이트 신뢰): `content_word_entropy`(σ 0.003)·`follow_ideology_gap`
   (σ 0.020)·`popularity_gini`(σ 0.037)·`action_entropy`(σ 0.035, N=11 로 안정화).
 - **불안정** (단독 차단 금지): `ideology_assortativity`(σ 0.136, 부호 뒤집힘)·
-  `follow_clustering`(deprecated)·`early_mover_share`(σ 0.111).
+  `early_mover_share`(σ 0.111).
+- **게이트 제외**: `follow_clustering_coefficient` 는 현 규모에서 신호가 없어
+  (5R/15R 0.00~0.09, metrics.md deprecated) 회귀 게이트(`METRIC_NAMES`)에서 뺐다 —
+  herd 는 `popularity_gini` 로 추적. 모델·계산·보고서 인용은 스키마 안정 위해 유지.
 
 ## 게이트 검증 (N=11)
 

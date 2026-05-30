@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from litemiro.phase3 import DataAggregator
-from litemiro.phase3.baseline import extract_metrics, summarize_baseline
+from litemiro.phase3.baseline import BASELINE_SCHEMA, extract_metrics, summarize_baseline
 
 
 def _run_one(
@@ -82,6 +82,10 @@ def _to_markdown(payload: dict[str, Any]) -> str:
         f"- runs: {meta['n_runs']} (seeds {meta['seeds']})",
         f"- rounds: {meta['rounds']}, model: `{meta['model']}`",
         f"- ontology_a: `{meta['ontology_a']}`",
+    ]
+    if meta.get("failed_seeds"):
+        lines.append(f"- failed seeds (집계 제외): {meta['failed_seeds']}")
+    lines += [
         "",
         "| metric | n | mean | std | min | max |",
         "|---|---|---|---|---|---|",
@@ -113,9 +117,11 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
 
     rows: list[dict[str, float | None]] = []
+    ok_seeds: list[int] = []
+    failed: list[int] = []
     for seed in args.seeds:
-        rows.append(
-            _run_one(
+        try:
+            row = _run_one(
                 ontology_a=args.ontology_a,
                 ontology_b=args.ontology_b,
                 seed=seed,
@@ -125,13 +131,32 @@ def main(argv: list[str] | None = None) -> int:
                 batch_size=args.batch_size,
                 semaphore_limit=args.semaphore_limit,
             )
-        )
+        except (subprocess.CalledProcessError, OSError, ValueError) as exc:
+            # 한 seed 의 시뮬/집계 실패가 전체 수집을 버리지 않게 — 그 seed 만
+            # 건너뛰고 나머지로 집계한다 (마지막 seed 실패 시 앞 N-1 손실 방지).
+            failed.append(seed)
+            print(f"[seed {seed}] FAILED — {exc}; 건너뜀", file=sys.stderr)
+            continue
+        rows.append(row)
+        ok_seeds.append(seed)
         print(f"[seed {seed}] done", file=sys.stderr)
+
+    if not rows:
+        print("모든 seed 실패 — baseline 을 쓰지 않는다.", file=sys.stderr)
+        return 1
+    if failed:
+        print(
+            f"경고: {len(failed)}/{len(args.seeds)} seed 실패 {failed} — "
+            f"성공 {len(rows)} 개로만 집계한다.",
+            file=sys.stderr,
+        )
 
     payload = {
         "meta": {
-            "n_runs": len(args.seeds),
-            "seeds": args.seeds,
+            "schema": BASELINE_SCHEMA,
+            "n_runs": len(rows),
+            "seeds": ok_seeds,
+            "failed_seeds": failed,
             "rounds": args.rounds,
             "model": args.llm_model,
             "ontology_a": str(args.ontology_a),

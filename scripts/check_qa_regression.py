@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 
 from litemiro.phase3 import DataAggregator
-from litemiro.phase3.baseline import check_regression, extract_metrics
+from litemiro.phase3.baseline import BASELINE_SCHEMA, check_regression, extract_metrics
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -33,6 +33,13 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
 
     baseline = json.loads(args.baseline_json.read_text(encoding="utf-8"))
+    schema = baseline.get("meta", {}).get("schema")
+    if schema != BASELINE_SCHEMA:
+        print(
+            f"warning: baseline schema {schema!r} != expected {BASELINE_SCHEMA!r} — "
+            "메트릭 키가 드리프트했을 수 있다 (collect_qa_baseline.py 재수집 권장).",
+            file=sys.stderr,
+        )
     now = extract_metrics(DataAggregator.aggregate(args.events, args.ontology_a))
     violations = check_regression(now, baseline["metrics"], sigma=args.sigma)
     if violations:
