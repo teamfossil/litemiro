@@ -28,17 +28,27 @@ from litemiro.phase3.models import (
 _logger = structlog.get_logger(__name__)
 
 _SYSTEM_PROMPT = (
-    "당신은 시뮬레이션 결과를 정리해 분석 보고서를 작성하는 어시스턴트다. "
-    "한국어 Markdown 으로 작성하라 — 문서 제목은 `#`, 주요 섹션은 `##`, 세부 항목은 `###`. "
-    "다음 섹션을 반드시 포함하되 통계가 풍부한 영역에는 단락과 글머리표를 충분히 늘려라: "
-    "(1) 규모 개요, (2) 행동 분포 분석, (3) 네트워크/팔로우 동학, (4) 시간 흐름과 활동 추이, "
-    "(5) 주제·콘텐츠 흐름, (6) QA 지표 및 한계, (7) 종합 요약 및 시사점. "
-    "수치 비교가 잦은 항목은 표(`|`) 로 정리하고, 상위 행위자/포스트/팔로우 대상은 "
-    "에이전트 id 와 함께 글머리표로 나열하라. "
-    "주어진 통계와 카테고리별 인사이트만을 근거로 작성하며, 카테고리 인사이트의 핵심 문장은 "
-    "본문에 흡수해 반복 인용을 피하라. 데이터에 없는 사실은 절대 만들지 않으며, "
-    "관측되지 않은 항목은 '관측되지 않음' 으로 명시한다. "
-    "단정적인 분석 어조를 유지하되, 단어를 아끼려 핵심 수치를 누락하지는 말라."
+    "당신은 가상 인격들이 한 이슈를 두고 벌인 광장 토론을 읽고 '여론 예측' 보고서를 쓰는 "
+    "분석가다. 이 시뮬레이션은 업로드된 이슈 자료에 대해 수십~수백 명의 가상 인격이 토론한 "
+    "결과이며, 보고서의 목적은 그 토론이 도달한 여론을 예측해 전달하는 것이다 — 독자가 알고 "
+    "싶은 것은 '이 이슈의 여론이 어떻게 될까' 이지 시뮬레이션의 메타 통계가 아니다. "
+    "한국어 Markdown 으로 작성하라 — 문서 제목은 `#`, 주요 섹션은 `##`, 세부는 `###`. "
+    "다음 5 섹션을 순서대로 포함하라: "
+    "(1) 핵심 여론 예측 — 이슈에 대해 가상 여론이 도달한 결론적 입장과 온도(지지·반대·유보의 "
+    "전반 기류)를 첫머리에 단정적으로 제시한다. "
+    "(2) 입장 분포 — 찬성·반대·중립이 어떻게 갈렸는지를 게시물 논조로 가늠하고, ideology 동질성"
+    "(`follow_ideology_gap`·`ideology_assortativity`)으로 양극화 정도를 함께 짚는다. "
+    "(3) 주요 논점 — `categories.topic_flow.samples` 의 실제 게시물·인용 본문에서 등장한 "
+    "쟁점과 표현을 작성자 id 와 함께 직접 인용해 어떤 주장들이 부딪쳤는지 보인다. "
+    "(4) 여론 주도·확산 — 누가 여론을 끌었는지(상위 작성자·피팔로우 노드)와 메시지가 어떻게 "
+    "번졌는지(`cascade_*` 깊이·규모, 인기 집중 `popularity_gini`·`early_mover_share`)를 서술한다. "
+    "(5) 신뢰도와 한계 — 표본 규모·라운드 수·활성도(DO_NOTHING)·prompt 한계로 이 예측을 "
+    "얼마나 신뢰할 수 있는지, 무엇이 관측되지 않았는지 밝힌다. "
+    "행동 분포·네트워크 수치는 여론 자체가 아니라 (4)(5) 의 근거로만 쓰고 보고서를 메타 통계 "
+    "나열로 만들지 말라. 수치 비교가 잦으면 표(`|`)로 정리해도 좋다. "
+    "주어진 통계·게시물·분석가 인사이트만을 근거로 하며, 데이터에 없는 사실은 절대 지어내지 "
+    "않고 관측되지 않은 항목은 '관측되지 않음' 으로 명시한다. ideology·진영 지표가 None 이면 "
+    "입장 분포는 게시물 논조로만 정성 판단하고 그 한계를 밝힌다."
 )
 
 
@@ -131,11 +141,22 @@ def _build_user_prompt(result: AggregationResult, insights: PartialInsights) -> 
             "follow_clustering_coefficient": result.qa_metrics.follow_clustering_coefficient,
             "content_word_entropy_normalized": result.qa_metrics.content_word_entropy_normalized,
         },
+        "phenomena": {
+            "cascade_max_depth": result.phenomena.cascade_max_depth,
+            "cascade_max_breadth": result.phenomena.cascade_max_breadth,
+            "cascade_max_scale": result.phenomena.cascade_max_scale,
+            "n_cascades": result.phenomena.n_cascades,
+            "follow_ideology_gap": result.phenomena.follow_ideology_gap,
+            "ideology_assortativity": result.phenomena.ideology_assortativity,
+            "popularity_gini": result.phenomena.popularity_gini,
+            "early_mover_share": result.phenomena.early_mover_share,
+        },
         "categories": {cat: dict(data) for cat, data in result.categories.items()},
     }
 
     lines = [
-        "다음 시뮬레이션 결과를 한국어 Markdown 보고서로 정리하라.",
+        "다음은 한 이슈를 두고 가상 인격들이 벌인 광장 토론의 집계 결과다. 이를 바탕으로 "
+        "그 이슈에 대한 '여론 예측' 보고서를 한국어 Markdown 으로 작성하라.",
         "",
         "## 규모",
         f"- 이벤트 수: {result.n_events}",
@@ -148,12 +169,15 @@ def _build_user_prompt(result: AggregationResult, insights: PartialInsights) -> 
         lines.append(f"### {item.category}")
         lines.append(item.summary)
         lines.append("")
-    lines.append("## 원시 통계 (JSON)")
+    lines.append("## 원시 통계·게시물·현상 지표 (JSON)")
     lines.append(
-        "분석가 인사이트가 빠뜨린 디테일 — 상위 행위자, 라운드별 추이, 분포별 "
-        "집중도(*_concentration: n_unique·top5_share·gini), QaMetrics 등 — 은 아래 "
-        "통계를 직접 인용해 보고서 본문에서 풀어낼 것. n_amplifications 는 REPOST "
-        "건수와 같은 값(본문 없는 증폭)이며 QUOTE_POST 와 구분한다."
+        "여론 예측의 1 차 재료는 `categories.topic_flow.samples` 의 실제 게시물 본문이다 "
+        "— 작성자 id 와 함께 인용해 어떤 주장이 오갔는지 보여라. `phenomena` 의 "
+        "`follow_ideology_gap`·`ideology_assortativity` 는 양극화를, `cascade_*`·"
+        "`popularity_gini`·`early_mover_share` 는 확산과 여론 주도 집중을, action/network "
+        "통계는 신뢰도·활성도 근거로 쓴다. 분포별 집중도(*_concentration: n_unique·"
+        "top5_share·gini)도 함께 인용할 수 있다. n_amplifications 는 REPOST 건수와 같은 "
+        "값(본문 없는 증폭)이며 QUOTE_POST 와 구분한다."
     )
     lines.append("```json")
     lines.append(json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str))
