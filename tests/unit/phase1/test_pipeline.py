@@ -7,8 +7,18 @@ from pathlib import Path
 
 import pytest
 
-from litemiro.phase1.models import Preset
-from litemiro.phase1.pipeline import OntologyPipeline, PipelineConfig
+from litemiro.phase1.entity_extractor import EntityExtractor
+from litemiro.phase1.models import (
+    AgentProfile,
+    AgentSeed,
+    ExtractionResult,
+    Ontology,
+    Preset,
+    TextChunk,
+)
+from litemiro.phase1.ontology_generator import OntologyGenerator
+from litemiro.phase1.pipeline import OntologyPipeline, OntologyResumeState, PipelineConfig
+from litemiro.phase1.profile_generator import ProfileGenerator
 from litemiro.phase1.validator import OntologyValidator, ValidationResult
 
 ONTOLOGY_RESP = json.dumps(
@@ -188,3 +198,124 @@ async def test_pipeline_stops_before_write_on_validation_errors(
 
     assert not (tmp_path / "ontology_a_persona.json").exists()
     assert not (tmp_path / "ontology_b_memory.json").exists()
+
+
+# --- #126: content filter fallback 단계별 재시도 (인-메모리 resume) ---------------
+#
+# generator 를 "1차 호출은 content filter 예외, 2차는 정상" 으로 monkeypatch 해
+# fallback 재시도를 시뮬한다 (각 generator 전체를 patch 하므로 내부 retry/sleep
+# 우회 — 테스트가 빠르다). 핵심 검증: 막힌 step 이전 산출물이 동일 객체로 보존돼
+# 재호출되지 않는다 (state identity).
+_FILTER_EXC = "provider error: data_inspection_failed"
+
+
+def _resume_config(tmp_path: Path) -> PipelineConfig:
+    doc = tmp_path / "doc.txt"
+    doc.write_text("AI 규제 정책. 김기자는 일간지 소속이다.", encoding="utf-8")
+    return PipelineConfig(
+        input_path=doc,
+        requirement="AI 규제 시뮬레이션",
+        preset=Preset.QUICK,
+        seed=42,
+        output_dir=tmp_path,
+        model="m",
+    )
+
+
+@pytest.mark.asyncio
+async def test_resume_from_step2_reuses_step1(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Step2(extract) 차단 → 재시도는 Step1(ontology) 재호출 없이 재개."""
+    config = _resume_config(tmp_path)
+    llm = _QueueLLM([ONTOLOGY_RESP, EXTRACT_RESP, PROFILE_RESP])
+    orig_extract = EntityExtractor.extract
+    calls = {"n": 0}
+
+    async def _flaky(
+        self: EntityExtractor, batches: list[list[TextChunk]], ontology: Ontology
+    ) -> ExtractionResult:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError(_FILTER_EXC)
+        return await orig_extract(self, batches, ontology)
+
+    monkeypatch.setattr(EntityExtractor, "extract", _flaky)
+
+    state = OntologyResumeState()
+    with pytest.raises(RuntimeError, match="data_inspection_failed"):
+        await OntologyPipeline(config, llm).run(state=state)
+    assert state.ontology is not None
+    assert state.extraction_result is None
+    onto_obj = state.ontology
+
+    a, _b = await OntologyPipeline(config, llm).run(state=state)
+    assert state.ontology is onto_obj  # Step1 재호출 안 됨 (동일 객체)
+    assert state.extraction_result is not None
+    assert len(a.agents) >= 1
+
+
+@pytest.mark.asyncio
+async def test_resume_from_step4_reuses_step1_step2(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Step4(profile) 차단 → Step1·2 산출물 보존, Step4 만 재개."""
+    config = _resume_config(tmp_path)
+    llm = _QueueLLM([ONTOLOGY_RESP, EXTRACT_RESP, PROFILE_RESP])
+    orig_gen = ProfileGenerator.generate
+    calls = {"n": 0}
+
+    async def _flaky(
+        self: ProfileGenerator, seeds: list[AgentSeed], requirement: str
+    ) -> list[AgentProfile]:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError(_FILTER_EXC)
+        return await orig_gen(self, seeds, requirement)
+
+    monkeypatch.setattr(ProfileGenerator, "generate", _flaky)
+
+    state = OntologyResumeState()
+    with pytest.raises(RuntimeError, match="data_inspection_failed"):
+        await OntologyPipeline(config, llm).run(state=state)
+    onto_obj, extr_obj = state.ontology, state.extraction_result
+    assert onto_obj is not None
+    assert extr_obj is not None
+    assert state.profiles is None
+
+    a, _b = await OntologyPipeline(config, llm).run(state=state)
+    assert state.ontology is onto_obj
+    assert state.extraction_result is extr_obj
+    assert state.profiles is not None
+    assert len(a.agents) >= 1
+
+
+@pytest.mark.asyncio
+async def test_resume_from_step1_reuses_document(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Step1(ontology) 차단 → Step0(document) 보존, Step1 부터 재개."""
+    config = _resume_config(tmp_path)
+    llm = _QueueLLM([ONTOLOGY_RESP, EXTRACT_RESP, PROFILE_RESP])
+    orig_gen = OntologyGenerator.generate
+    calls = {"n": 0}
+
+    async def _flaky(self: OntologyGenerator, text: str, requirement: str) -> Ontology:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError(_FILTER_EXC)
+        return await orig_gen(self, text, requirement)
+
+    monkeypatch.setattr(OntologyGenerator, "generate", _flaky)
+
+    state = OntologyResumeState()
+    with pytest.raises(RuntimeError, match="data_inspection_failed"):
+        await OntologyPipeline(config, llm).run(state=state)
+    assert state.document_text is not None
+    assert state.ontology is None
+    doc_text = state.document_text
+
+    a, _b = await OntologyPipeline(config, llm).run(state=state)
+    assert state.document_text is doc_text  # Step0 재실행 안 됨
+    assert state.ontology is not None
+    assert len(a.agents) >= 1

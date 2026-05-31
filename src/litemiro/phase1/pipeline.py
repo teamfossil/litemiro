@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -16,8 +17,10 @@ from litemiro.phase1.models import (
     PRESET_AGENT_COUNTS,
     AgentProfile,
     AgentSeed,
+    ExtractionResult,
     MemoryConfig,
     MemoryStore,
+    Ontology,
     OntologyA,
     OntologyB,
     Preset,
@@ -39,6 +42,23 @@ class PipelineConfig(BaseModel):
     model: str = "openrouter/qwen/qwen-plus"
 
 
+@dataclass
+class OntologyResumeState:
+    """content filter fallback 재시도 간 보존되는 LLM step 산출물 (#126).
+
+    같은 async task 안에서 다음 모델로 재시도할 때 이미 성공한 LLM step
+    (ontology / extraction / profiles)을 재호출하지 않도록 메모리에 들고 간다.
+    막힌 step 의 필드는 None 으로 남아 그 step 부터 재개된다. 디스크 직렬화는
+    하지 않는다 — 프로세스 크래시 복구가 아니라 한 코루틴 내 모델 루프 재시도다.
+    """
+
+    document_text: str | None = None
+    ontology: Ontology | None = None
+    extraction_result: ExtractionResult | None = None
+    profiles: list[AgentProfile] | None = None
+    profile_fallback_count: int = 0
+
+
 class OntologyPipeline:
     def __init__(self, config: PipelineConfig, llm: Phase1LLMClient) -> None:
         self._config = config
@@ -48,45 +68,71 @@ class OntologyPipeline:
         self.profile_fallback_count: int = 0
 
     async def run(  # noqa: PLR0915 — 7 step 시퀀스 + 검증/직렬화 → 자연스레 길다. 분할은 리팩토링 사안.
-        self, *, on_progress: Callable[[str], None] | None = None
+        self,
+        *,
+        on_progress: Callable[[str], None] | None = None,
+        state: OntologyResumeState | None = None,
     ) -> tuple[OntologyA, OntologyB]:
         cfg = self._config
         target_count = PRESET_AGENT_COUNTS[cfg.preset]
+
+        # #126: content filter fallback 재시도 시 이미 성공한 LLM step 을 건너뛰도록
+        # 산출물을 ``state`` 에 누적한다. state 미지정이면 빈 state — 기존 동작 그대로.
+        state = state or OntologyResumeState()
 
         # #126: step 진입 직전에 외부로 신호. ``OntologyStore`` 가 받아 DB row 의
         # ``active_step`` 컬럼에 박고 polling 응답으로 흘려보낸다. 호출자가
         # 콜백을 안 줬으면 no-op — pipeline 단독 호출 (CLI) 도 동일하게 동작.
         notify = on_progress or (lambda _step: None)
 
-        # Step 0: Read document
-        notify("step0_document")
+        # t0 는 가드 밖 — 재개로 step0 이 스킵돼도 step6 의 total_elapsed 가 참조한다.
         t0 = time.monotonic()
-        document_text = self._read_document()
-        log.info(
-            "step0_document_read", chars=len(document_text), elapsed=f"{time.monotonic() - t0:.2f}s"
-        )
+        # Step 0: Read document (순수, 캐시 — PDF 파싱 재실행 회피)
+        if state.document_text is None:
+            notify("step0_document")
+            state.document_text = self._read_document()
+            log.info(
+                "step0_document_read",
+                chars=len(state.document_text),
+                elapsed=f"{time.monotonic() - t0:.2f}s",
+            )
+        document_text = state.document_text
+        assert document_text is not None
 
-        # Step 1: Generate ontology schema
-        notify("step1_ontology")
-        t1 = time.monotonic()
-        ontology = await OntologyGenerator(llm=self._llm, model=cfg.model).generate(
-            document_text, cfg.requirement
-        )
-        log.info(
-            "step1_ontology_generated",
-            entity_types=len(ontology.entity_types),
-            edge_types=len(ontology.edge_types),
-            elapsed=f"{time.monotonic() - t1:.2f}s",
-        )
+        # Step 1: Generate ontology schema (LLM — content filter 가능)
+        if state.ontology is None:
+            notify("step1_ontology")
+            t1 = time.monotonic()
+            state.ontology = await OntologyGenerator(llm=self._llm, model=cfg.model).generate(
+                document_text, cfg.requirement
+            )
+            log.info(
+                "step1_ontology_generated",
+                entity_types=len(state.ontology.entity_types),
+                edge_types=len(state.ontology.edge_types),
+                elapsed=f"{time.monotonic() - t1:.2f}s",
+            )
+        ontology = state.ontology
+        assert ontology is not None
 
-        # Step 2: Extract entities and build local graph
-        notify("step2_graph")
-        t2 = time.monotonic()
-        chunker = TextChunker()
-        chunks = chunker.chunk(document_text)
-        batches = chunker.batch(chunks)
-        extractor = EntityExtractor(llm=self._llm, model=cfg.model)
-        extraction_result = await extractor.extract(batches, ontology)
+        # Step 2: Extract entities (LLM — content filter 가능). graph 는 순수 함수라
+        # extraction_result 만 보존하고 매 시도 재구성한다 (LocalGraph 비직렬화 회피).
+        if state.extraction_result is None:
+            notify("step2_graph")
+            t2 = time.monotonic()
+            chunker = TextChunker()
+            chunks = chunker.chunk(document_text)
+            batches = chunker.batch(chunks)
+            extractor = EntityExtractor(llm=self._llm, model=cfg.model)
+            state.extraction_result = await extractor.extract(batches, ontology)
+            log.info(
+                "step2_extracted",
+                entities=len(state.extraction_result.entities),
+                relationships=len(state.extraction_result.relationships),
+                elapsed=f"{time.monotonic() - t2:.2f}s",
+            )
+        extraction_result = state.extraction_result
+        assert extraction_result is not None
 
         from litemiro.phase1.local_graph import LocalGraph  # noqa: PLC0415
 
@@ -95,9 +141,7 @@ class OntologyPipeline:
         log.info(
             "step2_graph_built",
             entities=len(extraction_result.entities),
-            relationships=len(extraction_result.relationships),
             merged_duplicates=merged,
-            elapsed=f"{time.monotonic() - t2:.2f}s",
         )
 
         # Step 3: Rank entities and expand to agent seeds
@@ -128,21 +172,25 @@ class OntologyPipeline:
             elapsed=f"{time.monotonic() - t3:.2f}s",
         )
 
-        # Step 4: Generate agent profiles
-        notify("step4_profiles")
-        t4 = time.monotonic()
-        from litemiro.phase1.profile_generator import ProfileGenerator  # noqa: PLC0415
+        # Step 4: Generate agent profiles (LLM — content filter 가능)
+        if state.profiles is None:
+            notify("step4_profiles")
+            t4 = time.monotonic()
+            from litemiro.phase1.profile_generator import ProfileGenerator  # noqa: PLC0415
 
-        profile_generator = ProfileGenerator(llm=self._llm, model=cfg.model)
-        profiles: list[AgentProfile] = await profile_generator.generate(seeds, cfg.requirement)
-        self.profile_fallback_count = profile_generator.fallback_count
+            profile_generator = ProfileGenerator(llm=self._llm, model=cfg.model)
+            state.profiles = await profile_generator.generate(seeds, cfg.requirement)
+            state.profile_fallback_count = profile_generator.fallback_count
+            log.info(
+                "step4_profiles_generated",
+                profile_count=len(state.profiles),
+                fallback_count=state.profile_fallback_count,
+                elapsed=f"{time.monotonic() - t4:.2f}s",
+            )
+        profiles: list[AgentProfile] = state.profiles
+        assert profiles is not None
+        self.profile_fallback_count = state.profile_fallback_count
         agents: dict[str, AgentProfile] = {p.agent_id: p for p in profiles}
-        log.info(
-            "step4_profiles_generated",
-            profile_count=len(profiles),
-            fallback_count=profile_generator.fallback_count,
-            elapsed=f"{time.monotonic() - t4:.2f}s",
-        )
 
         # Step 5: Initialize memory stores
         notify("step5_memory")
