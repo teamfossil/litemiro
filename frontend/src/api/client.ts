@@ -256,6 +256,10 @@ export interface OntologyResponse {
   error: string | null;
   // status === 'completed' 의 단순 별칭. 폴링 측이 boolean 한 줄로 분기.
   ready: boolean;
+  // #126: 진행 중 step 식별자 ('step0_document'~'step6_serialize'). 폴링 UI 라벨용.
+  active_step: string | null;
+  // #126: content filter 로 fallback 전환 시 그 모델 id. null 이면 primary 사용 중.
+  fallback_model: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -9,7 +9,7 @@ import pytest
 
 from litemiro.phase1.entity_extractor import EntityExtractor
 from litemiro.phase1.llm import Phase1LLMClient
-from litemiro.phase1.models import Ontology, TextChunk
+from litemiro.phase1.models import ExtractionResult, Ontology, TextChunk
 
 VALID_EXTRACTION_RESPONSE = json.dumps(
     {
@@ -102,3 +102,29 @@ async def test_extract_continues_when_one_batch_fails(
     result = await extractor.extract([sample_chunks[:1], sample_chunks[1:]], sample_ontology)
     assert len(result.entities) == 1
     assert result.entities[0].id == "journalist_kim"
+
+
+@pytest.mark.asyncio
+async def test_extract_reraises_content_filter(
+    monkeypatch: pytest.MonkeyPatch,
+    sample_ontology: Ontology,
+    sample_chunks: list[TextChunk],
+) -> None:
+    """content filter 차단은 삼키지 않고 전파 — fallback chain 이 다른 모델로 재시도하도록 (#126).
+
+    비-filter 배치 실패는 기존대로 관대하게 넘긴다 (test_extract_continues_when_one_batch_fails).
+    """
+
+    class _DummyLLM:
+        async def complete(self, *, system: str, user: str, model: str) -> str:
+            return ""
+
+    async def _filter_batch(
+        self: EntityExtractor, batch: list[TextChunk], ontology: Ontology
+    ) -> ExtractionResult:
+        raise RuntimeError("litellm.BadRequestError: data_inspection_failed")
+
+    monkeypatch.setattr(EntityExtractor, "_extract_batch", _filter_batch)
+    extractor = EntityExtractor(llm=_DummyLLM(), model="test")
+    with pytest.raises(RuntimeError, match="data_inspection_failed"):
+        await extractor.extract([sample_chunks[:1]], sample_ontology)

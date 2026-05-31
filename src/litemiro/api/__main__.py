@@ -292,7 +292,11 @@ def _build_real_ontology_runner(
         is_content_filter_error,
     )
     from litemiro.cli.ontology import Phase1LiteLLMClient  # noqa: PLC0415
-    from litemiro.phase1.pipeline import OntologyPipeline, PipelineConfig  # noqa: PLC0415
+    from litemiro.phase1.pipeline import (  # noqa: PLC0415
+        OntologyPipeline,
+        OntologyResumeState,
+        PipelineConfig,
+    )
 
     log = logging.getLogger(__name__)
     chain = [llm_model, *(fallback_models or [])]
@@ -311,6 +315,9 @@ def _build_real_ontology_runner(
         # event-loop 블록 무시 가능.
         output_dir.mkdir(parents=True, exist_ok=True)  # noqa: ASYNC240
         last_filter_exc: Exception | None = None
+        # #126: 막힌 step 이후 산출물을 모델 루프 사이에 들고 가, 다음 fallback
+        # 모델로 막힌 step 부터만 재개한다 (전체 재실행 회피).
+        state = OntologyResumeState()
         for idx, model in enumerate(chain):
             # primary 시도 (idx=0) 에는 fallback 표시를 비워두고, 두 번째
             # iteration 부터 현재 chain 모델명을 함께 흘린다. row 의 fallback_model
@@ -330,7 +337,9 @@ def _build_real_ontology_runner(
                 model=model,
             )
             try:
-                ontology_a, _ = await OntologyPipeline(config, llm).run(on_progress=_step_callback)
+                ontology_a, _ = await OntologyPipeline(config, llm).run(
+                    on_progress=_step_callback, state=state
+                )
             except Exception as exc:
                 if not is_content_filter_error(exc):
                     raise
