@@ -6,8 +6,8 @@ wrapper 로 이 함수들을 쓴다. OASIS 가 단일 비교 베이스라인을 
 같은 ontology 로 seed 만 바꿔 N 회 돌린 분포의 평균±sigma 를 기준으로, 코드 변경 후
 재실행이 ±ksigma 범위를 벗어나면 회귀로 본다.
 
-`QaMetrics` 3 종 + `PhenomenaMetrics` 8 종을 한 평면 dict 로 펴서 다룬다.
-ontology 없이 집계된 양극화 메트릭(None)은 통계에서 제외 — 분포가 비면 그
+게이트 대상은 `QaMetrics` 2 종 + `PhenomenaMetrics` 8 종을 한 평면 dict 로 펴서
+다룬다. ontology 없이 집계된 양극화 메트릭(None)은 통계에서 제외 — 분포가 비면 그
 메트릭은 게이트하지 않는다.
 """
 
@@ -17,10 +17,15 @@ import statistics
 
 from litemiro.phase3.models import AggregationResult
 
-# 베이스라인이 추적하는 메트릭 평면 키 — QaMetrics 3 + PhenomenaMetrics 8.
+# baseline.json 구조 버전 — 메트릭 키를 추가/제거하면 올린다. check_qa_regression
+# 이 불일치를 경고해 스키마 드리프트로 인한 silent 실패를 막는다.
+BASELINE_SCHEMA = "1"
+
+# 베이스라인이 게이트하는 메트릭 평면 키 — QaMetrics 2 + PhenomenaMetrics 8.
+# follow_clustering_coefficient 는 현 규모에서 신호가 없어 deprecated (metrics.md):
+# 모델 필드·계산·보고서 인용은 스키마 안정을 위해 유지하되 회귀 게이트에선 뺀다.
 METRIC_NAMES: tuple[str, ...] = (
     "action_entropy_normalized",
-    "follow_clustering_coefficient",
     "content_word_entropy_normalized",
     "cascade_max_depth",
     "cascade_max_breadth",
@@ -40,7 +45,6 @@ def extract_metrics(result: AggregationResult) -> dict[str, float | None]:
     ph = result.phenomena
     return {
         "action_entropy_normalized": qa.action_entropy_normalized,
-        "follow_clustering_coefficient": qa.follow_clustering_coefficient,
         "content_word_entropy_normalized": qa.content_word_entropy_normalized,
         "cascade_max_depth": ph.cascade_max_depth,
         "cascade_max_breadth": ph.cascade_max_breadth,
@@ -117,4 +121,10 @@ def check_regression(
     return violations
 
 
-__all__ = ["METRIC_NAMES", "check_regression", "extract_metrics", "summarize_baseline"]
+__all__ = [
+    "BASELINE_SCHEMA",
+    "METRIC_NAMES",
+    "check_regression",
+    "extract_metrics",
+    "summarize_baseline",
+]
