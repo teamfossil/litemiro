@@ -230,17 +230,23 @@ async def test_resume_from_step2_reuses_step1(
     config = _resume_config(tmp_path)
     llm = _QueueLLM([ONTOLOGY_RESP, EXTRACT_RESP, PROFILE_RESP])
     orig_extract = EntityExtractor.extract
-    calls = {"n": 0}
+    orig_onto = OntologyGenerator.generate
+    calls = {"extract": 0, "onto": 0}
 
-    async def _flaky(
+    async def _flaky_extract(
         self: EntityExtractor, batches: list[list[TextChunk]], ontology: Ontology
     ) -> ExtractionResult:
-        calls["n"] += 1
-        if calls["n"] == 1:
+        calls["extract"] += 1
+        if calls["extract"] == 1:
             raise RuntimeError(_FILTER_EXC)
         return await orig_extract(self, batches, ontology)
 
-    monkeypatch.setattr(EntityExtractor, "extract", _flaky)
+    async def _spy_onto(self: OntologyGenerator, text: str, requirement: str) -> Ontology:
+        calls["onto"] += 1
+        return await orig_onto(self, text, requirement)
+
+    monkeypatch.setattr(EntityExtractor, "extract", _flaky_extract)
+    monkeypatch.setattr(OntologyGenerator, "generate", _spy_onto)
 
     state = OntologyResumeState()
     with pytest.raises(RuntimeError, match="data_inspection_failed"):
@@ -250,7 +256,9 @@ async def test_resume_from_step2_reuses_step1(
     onto_obj = state.ontology
 
     a, _b = await OntologyPipeline(config, llm).run(state=state)
-    assert state.ontology is onto_obj  # Step1 재호출 안 됨 (동일 객체)
+    assert state.ontology is onto_obj  # Step1 산출물 동일 객체 (덮어쓰기 X)
+    # spy 로 "재호출 자체가 없음" 을 직접 검증 — identity 만으로는 호출+미할당 버그를 못 잡는다.
+    assert calls["onto"] == 1  # Step1(ontology) 은 1차에서만 호출, 2차 재개 시 미재호출
     assert state.extraction_result is not None
     assert len(a.agents) >= 1
 

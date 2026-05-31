@@ -5,9 +5,9 @@ import json
 import logging
 
 from json_repair import repair_json
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
-from litemiro.phase1.content_filter import is_content_filter_error
+from litemiro.phase1.content_filter import is_content_filter_error, retry_unless_content_filter
 from litemiro.phase1.llm import Phase1LLMClient, response_text
 from litemiro.phase1.models import Edge, Entity, ExtractionResult, Ontology, TextChunk
 
@@ -84,6 +84,7 @@ class EntityExtractor:
         )
 
     @retry(
+        retry=retry_if_exception(retry_unless_content_filter),
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
         reraise=True,

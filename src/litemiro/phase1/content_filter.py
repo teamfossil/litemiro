@@ -24,4 +24,12 @@ def is_content_filter_error(exc: BaseException) -> bool:
     )
 
 
-__all__ = ["is_content_filter_error"]
+def retry_unless_content_filter(exc: BaseException) -> bool:
+    """tenacity ``retry_if_exception`` predicate — content filter 차단은 재시도하지
+    않는다 (같은 모델·입력이면 100% 동일 실패라 retry 가 헛 지연·비용일 뿐).
+    그 외 예외(네트워크·rate limit 등)만 재시도 허용한다.
+    """
+    return not is_content_filter_error(exc)
+
+
+__all__ = ["is_content_filter_error", "retry_unless_content_filter"]
