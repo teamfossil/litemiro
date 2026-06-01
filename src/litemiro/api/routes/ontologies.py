@@ -9,9 +9,9 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request, status
-
 from typing import cast
+
+from fastapi import APIRouter, HTTPException, Request, status
 
 from litemiro.api.db import OntologyRow
 from litemiro.api.document_store import DocumentStore
