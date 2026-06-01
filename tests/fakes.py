@@ -69,6 +69,10 @@ class InMemoryStateStore:
             raise KeyError(f"agent already exists: {agent.agent_id}")
         self._agents[agent.agent_id] = agent
 
+    def update_agent_ideology(self, agent_id: str, ideology: float) -> None:
+        agent = self._agents[agent_id]
+        self._agents[agent_id] = agent.model_copy(update={"ideology": ideology})
+
     async def save_checkpoint(self, round_num: int) -> Path:
         # RoundManager 단위 테스트가 ``StateStoreLike`` Protocol 의 마지막
         # 호출 단계를 검증할 수 있도록 await-able no-op 으로 둔다. 호출 횟수

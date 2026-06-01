@@ -67,6 +67,10 @@ class StateStore:
             raise KeyError(f"unknown post_id: {post.post_id}")
         self._posts[post.post_id] = post
 
+    def update_agent_ideology(self, agent_id: str, ideology: float) -> None:
+        agent = self._agents[agent_id]
+        self._agents[agent_id] = agent.model_copy(update={"ideology": ideology})
+
     def get_random_seed(self, agent_id: str) -> int:
         digest = hashlib.sha256(f"{self._global_seed}:{agent_id}".encode()).digest()
         return int.from_bytes(digest[:8], "big", signed=False)

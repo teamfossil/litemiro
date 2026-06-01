@@ -21,6 +21,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from litemiro.core._types import RoundOutcome
+from litemiro.core.belief_updater import BeliefUpdater
 from litemiro.core.context_builder import build_context
 from litemiro.models import (
     Action,
@@ -61,6 +62,7 @@ class RoundManager:
         token_budget: TokenBudgetManagerLike,
         topic_extractor: TopicExtractorLike,
         llm_model: str,
+        belief_updater: BeliefUpdater | None = None,
     ) -> None:
         self._store = store
         self._scheduler = scheduler
@@ -72,6 +74,7 @@ class RoundManager:
         self._token_budget = token_budget
         self._topic_extractor = topic_extractor
         self._llm_model = llm_model
+        self._belief_updater = belief_updater
         self._recent_actions: dict[str, deque[Action]] = {}
 
     async def run_round(self, round_num: int) -> RoundOutcome:
@@ -89,6 +92,7 @@ class RoundManager:
         if not self._token_budget.has_budget(estimated_tokens=estimated):
             return RoundOutcome(processed=0, early_exit=True)
 
+        round_events: list[RoundEvent] = []
         if active_ids:
             agents_by_id = {a.agent_id: a for a in agents}
 
@@ -112,6 +116,10 @@ class RoundManager:
                 event = event.model_copy(update={"llm_meta": result.llm_meta})
                 await self._event_logger.log_event(event)
                 self._token_budget.consume(tokens_used=result.llm_meta.tokens_used)
+                round_events.append(event)
+
+        if self._belief_updater is not None and round_events:
+            self._belief_updater.apply_round(round_events, self._store, round_num)
 
         await self._store.save_checkpoint(round_num)
         return RoundOutcome(processed=len(active_ids), early_exit=False)
