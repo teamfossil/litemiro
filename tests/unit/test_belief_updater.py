@@ -6,8 +6,6 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-import pytest
-
 from litemiro.core.belief_updater import BeliefUpdater
 from litemiro.models import Action, ActionType, Agent, LLMMeta, Post, RoundEvent
 from tests.fakes import InMemoryStateStore
@@ -89,8 +87,6 @@ class TestLikeUpdate:
         a = _agent("a", 0.3)
         b = _agent("b", 0.5)
         post = _post("p1", "b")
-        store = _make_store(a, b, posts=[post])
-        updater = BeliefUpdater(epsilon=0.3, mu_follow=0.3)
 
         follow_events = [_event("a", Action(type=ActionType.FOLLOW, target_agent_id="b"))]
         like_events = [_event("a", Action(type=ActionType.LIKE_POST, target_post_id="p1"))]
