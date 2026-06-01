@@ -114,10 +114,7 @@ class BeliefUpdater:
             store.update_agent_ideology(agent_id, new_ideology)
 
         if self._handle is not None:
-            snapshot = {
-                aid: pending.get(aid, pre_ideology[aid])
-                for aid in sorted(pre_ideology)
-            }
+            snapshot = {aid: pending.get(aid, pre_ideology[aid]) for aid in sorted(pre_ideology)}
             line = json.dumps(
                 {"round_num": round_num, "ideology": snapshot},
                 ensure_ascii=False,
