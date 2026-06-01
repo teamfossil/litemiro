@@ -11,9 +11,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request, status
 
+from typing import cast
+
 from litemiro.api.db import OntologyRow
 from litemiro.api.document_store import DocumentStore
-from litemiro.api.models import CreateOntologyRequest, OntologyResponse
+from litemiro.api.models import CreateOntologyRequest, OntologyActiveStep, OntologyResponse
 from litemiro.api.ontology_store import OntologyStore
 
 router = APIRouter(prefix="/api", tags=["ontologies"])
@@ -40,7 +42,7 @@ def _to_response(row: OntologyRow) -> OntologyResponse:
         agent_count=row.agent_count,
         error=row.error,
         ready=row.status == "completed",
-        active_step=row.active_step,
+        active_step=cast("OntologyActiveStep | None", row.active_step),
         fallback_model=row.fallback_model,
         created_at=row.created_at,
         updated_at=row.updated_at,
