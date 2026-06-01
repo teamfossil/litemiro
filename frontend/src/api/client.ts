@@ -14,6 +14,14 @@ export type PlazaStatus = 'pending' | 'running' | 'composing' | 'completed' | 'f
 
 // ontology generation 의 상태 — plaza 와 달리 composing 단계가 없다.
 export type OntologyStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type OntologyActiveStep =
+  | 'step0_document'
+  | 'step1_ontology'
+  | 'step2_graph'
+  | 'step3_seeds'
+  | 'step4_profiles'
+  | 'step5_memory'
+  | 'step6_serialize';
 
 // 두 가지를 한꺼번에 결정 — (a) 보고서 합성 LLM 콜 수 (quick=1 / standard=4 /
 // full=8), (b) `POST /api/ontologies` 의 ontology agent 수 (quick=100 /
@@ -257,7 +265,7 @@ export interface OntologyResponse {
   // status === 'completed' 의 단순 별칭. 폴링 측이 boolean 한 줄로 분기.
   ready: boolean;
   // #126: 진행 중 step 식별자 ('step0_document'~'step6_serialize'). 폴링 UI 라벨용.
-  active_step: string | null;
+  active_step: OntologyActiveStep | null;
   // #126: content filter 로 fallback 전환 시 그 모델 id. null 이면 primary 사용 중.
   fallback_model: string | null;
   created_at: string;
