@@ -96,8 +96,8 @@ class OntologyPipeline:
                 chars=len(state.document_text),
                 elapsed=f"{time.monotonic() - t0:.2f}s",
             )
+        assert state.document_text is not None
         document_text = state.document_text
-        assert document_text is not None
 
         # Step 1: Generate ontology schema (LLM — content filter 가능)
         if state.ontology is None:
@@ -112,8 +112,8 @@ class OntologyPipeline:
                 edge_types=len(state.ontology.edge_types),
                 elapsed=f"{time.monotonic() - t1:.2f}s",
             )
+        assert state.ontology is not None
         ontology = state.ontology
-        assert ontology is not None
 
         # Step 2: Extract entities (LLM — content filter 가능). graph 는 순수 함수라
         # extraction_result 만 보존하고 매 시도 재구성한다 (LocalGraph 비직렬화 회피).
@@ -131,8 +131,8 @@ class OntologyPipeline:
                 relationships=len(state.extraction_result.relationships),
                 elapsed=f"{time.monotonic() - t2:.2f}s",
             )
+        assert state.extraction_result is not None
         extraction_result = state.extraction_result
-        assert extraction_result is not None
 
         from litemiro.phase1.local_graph import LocalGraph  # noqa: PLC0415
 
@@ -187,8 +187,8 @@ class OntologyPipeline:
                 fallback_count=state.profile_fallback_count,
                 elapsed=f"{time.monotonic() - t4:.2f}s",
             )
+        assert state.profiles is not None
         profiles: list[AgentProfile] = state.profiles
-        assert profiles is not None
         self.profile_fallback_count = state.profile_fallback_count
         agents: dict[str, AgentProfile] = {p.agent_id: p for p in profiles}
 

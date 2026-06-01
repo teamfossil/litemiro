@@ -21,7 +21,7 @@ import { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { lm } from '@/data/mock';
 import { Button, ArrowGlyph } from '@/components/atoms';
-import { api, ApiError, type OntologyResponse, type PlazaAgentItem, type Preset } from '@/api/client';
+import { api, ApiError, type OntologyActiveStep, type OntologyResponse, type PlazaAgentItem, type Preset } from '@/api/client';
 import { mapBackendRoleToRoleId } from '@/lib/roles';
 
 const ONTOLOGY_POLL_INTERVAL_MS = 2_000;
@@ -53,7 +53,7 @@ function formatError(err: unknown, fallback: string): string {
 type LoadingPhase = 'polling' | 'launching' | 'failed';
 
 // #126: 백엔드 active_step 식별자 → 사람이 읽는 라벨 + 7 단계 중 순번.
-const STEP_LABELS: Record<string, { n: number; label: string }> = {
+const STEP_LABELS: Record<OntologyActiveStep, { n: number; label: string }> = {
   step0_document: { n: 1, label: '자료 읽는 중' },
   step1_ontology: { n: 2, label: '온톨로지 설계' },
   step2_graph: { n: 3, label: '엔티티 추출' },
@@ -62,6 +62,24 @@ const STEP_LABELS: Record<string, { n: number; label: string }> = {
   step5_memory: { n: 6, label: '메모리 초기화' },
   step6_serialize: { n: 7, label: '검증·직렬화' },
 };
+
+function getSubText(
+  phase: LoadingPhase,
+  error: string | null,
+  fallbackModel: string | null,
+  stepInfo: { n: number; label: string } | undefined,
+  isOverdue: boolean,
+  elapsedSec: number,
+): string {
+  if (phase === 'failed') return error ?? '알 수 없는 오류';
+  if (phase === 'launching') return '곧 자동으로 다음 단계로 넘어갑니다.';
+  if (fallbackModel)
+    return `${stepInfo ? `${stepInfo.label} 단계에서 ` : ''}콘텐츠 필터에 막혀 다른 모델(${fallbackModel})로 재시도 중이에요 · 추가 대기가 발생합니다 · ${formatElapsed(elapsedSec)} 경과`;
+  if (stepInfo) return `${stepInfo.label} (${stepInfo.n}/7) · ${formatElapsed(elapsedSec)} 경과`;
+  if (isOverdue)
+    return `평소보다 조금 더 걸리고 있어요 · ${formatElapsed(elapsedSec)} 경과. 그대로 두면 곧 완료돼요.`;
+  return `LLM 호출이 진행되고 있어요 · ${formatElapsed(elapsedSec)} 경과`;
+}
 
 function CastingLoading() {
   const [search] = useSearchParams();
@@ -164,18 +182,7 @@ function CastingLoading() {
   // #126: 폴링 중이면 fallback 전환(최우선) → step 진행 라벨 → overdue → 기본 순.
   const fallbackModel = status?.fallback_model ?? null;
   const stepInfo = status?.active_step ? STEP_LABELS[status.active_step] : undefined;
-  const subText =
-    phase === 'failed'
-      ? (error ?? '알 수 없는 오류')
-      : phase === 'launching'
-        ? '곧 자동으로 다음 단계로 넘어갑니다.'
-        : fallbackModel
-          ? `${stepInfo ? `${stepInfo.label} 단계에서 ` : ''}콘텐츠 필터에 막혀 다른 모델(${fallbackModel})로 재시도 중이에요 · 추가 대기가 발생합니다 · ${formatElapsed(elapsedSec)} 경과`
-          : stepInfo
-            ? `${stepInfo.label} (${stepInfo.n}/7) · ${formatElapsed(elapsedSec)} 경과`
-            : isOverdue
-              ? `평소보다 조금 더 걸리고 있어요 · ${formatElapsed(elapsedSec)} 경과. 그대로 두면 곧 완료돼요.`
-              : `LLM 호출이 진행되고 있어요 · ${formatElapsed(elapsedSec)} 경과`;
+  const subText = getSubText(phase, error, fallbackModel, stepInfo, isOverdue, elapsedSec);
 
   return (
     <div className="lm-cast">
