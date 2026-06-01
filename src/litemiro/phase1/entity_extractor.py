@@ -5,8 +5,9 @@ import json
 import logging
 
 from json_repair import repair_json
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
+from litemiro.phase1.content_filter import is_content_filter_error, retry_unless_content_filter
 from litemiro.phase1.llm import Phase1LLMClient, response_text
 from litemiro.phase1.models import Edge, Entity, ExtractionResult, Ontology, TextChunk
 
@@ -66,6 +67,11 @@ class EntityExtractor:
         merged_relationships: list[Edge] = []
         for result in results:
             if isinstance(result, BaseException):
+                if is_content_filter_error(result):
+                    # content filter 차단은 fallback chain 이 다른 모델로 재시도해야
+                    # 하므로 삼키지 않고 전파한다 (#126). 일시 네트워크/파싱 실패는
+                    # 기존대로 배치 단위로 관대하게 넘긴다.
+                    raise result
                 logger.warning("entity extraction batch failed; continuing", exc_info=result)
                 continue
             for entity in result.entities:
@@ -78,6 +84,7 @@ class EntityExtractor:
         )
 
     @retry(
+        retry=retry_if_exception(retry_unless_content_filter),
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
         reraise=True,

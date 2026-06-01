@@ -6,8 +6,9 @@ import logging
 from typing import cast
 
 from json_repair import repair_json
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
+from litemiro.phase1.content_filter import is_content_filter_error, retry_unless_content_filter
 from litemiro.phase1.llm import Phase1LLMClient, response_text
 from litemiro.phase1.models import AgentProfile, AgentSeed, BehaviorTendency
 
@@ -84,7 +85,12 @@ class ProfileGenerator:
 
             try:
                 profiles = await self._call_with_retry(user_prompt)
-            except Exception:
+            except Exception as exc:
+                if is_content_filter_error(exc):
+                    # content filter 는 fallback profile 로 덮지 않고 전파한다 (#126) —
+                    # fallback chain 이 다른 모델로 step4 를 재시도해야 하기 때문.
+                    # generate() 의 gather(return_exceptions 미사용)가 그대로 올린다.
+                    raise
                 logger.warning("LLM batch failed for %d seeds, using fallback", len(batch))
                 self.fallback_count += len(batch)
                 return [self._build_fallback_profile(seed) for seed in batch]
@@ -114,6 +120,7 @@ class ProfileGenerator:
             return result
 
     @retry(
+        retry=retry_if_exception(retry_unless_content_filter),
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
         reraise=True,

@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 from litemiro.api import db as _db
+from litemiro.phase1.content_filter import is_content_filter_error
 
 if TYPE_CHECKING:
     import sqlite3
@@ -60,22 +61,6 @@ class OntologyContentFilterBlockedError(RuntimeError):
     사회 sensitive topic PDF 에서 종종 발동 (#121). fallback chain 도 모두
     막혔을 때 친화화 메시지로 row.error 컬럼에 박힌다.
     """
-
-
-def is_content_filter_error(exc: BaseException) -> bool:
-    """provider content moderation 차단 여부를 메시지 substring 으로 식별.
-
-    LiteLLM 이 OpenRouter 의 raw provider 에러를 그대로 wrapping 해 던지므로
-    구조적 분류가 불가능 — 문자열 매칭으로 ``data_inspection_failed`` (Qwen /
-    Alibaba) 와 OpenAI 류 ``content_policy_violation`` 을 동시에 잡는다. 다른
-    provider 의 식별자가 늘어나면 여기서 같이 추가.
-    """
-    text = str(exc).lower()
-    return (
-        "data_inspection_failed" in text
-        or "inappropriate content" in text
-        or "content_policy_violation" in text
-    )
 
 
 class OntologyRunner(Protocol):
@@ -237,4 +222,5 @@ __all__ = [
     "OntologyRunResult",
     "OntologyRunner",
     "OntologyStore",
+    "is_content_filter_error",
 ]

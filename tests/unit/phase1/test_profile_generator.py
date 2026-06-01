@@ -156,3 +156,24 @@ async def test_empty_profile_topics_fall_back(
     # follow_rate / like_rate 가 누락되어도 Phase 2 ActionSelector 가 신호를 받을 수 있게.
     assert profiles[0].behavior_tendency.follow_rate == 0.2
     assert profiles[0].behavior_tendency.like_rate == 0.4
+
+
+@pytest.mark.asyncio
+async def test_generate_reraises_content_filter(
+    monkeypatch: pytest.MonkeyPatch,
+    sample_agent_seeds: list[AgentSeed],
+) -> None:
+    """content filter 는 fallback profile 로 덮지 않고 전파한다 (#126) — fallback chain 이
+    다른 모델로 step4 를 재시도할 수 있어야 하기 때문. 비-filter 실패는 기존대로 fallback."""
+
+    class _DummyLLM:
+        async def complete(self, *, system: str, user: str, model: str) -> str:
+            return ""
+
+    async def _filter_retry(self: ProfileGenerator, user_prompt: str) -> list[dict[str, object]]:
+        raise RuntimeError("litellm.BadRequestError: data_inspection_failed")
+
+    monkeypatch.setattr(ProfileGenerator, "_call_with_retry", _filter_retry)
+    gen = ProfileGenerator(llm=_DummyLLM(), model="test")
+    with pytest.raises(RuntimeError, match="data_inspection_failed"):
+        await gen.generate(sample_agent_seeds[:1], "AI 규제 시뮬레이션")
