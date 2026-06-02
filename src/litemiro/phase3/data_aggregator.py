@@ -515,7 +515,8 @@ def _ideology_trajectory_metrics(
     if not vals:
         return None, None
     mean = sum(vals) / len(vals)
-    std_final = (sum((v - mean) ** 2 for v in vals) / len(vals)) ** 0.5  # population std — 닫힌 모집단이라 Bessel 보정 없음
+    # population std — 닫힌 모집단이라 Bessel 보정 없음
+    std_final = (sum((v - mean) ** 2 for v in vals) / len(vals)) ** 0.5
     common = set(initial) & set(final)
     drift_mean = sum(abs(final[a] - initial[a]) for a in common) / len(common) if common else None
     return std_final, drift_mean
