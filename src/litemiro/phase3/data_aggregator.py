@@ -44,19 +44,37 @@ _log = structlog.get_logger(__name__)
 
 class DataAggregator:
     @staticmethod
-    def aggregate(jsonl_path: Path, ontology_path: Path | None = None) -> AggregationResult:
+    def aggregate(
+        jsonl_path: Path,
+        ontology_path: Path | None = None,
+        *,
+        trajectory_path: Path | None = None,
+    ) -> AggregationResult:
         """events.jsonl → 카테고리 통계 + QA/현상 메트릭.
 
-        ``ontology_path`` 가 주어지면 agent 별 ideology 를 로드해 양극화 메트릭을
-        계산한다. 없으면 (기존 단일 인자 호출 그대로) 양극화는 None — 하위호환.
+        ``ontology_path`` — agent 별 초기 ideology 를 로드해 양극화 메트릭을 계산.
+        ``trajectory_path`` — belief_trajectory.jsonl (Phase 2 BeliefUpdater 산출).
+        주어지면 최종 라운드 ideology 로 양극화 계산, ideology_std_final /
+        ideology_drift_mean 추가 — ontology_path 보다 우선. 둘 다 없으면 양극화 None.
         """
         events = list(_load_events(jsonl_path))
+        # trajectory 자동탐색: 명시 경로 없으면 events.jsonl 옆 belief_trajectory.jsonl
+        if trajectory_path is None:
+            auto = jsonl_path.parent / "belief_trajectory.jsonl"
+            if auto.exists():
+                trajectory_path = auto
+        trajectory = (
+            _load_belief_trajectory(trajectory_path) if trajectory_path is not None else None
+        )
         ideology = _load_ideology(ontology_path) if ontology_path is not None else None
-        return DataAggregator.aggregate_events(events, ideology=ideology)
+        return DataAggregator.aggregate_events(events, ideology=ideology, trajectory=trajectory)
 
     @staticmethod
     def aggregate_events(
-        events: list[RoundEvent], ideology: dict[str, float] | None = None
+        events: list[RoundEvent],
+        ideology: dict[str, float] | None = None,
+        *,
+        trajectory: dict[int, dict[str, float]] | None = None,
     ) -> AggregationResult:
         agents = sorted({e.agent_id for e in events})
         rounds = sorted({e.round_num for e in events})
@@ -71,7 +89,7 @@ class DataAggregator:
                 CATEGORY_TIME_SERIES: _time_series(events),
             },
             qa_metrics=_qa_metrics(events),
-            phenomena=_phenomena_metrics(events, ideology),
+            phenomena=_phenomena_metrics(events, ideology, trajectory),
         )
 
 
@@ -454,11 +472,67 @@ def _load_ideology(ontology_path: Path) -> dict[str, float]:
     return result
 
 
+def _load_belief_trajectory(path: Path) -> dict[int, dict[str, float]]:
+    """belief_trajectory.jsonl → {round_num: {agent_id: ideology}}.
+
+    BeliefUpdater 가 라운드마다 기록하는 포맷:
+    ``{"round_num": int, "ideology": {agent_id: float}}``.
+    깨진 라인은 skip (events.jsonl 과 같은 lenient 패턴).
+    """
+    rounds: dict[int, dict[str, float]] = {}
+    with path.open(encoding="utf-8") as fh:
+        for raw in fh:
+            stripped = raw.strip()
+            if not stripped:
+                continue
+            try:
+                row = json.loads(stripped)
+                if "schema" in row and "round_num" not in row:
+                    continue  # 스키마 메타 라인 skip
+                rnum = int(row["round_num"])
+                ideo = {str(k): float(v) for k, v in row["ideology"].items()}
+                rounds[rnum] = ideo
+            except (KeyError, ValueError, TypeError):
+                continue
+    return rounds
+
+
+def _ideology_trajectory_metrics(
+    trajectory: dict[int, dict[str, float]] | None,
+) -> tuple[float | None, float | None]:
+    """ideology_std_final + ideology_drift_mean from belief_trajectory.jsonl.
+
+    std_final — 최종 라운드 ideology 의 표준편차 (분포 퍼짐, 수렴 여부 지표).
+    drift_mean — 에이전트별 |final - initial| 평균 (신념 변동 크기).
+    trajectory 없거나 빈 경우 (None, None).
+    """
+    if not trajectory:
+        return None, None
+    sorted_rounds = sorted(trajectory)
+    initial = trajectory[sorted_rounds[0]]
+    final = trajectory[sorted_rounds[-1]]
+    vals = list(final.values())
+    if not vals:
+        return None, None
+    mean = sum(vals) / len(vals)
+    # population std — 닫힌 모집단이라 Bessel 보정 없음
+    std_final = (sum((v - mean) ** 2 for v in vals) / len(vals)) ** 0.5
+    common = set(initial) & set(final)
+    drift_mean = sum(abs(final[a] - initial[a]) for a in common) / len(common) if common else None
+    return std_final, drift_mean
+
+
 def _phenomena_metrics(
-    events: list[RoundEvent], ideology: dict[str, float] | None
+    events: list[RoundEvent],
+    ideology: dict[str, float] | None,
+    trajectory: dict[int, dict[str, float]] | None = None,
 ) -> PhenomenaMetrics:
     depth, breadth, scale, n_cascades = _cascade_metrics(events)
-    gap, assortativity = _polarization(events, ideology)
+    # trajectory 가 있으면 최종 라운드 ideology 를 모든 FOLLOW 엣지에 일괄 부여.
+    # 각 FOLLOW 시점 ideology 가 아닌 종단 ideology 기준 — "최종 follow 네트워크의 호모필리" 해석.
+    ideology_for_pol = trajectory[max(trajectory)] if trajectory else ideology
+    gap, assortativity = _polarization(events, ideology_for_pol)
+    std_final, drift_mean = _ideology_trajectory_metrics(trajectory)
     popularity_gini, early = _herd(events)
     return PhenomenaMetrics(
         cascade_max_depth=depth,
@@ -469,6 +543,8 @@ def _phenomena_metrics(
         ideology_assortativity=assortativity,
         popularity_gini=popularity_gini,
         early_mover_share=early,
+        ideology_std_final=std_final,
+        ideology_drift_mean=drift_mean,
     )
 
 

@@ -51,7 +51,11 @@ class BeliefUpdater:
         self._handle: IO[str] | None = None
         if trajectory_path is not None:
             trajectory_path.parent.mkdir(parents=True, exist_ok=True)
+            is_new = not trajectory_path.exists() or trajectory_path.stat().st_size == 0
             self._handle = open(trajectory_path, "a", encoding="utf-8", newline="")  # noqa: SIM115
+            if is_new:
+                self._handle.write(json.dumps({"schema": "belief_trajectory/v1"}) + "\n")
+                self._handle.flush()
 
     def apply_round(
         self,

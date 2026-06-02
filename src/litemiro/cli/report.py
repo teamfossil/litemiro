@@ -79,6 +79,17 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--belief-trajectory",
+        type=Path,
+        default=None,
+        dest="belief_trajectory",
+        help=(
+            "Optional belief_trajectory.jsonl (Phase 2 BeliefUpdater 산출). 주어지면 "
+            "최종 라운드 ideology 로 양극화 계산 + ideology_std_final / ideology_drift_mean "
+            "추가. 미지정 시 --events 와 같은 디렉토리의 belief_trajectory.jsonl 을 자동탐색."
+        ),
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=None,
@@ -140,7 +151,9 @@ async def _run(
     테스트가 직접 부르는 경계로 두어 main 의 ``LiteLLMClient`` 인스턴스화
     단계를 우회한다 — 실 OpenRouter 키 없이도 fake LLM 으로 닫힌다.
     """
-    aggregation = DataAggregator.aggregate(args.events, args.ontology_a)
+    aggregation = DataAggregator.aggregate(
+        args.events, args.ontology_a, trajectory_path=args.belief_trajectory
+    )
     config = ReportConfig(
         preset=args.preset,
         analyzer_model=args.analyzer_model,
