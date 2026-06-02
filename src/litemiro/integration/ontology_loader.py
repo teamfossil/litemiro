@@ -338,6 +338,7 @@ def _build_agent(profile: AgentProfile, store: MemoryStore | None) -> Agent:
         persona_traits=profile.model_dump(mode="json"),
         memory_summary=_memory_summary(store.semantic if store else []),
         activation_rate=profile.behavior_tendency.post_rate,
+        ideology=profile.ideology,
     )
 
 

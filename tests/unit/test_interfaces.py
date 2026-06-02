@@ -89,6 +89,8 @@ class _StubStore:
     def get_random_seed(self, agent_id: str) -> int:
         return 0
 
+    def update_agent_ideology(self, agent_id: str, ideology: float) -> None: ...
+
     async def save_checkpoint(self, round_num: int) -> Path:
         return Path(f"checkpoint_{round_num}.json")
 

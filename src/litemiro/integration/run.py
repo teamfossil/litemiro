@@ -25,6 +25,7 @@ from litemiro.action.selector import ActionSelector
 from litemiro.budget.manager import TokenBudgetManager
 from litemiro.core._types import SimulationResult
 from litemiro.core.agent_scheduler import AgentScheduler
+from litemiro.core.belief_updater import BeliefUpdater
 from litemiro.core.concurrency_controller import ConcurrencyController
 from litemiro.core.round_manager import RoundManager
 from litemiro.core.state_store import StateStore
@@ -133,6 +134,9 @@ async def run_simulation(
     topic_extractor = TopicExtractor(embedder=embedder, vocabulary=topic_vocabulary)
     budget = TokenBudgetManager(total_budget=token_budget)
     logger = EventLogger(event_log_path)
+    belief_updater = BeliefUpdater(
+        trajectory_path=event_log_path.parent / "belief_trajectory.jsonl",
+    )
 
     manager = RoundManager(
         store=store,
@@ -145,6 +149,7 @@ async def run_simulation(
         token_budget=budget,
         topic_extractor=topic_extractor,
         llm_model=llm_model,
+        belief_updater=belief_updater,
     )
 
     rounds_run = 0
@@ -158,6 +163,7 @@ async def run_simulation(
             rounds_run += 1
     finally:
         await logger.aclose()
+        belief_updater.close()
 
     tokens_used = token_budget - budget.remaining()
     # 시뮬 종료 직후 측정. peak RSS 는 전 구간 최댓값이라 종료 시점이 가장 의미
