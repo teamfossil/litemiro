@@ -26,7 +26,6 @@ from litemiro.phase3.models import (
     PartialInsights,
     ReportConfig,
 )
-
 from litemiro.phase3.report_validator import REQUIRED_HEADINGS
 
 if TYPE_CHECKING:
