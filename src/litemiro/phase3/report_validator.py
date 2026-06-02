@@ -117,6 +117,8 @@ class ReportValidator:
             n_errors=len(errors),
             n_warnings=len(warnings),
         )
+        if warnings:
+            _logger.info("report_citation_warnings", n=len(warnings), details=warnings)
         return ValidationResult(
             ok=len(errors) == 0,
             errors=tuple(errors),
@@ -156,12 +158,14 @@ def _check_citation_integrity(
                 f"evidence pack 은 '{pack_agent}' — 할루시네이션 의심."
             )
         # quote 근사 매칭 — 인용문 앞부분이 pack quote 에 포함되는지
+        # 공백 정규화(내부 이중 공백 등) 후 비교 — LLM 이 공백을 흔히 정규화해 false positive 방지
+        # pack quote 는 content[:200] 로 잘리므로 원문 200자 이후 인용은 false positive 가능
         pack_quote = item.get("quote", "")
-        snippet = quoted_text[:_QUOTE_SNIPPET_LEN].strip()
-        if snippet and pack_quote and snippet not in pack_quote:
+        snippet = re.sub(r"\s+", " ", quoted_text[:_QUOTE_SNIPPET_LEN]).strip()
+        pack_quote_norm = re.sub(r"\s+", " ", pack_quote)
+        if snippet and pack_quote_norm and snippet not in pack_quote_norm:
             warnings.append(
-                f"[{eid}] 인용 본문 앞부분이 evidence pack quote 와 불일치: "
-                f"'{snippet}…' — 변형·날조 인용 의심."
+                f"[{eid}] 인용 본문이 evidence pack 에 없음: '{snippet}…' — 변형·날조 인용 의심."
             )
     return warnings
 

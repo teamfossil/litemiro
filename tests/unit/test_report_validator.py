@@ -147,13 +147,21 @@ class TestCitationIntegrity:
         md = self._md('"완전히 다른 내용의 발화를 지어낸 케이스입니다." - agent_0029 [E001]')
         vr = ReportValidator().validate(md, _result(evidence_pack=self._PACK))
         assert vr.ok
-        assert any("불일치" in w for w in vr.warnings)
+        assert any("evidence pack 에 없음" in w for w in vr.warnings)
 
     def test_short_citation_skipped(self) -> None:
-        # 6자 미만 인용은 _CITATION_RE 대상 밖
+        # 6자 미만 인용은 _CITATION_RE 대상 밖 — warning 이 0건이어야 함
         md = self._md('"짧음" - agent_0099 [E001]')
         vr = ReportValidator().validate(md, _result(evidence_pack=self._PACK))
-        assert not any("agent_id 불일치" in w for w in vr.warnings)
+        assert vr.warnings == ()
+
+    def test_whitespace_normalization_no_false_positive(self) -> None:
+        # 내부 이중 공백·줄바꿈이 달라도 정당한 인용은 warning 없어야 함
+        pack = [{"id": "E001", "agent_id": "agent_0029", "quote": "AI는  거울이  아니라 전광판."}]
+        md = self._md('"AI는 거울이 아니라 전광판." - agent_0029 [E001]')
+        vr = ReportValidator().validate(md, _result(evidence_pack=pack))
+        assert vr.ok
+        assert not any("없음" in w for w in vr.warnings)
 
 
 class TestRepairPrompt:
