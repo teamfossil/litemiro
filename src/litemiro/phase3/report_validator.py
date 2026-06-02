@@ -85,12 +85,18 @@ class ReportValidator:
                 item["id"] for item in evidence_pack if isinstance(item, dict) and "id" in item
             }
             cited_ids = {f"E{n}" for n in _EVIDENCE_ID_RE.findall(markdown)}
-            invalid = cited_ids - valid_ids
-            if invalid:
+            if not cited_ids:
                 errors.append(
-                    f"존재하지 않는 evidence ID 인용: {sorted(invalid)} — "
-                    "증거 은행에 있는 ID 만 사용하라."
+                    "evidence pack 이 있는데 인용이 0건이다 — "
+                    "증거 은행에서 최소 1건 이상 [Exxx] 형식으로 인용하라."
                 )
+            else:
+                invalid = cited_ids - valid_ids
+                if invalid:
+                    errors.append(
+                        f"존재하지 않는 evidence ID 인용: {sorted(invalid)} — "
+                        "증거 은행에 있는 ID 만 사용하라."
+                    )
 
         _logger.debug(
             "report_validation",

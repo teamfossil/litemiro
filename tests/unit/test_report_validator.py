@@ -107,6 +107,13 @@ class TestEvidenceIDValidation:
         vr = ReportValidator().validate(md, _result(evidence_pack=None))
         assert vr.ok
 
+    def test_zero_citations_with_pack_is_error(self) -> None:
+        pack = [{"id": "E001", "agent_id": "agent_0029", "quote": "테스트"}]
+        # evidence pack 있지만 본문에 [Exxx] 인용 0건
+        vr = ReportValidator().validate(_VALID_MD, _result(evidence_pack=pack))
+        assert not vr.ok
+        assert any("인용이 0건" in e for e in vr.errors)
+
 
 class TestRepairPrompt:
     def test_repair_prompt_contains_errors(self) -> None:

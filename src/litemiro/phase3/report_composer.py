@@ -52,6 +52,9 @@ _SYSTEM_PROMPT = (
     "번졌는지(`cascade_*` 깊이·규모, 인기 집중 `popularity_gini`·`early_mover_share`)를 서술한다. "
     "(5) 신뢰도와 한계 — 표본 규모·라운드 수·활성도(DO_NOTHING)·prompt 한계로 이 예측을 "
     "얼마나 신뢰할 수 있는지, 무엇이 관측되지 않았는지 밝힌다. "
+    "`ideology_std_final`(최종 라운드 ideology 표준편차, 낮을수록 수렴)·"
+    "`ideology_drift_mean`(에이전트 평균 신념 변동량)이 있으면 (1)(5) 에서 "
+    "신념 수렴·발산 여부를 구체적으로 서술하라. "
     "행동 분포·네트워크 수치는 여론 자체가 아니라 (4)(5) 의 근거로만 쓰고 보고서를 메타 통계 "
     "나열로 만들지 말라. 수치 비교가 잦으면 표(`|`)로 정리해도 좋다. "
     "주어진 통계·증거 은행·분석가 인사이트만을 근거로 하며, 데이터에 없는 사실은 절대 지어내지 "
@@ -70,6 +73,7 @@ class ComposedReport(BaseModel):
     fallback_used: bool = False
     tokens_used: int = Field(default=0, ge=0)
     repair_attempts: int = Field(default=0, ge=0)
+    validation_failed: bool = False  # repair 후에도 검증 실패면 True (degraded 상태)
 
 
 class ReportComposer:
@@ -96,6 +100,7 @@ class ReportComposer:
     ) -> ComposedReport:
         user = _build_user_prompt(result, insights)
         repair_attempts = 0
+        total_tokens = 0
         try:
             response = await self._call_primary(
                 system=_SYSTEM_PROMPT, user=user, model=config.composer_primary_model
@@ -113,6 +118,7 @@ class ReportComposer:
                 user=user,
                 model=config.composer_fallback_model,
             )
+            # fallback 경로: validator 우회 (이미 degraded 상태로 보호)
             return ComposedReport(
                 markdown=response.content,
                 model=config.composer_fallback_model,
@@ -121,7 +127,10 @@ class ReportComposer:
                 repair_attempts=0,
             )
 
+        total_tokens += response.prompt_tokens + response.completion_tokens
+
         # Validation + 1회 repair (validator 가 주입된 경우에만)
+        validation_failed = False
         if self._validator is not None:
             vr = self._validator.validate(response.content, result)
             if not vr.ok:
@@ -133,21 +142,35 @@ class ReportComposer:
                     errors=vr.errors,
                 )
                 try:
-                    response = await self._call_primary(
+                    repair_response = await self._call_primary(
                         system=_SYSTEM_PROMPT,
                         user=repair_user,
                         model=config.composer_primary_model,
                     )
+                    total_tokens += (
+                        repair_response.prompt_tokens + repair_response.completion_tokens
+                    )
+                    response = repair_response
                 except Exception:
                     _logger.warning("report_composer_repair_failed")
                     # repair 실패 — 원본 응답 유지
+                # repair 결과 재검증
+                final_vr = self._validator.validate(response.content, result)
+                if not final_vr.ok:
+                    validation_failed = True
+                    _logger.warning(
+                        "report_composer_validation_degraded",
+                        repair_attempts=repair_attempts,
+                        errors=final_vr.errors,
+                    )
 
         return ComposedReport(
             markdown=response.content,
             model=config.composer_primary_model,
             fallback_used=False,
-            tokens_used=response.prompt_tokens + response.completion_tokens,
+            tokens_used=total_tokens,
             repair_attempts=repair_attempts,
+            validation_failed=validation_failed,
         )
 
     async def _call_primary(self, *, system: str, user: str, model: str) -> LLMResponse:
@@ -200,6 +223,8 @@ def _build_user_prompt(result: AggregationResult, insights: PartialInsights) -> 
             "ideology_assortativity": result.phenomena.ideology_assortativity,
             "popularity_gini": result.phenomena.popularity_gini,
             "early_mover_share": result.phenomena.early_mover_share,
+            "ideology_std_final": result.phenomena.ideology_std_final,
+            "ideology_drift_mean": result.phenomena.ideology_drift_mean,
         },
         "categories": categories_payload,
     }
