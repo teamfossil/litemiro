@@ -210,6 +210,8 @@ class PlazaRecord:
     event_log_path: Path | None = None
     checkpoint_dir: Path | None = None
     task: asyncio.Task[None] | None = field(default=None, repr=False)
+    # autostart=False 로 생성된 plaza 는 start_event 가 set 될 때까지 _drive 가 대기.
+    start_event: asyncio.Event | None = field(default=None, repr=False)
     # SSE 구독자별 큐. ``PlazaStore.subscribe`` 가 큐를 만들어 여기에 등록하고,
     # 라우트가 종료/disconnect 시 ``unsubscribe`` 로 떼어낸다. 큐는 unbounded —
     # producer 가 라운드 단위(LLM 호출 사이) 라 사실상 빠르지 않다.
@@ -358,6 +360,7 @@ class PlazaStore:
         rounds: int,
         label: str | None,
         preset: Preset = Preset.QUICK,
+        autostart: bool = True,
     ) -> PlazaRecord:
         plaza_id = uuid.uuid4().hex
         plaza_root = self._base_dir / plaza_id
@@ -365,6 +368,9 @@ class PlazaStore:
         event_log_path = plaza_root / "events.jsonl"
         checkpoint_dir = plaza_root / "checkpoints"
         checkpoint_dir.mkdir(exist_ok=True)
+        start_event = asyncio.Event()
+        if autostart:
+            start_event.set()
         record = PlazaRecord(
             plaza_id=plaza_id,
             status="pending",
@@ -375,6 +381,7 @@ class PlazaStore:
             ontology_b_path=ontology_b_path,
             event_log_path=event_log_path,
             checkpoint_dir=checkpoint_dir,
+            start_event=start_event,
         )
         async with self._lock:
             self._records[plaza_id] = record
@@ -406,6 +413,7 @@ class PlazaStore:
             )
 
         async def _drive() -> None:
+            await start_event.wait()
             record.status = "running"
             self._persist(record)
             _emit_status()
@@ -480,6 +488,20 @@ class PlazaStore:
 
         record.task = asyncio.create_task(_drive(), name=f"plaza-{plaza_id}")
         return record
+
+    async def start(self, plaza_id: str) -> bool:
+        """autostart=False 로 생성된 plaza 의 시뮬레이션을 시작한다.
+
+        start_event 가 없거나 이미 set 된 경우 False, 성공 시 True.
+        """
+        async with self._lock:
+            record = self._records.get(plaza_id)
+        if record is None or record.start_event is None:
+            return False
+        if record.start_event.is_set():
+            return False
+        record.start_event.set()
+        return True
 
     async def get(self, plaza_id: str) -> PlazaRecord | None:
         async with self._lock:
