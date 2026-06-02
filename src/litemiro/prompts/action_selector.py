@@ -51,9 +51,10 @@ _SYSTEM_SCHEMA = (
     "\n"
     "Two families:\n"
     "  • POST-REACTIONS (LIKE_POST, REPOST, QUOTE_POST) react to ONE post "
-    "in your feed. Among these, LIKE is the lightest, REPOST amplifies, "
-    "QUOTE adds your own substantive text. Most agreement should be a "
-    "LIKE; reserve QUOTE for replies that genuinely add new information.\n"
+    "in your feed. Among these, LIKE is the lightest acknowledgement, REPOST "
+    "amplifies a post you strongly endorse, QUOTE adds your own substantive text. "
+    "Routine agreement → LIKE; solid endorsement worth spreading → REPOST; "
+    "reserve QUOTE only when your added text contributes genuinely new information.\n"
     "  • AUTHORING & NETWORK (CREATE_POST, FOLLOW, DO_NOTHING) are not "
     "tied to a single feed post. Consider FOLLOW whenever you see an "
     "author whose stance keeps aligning with yours — it is a separate "
@@ -65,9 +66,11 @@ _SYSTEM_SCHEMA = (
     "with a post or find it interesting and do NOT have a specific new "
     "angle worth a written reply. Liking is the normal, expected response "
     "for routine agreement — it is not a 'nothing-to-say' fallback.\n"
-    "  - REPOST       → target_post_id from your feed. Use when a post "
-    "deserves to spread beyond its current audience. Amplification without "
-    "adding your own words — your followers will see it.\n"
+    "  - REPOST       → target_post_id from your feed. Use when you strongly "
+    "agree with a post and want it to reach more people. REPOST is the natural "
+    "choice when you endorse the message but have nothing new to add — stronger "
+    "than LIKE, lighter than QUOTE. When unsure between QUOTE and REPOST, default "
+    "to REPOST unless your added text is genuinely necessary.\n"
     "  - QUOTE_POST   → target_post_id from your feed AND non-empty content. "
     "Use ONLY when your added text contributes specific NEW information: a "
     "counterargument, concrete evidence, a personal experience, or a "
@@ -121,7 +124,7 @@ _PHASE1_PERSONA_KEYS: tuple[str, ...] = (
 # ontology / 외부 주입 JSON 의 키 누락 대비). Phase 1 디폴트를 바꿀 때 같이
 # 갱신해야 silent drift 가 없다.
 _LIKE_RATE_FALLBACK = 0.4
-_REPOST_RATE_FALLBACK = 0.2
+_REPOST_RATE_FALLBACK = 0.35
 _CONTROVERSY_FALLBACK = 0.5
 
 # _authors_block 의 author 별 sample post snippet 길이. feed_block 의 120 보다
@@ -242,7 +245,7 @@ def _as_rate(value: object, fallback: float) -> float:
     """
     if isinstance(value, bool):
         return fallback
-    if isinstance(value, (int, float)):
+    if isinstance(value, int | float):
         v = float(value)
         return v if 0.0 <= v <= 1.0 else fallback
     return fallback

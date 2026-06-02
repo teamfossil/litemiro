@@ -168,7 +168,7 @@ def _parse_profile(item: dict[str, object], seed: AgentSeed) -> AgentProfile:
     behavior_tendency = BehaviorTendency(
         post_rate=_float_value(bt_raw.get("post_rate"), 0.5),
         reply_rate=_float_value(bt_raw.get("reply_rate"), 0.3),
-        repost_rate=_float_value(bt_raw.get("repost_rate"), 0.2),
+        repost_rate=_float_value(bt_raw.get("repost_rate"), 0.35),
         like_rate=_float_value(bt_raw.get("like_rate"), 0.4),
         follow_rate=_float_value(bt_raw.get("follow_rate"), 0.2),
         controversy_affinity=_float_value(bt_raw.get("controversy_affinity"), 0.5),
