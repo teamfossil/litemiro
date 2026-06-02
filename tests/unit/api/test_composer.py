@@ -151,3 +151,21 @@ def test_composer_falls_back_to_none_when_composer_dies(
     # analyzer 의 10 토큰은 그대로 회계에 잡혀야 한다 (composer 단계만 실패).
     assert outcome.tokens_used == 10
     assert outcome.fallback_used is False
+
+
+def test_composer_propagates_validation_failed(
+    tmp_path: Path, fake_llm: Callable[..., LLMClient]
+) -> None:
+    """repair 후에도 validator 실패 → outcome.validation_failed=True."""
+    events = tmp_path / "events.jsonl"
+    _write_sample_events(events)
+    invalid = "헤딩 없는 본문"  # 필수 헤딩 미포함 → 항상 validator 실패
+    llm = fake_llm(
+        LLMResponse(content="analyzer overview", prompt_tokens=5, completion_tokens=5),
+        LLMResponse(content=invalid, prompt_tokens=10, completion_tokens=10),  # initial
+        LLMResponse(content=invalid, prompt_tokens=10, completion_tokens=10),  # repair
+    )
+    composer = RealPlazaComposer(llm_client=llm)
+    outcome = asyncio.run(composer(plaza_id="abc", event_log_path=events))
+    assert outcome.validation_failed is True
+    assert outcome.markdown == invalid

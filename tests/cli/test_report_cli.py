@@ -31,10 +31,30 @@ class _FakeLLM:
 
     async def complete(self, *, system: str, user: str, model: str) -> LLMResponse:
         return LLMResponse(
-            content=f"# 보고서\n## {model}\n요약 문장.",
+            content=(
+                "# 보고서\n\n"
+                "## 1. 핵심 여론 예측\n"
+                "이번 가상 토론에서 여론은 해당 이슈에 대해 지지 기류가 우세하게 수렴했다."
+                f" {model} 기준 반대 목소리는 소수였다.\n\n"
+                "## 2. 입장 분포\n찬성이 다수, 중립 소수.\n\n"
+                "## 3. 주요 논점\n"
+                '"첫 글 — 주제 A" - agent_001 [E001]\n\n'
+                "## 4. 여론 주도·확산\nagent_001 이 주도했다.\n\n"
+                "## 5. 신뢰도와 한계\n표본이 작아 일반화에 한계가 있다.\n"
+            ),
             prompt_tokens=7,
             completion_tokens=11,
         )
+
+
+class _InvalidContentLLM:
+    """필수 헤딩 없는 내용 반환 → validator 항상 실패 → validation_failed=True."""
+
+    def __init__(self, **_: object) -> None: ...
+
+    async def complete(self, *, system: str, user: str, model: str) -> LLMResponse:
+        del system, user, model
+        return LLMResponse(content="헤딩 없는 본문.", prompt_tokens=3, completion_tokens=5)
 
 
 class _FailingPrimaryLLM:
@@ -340,3 +360,17 @@ def test_sample_events_jsonl_is_well_formed(tmp_path: Path) -> None:
     # Aggregator 가 읽을 수 있어야 한다.
     for line in lines:
         RoundEvent.model_validate(line)
+
+
+def test_main_returns_one_when_validation_failed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """repair 후에도 validator 실패 → exit code 1, 파일은 기록됨."""
+    monkeypatch.setattr(report_cli, "LiteLLMClient", _InvalidContentLLM)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    events = _write_sample_jsonl(tmp_path / "events.jsonl")
+    output = tmp_path / "report.md"
+    exit_code = report_cli.main(_argv_for(events, output))
+    assert exit_code == 1
+    assert output.is_file()  # 열화 상태여도 파일은 기록된다

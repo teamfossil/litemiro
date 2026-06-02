@@ -14,6 +14,7 @@ import pytest
 
 from litemiro.models import Action, ActionType, RoundEvent
 from litemiro.phase3 import AggregationResult, DataAggregator
+from litemiro.phase3.data_aggregator import _build_evidence_pack
 from litemiro.phase3.models import (
     CATEGORY_ACTION_DISTRIBUTION,
     CATEGORY_NETWORK_METRICS,
@@ -712,3 +713,52 @@ class TestPhenomenaMetrics:
         events_file.write_text("", encoding="utf-8")
         result = DataAggregator.aggregate(events_file)
         assert result.phenomena.ideology_std_final is None
+
+
+def _post(round_num: int, agent_id: str, content: str = "text") -> RoundEvent:
+    return _event(
+        round_num=round_num, agent_id=agent_id, action_type=ActionType.CREATE_POST, content=content
+    )
+
+
+class TestBuildEvidencePack:
+    def test_empty_events_returns_empty(self) -> None:
+        assert _build_evidence_pack([], None) == []
+
+    def test_hard_cap_at_budget(self) -> None:
+        events = [_post(i, f"agent_{i:03d}") for i in range(100)]
+        pack = _build_evidence_pack(events, None, budget=60)
+        assert len(pack) <= 60
+
+    def test_ids_are_sequential_e_format(self) -> None:
+        events = [_post(0, "a1", "x"), _post(1, "a2", "y")]
+        pack = _build_evidence_pack(events, None)
+        assert [p["id"] for p in pack] == ["E001", "E002"]
+
+    def test_sorted_by_round_then_agent(self) -> None:
+        events = [_post(2, "a1"), _post(0, "b1"), _post(0, "a1")]
+        pack = _build_evidence_pack(events, None)
+        keys = [(p["round_num"], p["agent_id"]) for p in pack]
+        assert keys == sorted(keys)
+
+    def test_dedup_same_agent_round(self) -> None:
+        events = [_post(0, "a1", "first"), _post(0, "a1", "second")]
+        pack = _build_evidence_pack(events, None)
+        assert sum(1 for p in pack if p["agent_id"] == "a1" and p["round_num"] == 0) == 1
+
+    def test_deterministic_same_input_same_output(self) -> None:
+        events = [_post(i % 5, f"agent_{i % 10:02d}", f"content {i}") for i in range(30)]
+        assert _build_evidence_pack(events, None) == _build_evidence_pack(events, None)
+
+    def test_round_diverse_capped_at_40pct(self) -> None:
+        # 라운드 1개에 이벤트 100개 — round_diverse 는 예산 40%(24개)에서 멈춰야 함
+        events = [_post(0, f"agent_{i:03d}") for i in range(100)]
+        pack = _build_evidence_pack(events, None, budget=60)
+        round_diverse = sum(1 for p in pack if p["reason"] == "round_diverse")
+        assert round_diverse <= 24  # round_cap = max(1, 60*40//100)
+
+    def test_quote_capped_at_200_chars(self) -> None:
+        long_content = "가" * 300
+        events = [_post(0, "a1", long_content)]
+        pack = _build_evidence_pack(events, None)
+        assert len(pack[0]["quote"]) <= 200

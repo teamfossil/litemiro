@@ -22,6 +22,17 @@ from litemiro.phase3 import (
     ReportConfig,
 )
 from litemiro.phase3.models import PhenomenaMetrics, QaMetrics
+from litemiro.phase3.report_validator import ValidationResult
+
+
+class _FakeValidator:
+    """validate() 호출마다 큐에서 ValidationResult 를 꺼낸다."""
+
+    def __init__(self, *results: ValidationResult) -> None:
+        self._queue = list(results)
+
+    def validate(self, markdown: str, result: AggregationResult) -> ValidationResult:
+        return self._queue.pop(0)
 
 
 class _FakeLLM:
@@ -169,6 +180,24 @@ class TestFallback:
         assert out.tokens_used == 60
         assert [c[2] for c in llm.calls] == ["primary-m", "primary-m", "fallback-m"]
 
+    async def test_fallback_skips_validator(self) -> None:
+        """fallback 경로는 validator 를 우회한다 — 큐가 비어있어 호출되면 IndexError."""
+        llm = _FakeLLM()
+        llm.queue("primary-m", RuntimeError("down 1"), RuntimeError("down 2"))
+        llm.queue(
+            "fallback-m",
+            LLMResponse(content="폴백 본문", prompt_tokens=10, completion_tokens=10),
+        )
+        composer = ReportComposer(
+            llm=llm,
+            validator=_FakeValidator(),  # 빈 큐 — 호출 시 IndexError
+        )
+        config = ReportConfig(
+            composer_primary_model="primary-m", composer_fallback_model="fallback-m"
+        )
+        out = await composer.compose(result=_result(), insights=_insights(), config=config)
+        assert out.fallback_used is True
+
     async def test_fallback_failure_propagates(self) -> None:
         llm = _FakeLLM()
         llm.queue(
@@ -185,3 +214,75 @@ class TestFallback:
         with pytest.raises(RuntimeError, match="fallback also down"):
             await composer.compose(result=_result(), insights=_insights(), config=config)
         assert [c[2] for c in llm.calls] == ["primary-m", "primary-m", "fallback-m"]
+
+
+class TestRepairLoop:
+    _FAIL = ValidationResult(ok=False, errors=("오류",), warnings=())
+    _OK = ValidationResult(ok=True, errors=(), warnings=())
+
+    async def test_repair_accumulates_tokens(self) -> None:
+        """initial + repair 토큰이 합산돼야 한다."""
+        llm = _FakeLLM()
+        llm.queue(
+            "primary-m",
+            LLMResponse(content="초안", prompt_tokens=10, completion_tokens=20),
+            LLMResponse(content="수정본", prompt_tokens=15, completion_tokens=25),
+        )
+        composer = ReportComposer(
+            llm=llm,
+            validator=_FakeValidator(self._FAIL, self._OK),
+        )
+        out = await composer.compose(
+            result=_result(),
+            insights=_insights(),
+            config=ReportConfig(composer_primary_model="primary-m"),
+        )
+        assert out.markdown == "수정본"
+        assert out.tokens_used == 70  # (10+20) + (15+25)
+        assert out.repair_attempts == 1
+        assert out.validation_failed is False
+
+    async def test_validation_degraded_after_repair(self) -> None:
+        """repair 후에도 검증 실패 → validation_failed=True."""
+        llm = _FakeLLM()
+        llm.queue(
+            "primary-m",
+            LLMResponse(content="초안", prompt_tokens=10, completion_tokens=20),
+            LLMResponse(content="수정본도 나쁨", prompt_tokens=5, completion_tokens=10),
+        )
+        composer = ReportComposer(
+            llm=llm,
+            validator=_FakeValidator(self._FAIL, self._FAIL),
+        )
+        out = await composer.compose(
+            result=_result(),
+            insights=_insights(),
+            config=ReportConfig(composer_primary_model="primary-m"),
+        )
+        assert out.validation_failed is True
+        assert out.repair_attempts == 1
+        assert out.tokens_used == 45  # (10+20) + (5+10)
+
+    async def test_repair_exception_preserves_draft(self) -> None:
+        """repair 중 LLM 예외(모든 재시도 소진) → 초안 유지, validation_failed=True."""
+        llm = _FakeLLM()
+        # primary_max_attempts=2 이므로 repair 시도 2번 모두 실패하도록 큐잉
+        llm.queue(
+            "primary-m",
+            LLMResponse(content="초안", prompt_tokens=10, completion_tokens=20),
+            RuntimeError("repair down 1"),
+            RuntimeError("repair down 2"),
+        )
+        composer = ReportComposer(
+            llm=llm,
+            validator=_FakeValidator(self._FAIL, self._FAIL),
+        )
+        out = await composer.compose(
+            result=_result(),
+            insights=_insights(),
+            config=ReportConfig(composer_primary_model="primary-m"),
+        )
+        assert out.markdown == "초안"
+        assert out.repair_attempts == 1
+        assert out.validation_failed is True
+        assert out.tokens_used == 30  # 초기 호출(10+20)만, repair 예외라 미합산

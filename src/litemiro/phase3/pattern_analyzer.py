@@ -131,9 +131,14 @@ def _build_prompts(result: AggregationResult, preset: Preset) -> list[tuple[str,
 
 
 def _quick_prompt(result: AggregationResult) -> str:
+    categories: dict[str, Any] = {}
+    for cat in CATEGORIES:
+        data = dict(result.categories.get(cat, {}))
+        data.pop("evidence_pack", None)
+        categories[cat] = data
     payload = {
         "scope": _scope_block(result),
-        "categories": {cat: dict(result.categories.get(cat, {})) for cat in CATEGORIES},
+        "categories": categories,
     }
     return (
         "다음 시뮬레이션 통계 전체를 요약하라. 각 카테고리의 핵심을 1 문장씩 다뤄라.\n"
@@ -142,10 +147,12 @@ def _quick_prompt(result: AggregationResult) -> str:
 
 
 def _category_prompt(result: AggregationResult, category: str, *, instruction: str) -> str:
+    data = dict(result.categories.get(category, {}))
+    data.pop("evidence_pack", None)
     payload: dict[str, Any] = {
         "scope": _scope_block(result),
         "category": category,
-        "data": dict(result.categories.get(category, {})),
+        "data": data,
     }
     return f"{instruction}\n{_dump(payload)}"
 

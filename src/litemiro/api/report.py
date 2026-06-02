@@ -53,6 +53,7 @@ def build_report(record: PlazaRecord) -> PlazaReportResponse:
         qa_metrics=aggregation.qa_metrics.model_dump(),
         report_markdown=record.report_markdown,
         report_fallback_used=record.report_fallback_used,
+        report_validation_failed=record.report_validation_failed,
     )
 
 

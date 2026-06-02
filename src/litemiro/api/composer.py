@@ -23,6 +23,7 @@ from litemiro.phase3.data_aggregator import DataAggregator
 from litemiro.phase3.models import AggregationResult, ReportConfig
 from litemiro.phase3.pattern_analyzer import PatternAnalyzer
 from litemiro.phase3.report_composer import ReportComposer
+from litemiro.phase3.report_validator import ReportValidator
 
 if TYPE_CHECKING:
     from litemiro.interfaces import LLMClient
@@ -49,6 +50,7 @@ class ComposerOutcome:
     markdown: str | None
     tokens_used: int = 0
     fallback_used: bool = False
+    validation_failed: bool = False
     aggregation: AggregationResult | None = None
 
 
@@ -100,7 +102,7 @@ class RealPlazaComposer:
         config = self._config_for(preset)
         aggregation = DataAggregator.aggregate(event_log_path)
         analyzer = PatternAnalyzer(llm=self._llm)
-        composer = ReportComposer(llm=self._llm)
+        composer = ReportComposer(llm=self._llm, validator=ReportValidator())
         insights = await analyzer.analyze(result=aggregation, config=config)
         try:
             report = await composer.compose(result=aggregation, insights=insights, config=config)
@@ -122,6 +124,7 @@ class RealPlazaComposer:
             markdown=report.markdown,
             tokens_used=sum(item.tokens_used for item in insights.items) + report.tokens_used,
             fallback_used=report.fallback_used,
+            validation_failed=report.validation_failed,
             aggregation=aggregation,
         )
 

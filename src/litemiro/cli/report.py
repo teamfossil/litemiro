@@ -33,6 +33,7 @@ from litemiro.phase3.data_aggregator import DataAggregator
 from litemiro.phase3.models import ReportConfig
 from litemiro.phase3.pattern_analyzer import PatternAnalyzer
 from litemiro.phase3.report_composer import ReportComposer
+from litemiro.phase3.report_validator import ReportValidator
 
 if TYPE_CHECKING:
     from litemiro.interfaces import LLMClient
@@ -53,6 +54,7 @@ class _ReportSummary:
     preset: Preset
     composer_model: str
     composer_fallback_used: bool
+    validation_failed: bool
     analyzer_total_tokens: int
     composer_tokens: int
     markdown: str
@@ -161,7 +163,7 @@ async def _run(
         composer_fallback_model=args.composer_fallback_model,
     )
     insights = await PatternAnalyzer(llm=llm_client).analyze(result=aggregation, config=config)
-    report = await ReportComposer(llm=llm_client).compose(
+    report = await ReportComposer(llm=llm_client, validator=ReportValidator()).compose(
         result=aggregation, insights=insights, config=config
     )
     output_path: Path = args.output if args.output is not None else _default_output()
@@ -170,6 +172,7 @@ async def _run(
         preset=args.preset,
         composer_model=report.model,
         composer_fallback_used=report.fallback_used,
+        validation_failed=report.validation_failed,
         analyzer_total_tokens=sum(item.tokens_used for item in insights.items),
         composer_tokens=report.tokens_used,
         markdown=report.markdown,
@@ -212,7 +215,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     _print_summary(summary)
-    return 0
+    return 1 if summary.validation_failed else 0
 
 
 if __name__ == "__main__":  # pragma: no cover
