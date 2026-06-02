@@ -172,8 +172,9 @@ class TestTrajectory:
         updater.close()
 
         lines = traj_path.read_text().strip().splitlines()
-        assert len(lines) == 1
-        row = json.loads(lines[0])
+        assert len(lines) == 2  # 스키마 헤더 + 라운드 1개
+        assert json.loads(lines[0]) == {"schema": "belief_trajectory/v1"}
+        row = json.loads(lines[1])
         assert row["round_num"] == 5
         assert "a" in row["ideology"]
         assert "b" in row["ideology"]

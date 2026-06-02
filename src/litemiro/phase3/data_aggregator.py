@@ -487,6 +487,8 @@ def _load_belief_trajectory(path: Path) -> dict[int, dict[str, float]]:
                 continue
             try:
                 row = json.loads(stripped)
+                if "schema" in row and "round_num" not in row:
+                    continue  # 스키마 메타 라인 skip
                 rnum = int(row["round_num"])
                 ideo = {str(k): float(v) for k, v in row["ideology"].items()}
                 rounds[rnum] = ideo
@@ -513,7 +515,7 @@ def _ideology_trajectory_metrics(
     if not vals:
         return None, None
     mean = sum(vals) / len(vals)
-    std_final = (sum((v - mean) ** 2 for v in vals) / len(vals)) ** 0.5
+    std_final = (sum((v - mean) ** 2 for v in vals) / len(vals)) ** 0.5  # population std — 닫힌 모집단이라 Bessel 보정 없음
     common = set(initial) & set(final)
     drift_mean = sum(abs(final[a] - initial[a]) for a in common) / len(common) if common else None
     return std_final, drift_mean
@@ -525,7 +527,8 @@ def _phenomena_metrics(
     trajectory: dict[int, dict[str, float]] | None = None,
 ) -> PhenomenaMetrics:
     depth, breadth, scale, n_cascades = _cascade_metrics(events)
-    # trajectory 가 있으면 최종 라운드 ideology 로 양극화 계산 (정적 초기값보다 의미 있음)
+    # trajectory 가 있으면 최종 라운드 ideology 를 모든 FOLLOW 엣지에 일괄 부여.
+    # 각 FOLLOW 시점 ideology 가 아닌 종단 ideology 기준 — "최종 follow 네트워크의 호모필리" 해석.
     ideology_for_pol = trajectory[max(trajectory)] if trajectory else ideology
     gap, assortativity = _polarization(events, ideology_for_pol)
     std_final, drift_mean = _ideology_trajectory_metrics(trajectory)
