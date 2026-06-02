@@ -38,6 +38,8 @@ _TOPIC_FLOW_SAMPLE_LIMIT = 10
 # top_* 리스트 길이. 상위 5 → 10 으로 늘려 롱테일 일부를 직접 노출하고, 그 너머
 # 분포는 `_distribution_summary` 의 gini / top5_share 로 요약한다.
 _TOP_N = 10
+# Composer 인용 및 Validator 검증 근거로 쓰는 stratified evidence pack 최대 크기.
+_EVIDENCE_BUDGET = 60
 
 _log = structlog.get_logger(__name__)
 
@@ -78,6 +80,7 @@ class DataAggregator:
     ) -> AggregationResult:
         agents = sorted({e.agent_id for e in events})
         rounds = sorted({e.round_num for e in events})
+        ideology_for_ev = _resolve_ideology(ideology, trajectory)
         return AggregationResult(
             n_events=len(events),
             n_agents=len(agents),
@@ -85,7 +88,7 @@ class DataAggregator:
             categories={
                 CATEGORY_ACTION_DISTRIBUTION: _action_distribution(events),
                 CATEGORY_NETWORK_METRICS: _network_metrics(events),
-                CATEGORY_TOPIC_FLOW: _topic_flow(events),
+                CATEGORY_TOPIC_FLOW: _topic_flow(events, ideology=ideology_for_ev),
                 CATEGORY_TIME_SERIES: _time_series(events),
             },
             qa_metrics=_qa_metrics(events),
@@ -180,7 +183,7 @@ def _network_metrics(events: list[RoundEvent]) -> dict[str, Any]:
     }
 
 
-def _topic_flow(events: list[RoundEvent]) -> dict[str, Any]:
+def _topic_flow(events: list[RoundEvent], ideology: dict[str, float] | None = None) -> dict[str, Any]:
     """REPOST 가 round_manager 에서 새 Post 를 생성해 store/feed 에 들어가므로
     "신규 생성된 게시물" 이라는 표현은 CREATE+QUOTE+REPOST 합계가 맞다 (#110).
     반면 content sample 과 top_posters 는 작성자 인사이트용이라 본문이 있는
@@ -235,6 +238,9 @@ def _topic_flow(events: list[RoundEvent]) -> dict[str, Any]:
         # 상위 N 명 너머 작성 분포의 집중도 — 소수 헤비 작성자 vs 분산.
         "poster_concentration": _distribution_summary(posts_per_agent),
         "samples": samples,
+        # Composer 인용·Validator 검증용 stratified 근거 묶음. samples(10개)보다
+        # 풍부하고 이념·라운드·주요 발화자 기준으로 고른다.
+        "evidence_pack": _build_evidence_pack(events, ideology),
     }
 
 
@@ -450,6 +456,124 @@ def _round_robin_sample(
     return picked
 
 
+def _resolve_ideology(
+    ideology: dict[str, float] | None,
+    trajectory: dict[int, dict[str, float]] | None,
+) -> dict[str, float] | None:
+    """trajectory 최종 라운드 우선, 없으면 ontology 초기 ideology.
+
+    반환값을 _polarization 에 넘기면 "최종 follow 네트워크의 호모필리" 해석이 된다
+    (각 FOLLOW 시점 ideology 가 아닌 종단 ideology 기준).
+    """
+    if trajectory:
+        return trajectory[max(trajectory)]
+    return ideology
+
+
+def _build_evidence_pack(
+    events: list[RoundEvent],
+    ideology: dict[str, float] | None,
+    *,
+    budget: int = _EVIDENCE_BUDGET,
+) -> list[dict[str, Any]]:
+    """Stratified evidence pack — Composer 인용·Validator 검증 근거 묶음.
+
+    topic_flow.samples(10개 고정)를 대체하는 풍부한 근거 묶음. Composer 는 이 안의
+    항목만 직접 인용하고, ReportValidator 는 인용 ID([E001] 등)가 여기 있는지
+    검증한다. 결정적 — 같은 입력은 항상 같은 출력.
+
+    Stratification:
+    1. round_diverse  : 라운드당 최대 2개 (시간 흐름 커버, 예산의 40%)
+    2. top_poster     : 상위 5 작성자 × 최대 3개 (주요 발화자 커버)
+    3. ideology_diverse: ideology 그룹(left/moderate/right)당 최대 5개 (진영 커버)
+    4. fill           : 나머지 슬롯을 순서대로 채움
+    hard cap = budget. 중복 (agent_id, round_num) 쌍은 한 번만 포함.
+    """
+    content_events = [
+        e
+        for e in events
+        if e.action.type in (ActionType.CREATE_POST, ActionType.QUOTE_POST)
+        and e.action.content
+    ]
+    if not content_events:
+        return []
+
+    seen: set[tuple[str, int]] = set()
+    picked: list[tuple[str, RoundEvent]] = []
+
+    def try_add(reason: str, ev: RoundEvent) -> bool:
+        key = (ev.agent_id, ev.round_num)
+        if key in seen or len(picked) >= budget:
+            return False
+        seen.add(key)
+        picked.append((reason, ev))
+        return True
+
+    # 1. round-diverse: 라운드당 최대 2개, 예산의 40% 도달할 때까지
+    round_cap = max(1, budget * 40 // 100)
+    by_round: defaultdict[int, list[RoundEvent]] = defaultdict(list)
+    for e in content_events:
+        by_round[e.round_num].append(e)
+    for r in sorted(by_round):
+        if len(picked) >= round_cap:
+            break
+        for e in by_round[r][:2]:
+            try_add("round_diverse", e)
+
+    # 2. top-poster-diverse: 상위 5 작성자 × 최대 3개씩
+    poster_counts: Counter[str] = Counter(e.agent_id for e in content_events)
+    poster_events: defaultdict[str, list[RoundEvent]] = defaultdict(list)
+    for e in content_events:
+        poster_events[e.agent_id].append(e)
+    for aid, _ in poster_counts.most_common(5):
+        for e in poster_events[aid][:3]:
+            try_add("top_poster", e)
+
+    # 3. ideology-diverse: ideology 있을 때 그룹당 최대 5개
+    if ideology:
+        by_group: defaultdict[str, list[RoundEvent]] = defaultdict(list)
+        for e in content_events:
+            v = ideology.get(e.agent_id)
+            if v is None:
+                continue
+            group = "left" if v < 0.33 else ("moderate" if v < 0.67 else "right")
+            by_group[group].append(e)
+        for group_evs in by_group.values():
+            for e in group_evs[:5]:
+                try_add("ideology_diverse", e)
+
+    # 4. fill: 나머지 슬롯
+    for e in content_events:
+        try_add("fill", e)
+        if len(picked) >= budget:
+            break
+
+    # (round_num, agent_id) 기준 정렬 — 결정적
+    picked.sort(key=lambda x: (x[1].round_num, x[1].agent_id))
+
+    def _ideo_group(aid: str) -> str | None:
+        if ideology is None:
+            return None
+        v = ideology.get(aid)
+        if v is None:
+            return None
+        return "left" if v < 0.33 else ("moderate" if v < 0.67 else "right")
+
+    return [
+        {
+            "id": f"E{i + 1:03d}",
+            "round_num": ev.round_num,
+            "agent_id": ev.agent_id,
+            "action": ev.action.type.value,
+            "ideology": ideology.get(ev.agent_id) if ideology else None,
+            "ideology_group": _ideo_group(ev.agent_id),
+            "reason": reason,
+            "quote": (ev.action.content or "")[:200].strip(),
+        }
+        for i, (reason, ev) in enumerate(picked)
+    ]
+
+
 def _load_ideology(ontology_path: Path) -> dict[str, float]:
     """ontology_a JSON 의 agent 별 ideology([0,1]) 맵.
 
@@ -528,9 +652,7 @@ def _phenomena_metrics(
     trajectory: dict[int, dict[str, float]] | None = None,
 ) -> PhenomenaMetrics:
     depth, breadth, scale, n_cascades = _cascade_metrics(events)
-    # trajectory 가 있으면 최종 라운드 ideology 를 모든 FOLLOW 엣지에 일괄 부여.
-    # 각 FOLLOW 시점 ideology 가 아닌 종단 ideology 기준 — "최종 follow 네트워크의 호모필리" 해석.
-    ideology_for_pol = trajectory[max(trajectory)] if trajectory else ideology
+    ideology_for_pol = _resolve_ideology(ideology, trajectory)
     gap, assortativity = _polarization(events, ideology_for_pol)
     std_final, drift_mean = _ideology_trajectory_metrics(trajectory)
     popularity_gini, early = _herd(events)

@@ -33,6 +33,7 @@ from litemiro.phase3.data_aggregator import DataAggregator
 from litemiro.phase3.models import ReportConfig
 from litemiro.phase3.pattern_analyzer import PatternAnalyzer
 from litemiro.phase3.report_composer import ReportComposer
+from litemiro.phase3.report_validator import ReportValidator
 
 if TYPE_CHECKING:
     from litemiro.interfaces import LLMClient
@@ -161,7 +162,7 @@ async def _run(
         composer_fallback_model=args.composer_fallback_model,
     )
     insights = await PatternAnalyzer(llm=llm_client).analyze(result=aggregation, config=config)
-    report = await ReportComposer(llm=llm_client).compose(
+    report = await ReportComposer(llm=llm_client, validator=ReportValidator()).compose(
         result=aggregation, insights=insights, config=config
     )
     output_path: Path = args.output if args.output is not None else _default_output()
