@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import shutil
 import sqlite3
 import uuid
@@ -30,6 +31,8 @@ from litemiro.api.models import PlazaStatus
 from litemiro.models import ActionType, RoundEvent
 from litemiro.phase1.models import Preset
 from litemiro.phase3.models import AggregationResult
+
+logger = logging.getLogger(__name__)
 
 
 def _utcnow() -> datetime:
@@ -424,6 +427,7 @@ class PlazaStore:
                         on_progress=on_progress,
                     )
                 except Exception as exc:
+                    logger.exception("runner failed for plaza %s", plaza_id)
                     record.status = "failed"
                     record.error = f"{type(exc).__name__}: {exc}"
                     self._persist(record)
@@ -450,6 +454,7 @@ class PlazaStore:
                             preset=record.preset,
                         )
                     except Exception as exc:
+                        logger.exception("composer failed for plaza %s", plaza_id)
                         record.status = "failed"
                         record.error = f"{type(exc).__name__}: {exc}"
                         self._persist(record)
