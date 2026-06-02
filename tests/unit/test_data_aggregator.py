@@ -716,7 +716,9 @@ class TestPhenomenaMetrics:
 
 
 def _post(round_num: int, agent_id: str, content: str = "text") -> RoundEvent:
-    return _event(round_num=round_num, agent_id=agent_id, action_type=ActionType.CREATE_POST, content=content)
+    return _event(
+        round_num=round_num, agent_id=agent_id, action_type=ActionType.CREATE_POST, content=content
+    )
 
 
 class TestBuildEvidencePack:
