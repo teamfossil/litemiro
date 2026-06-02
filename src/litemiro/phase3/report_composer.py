@@ -12,6 +12,7 @@ LLM 출력은 그대로 본문이 된다 — 후처리 / PDF 변환은 후속 �
 from __future__ import annotations
 
 import json
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from pydantic import BaseModel, ConfigDict, Field
@@ -20,10 +21,14 @@ from tenacity import AsyncRetrying, stop_after_attempt, wait_none
 from litemiro.interfaces import LLMClient
 from litemiro.models import LLMResponse
 from litemiro.phase3.models import (
+    CATEGORY_TOPIC_FLOW,
     AggregationResult,
     PartialInsights,
     ReportConfig,
 )
+
+if TYPE_CHECKING:
+    from litemiro.phase3.report_validator import ReportValidator
 
 _logger = structlog.get_logger(__name__)
 
@@ -32,21 +37,24 @@ _SYSTEM_PROMPT = (
     "분석가다. 이 시뮬레이션은 업로드된 이슈 자료에 대해 수십~수백 명의 가상 인격이 토론한 "
     "결과이며, 보고서의 목적은 그 토론이 도달한 여론을 예측해 전달하는 것이다 — 독자가 알고 "
     "싶은 것은 '이 이슈의 여론이 어떻게 될까' 이지 시뮬레이션의 메타 통계가 아니다. "
-    "한국어 Markdown 으로 작성하라 — 문서 제목은 `#`, 주요 섹션은 `##`, 세부는 `###`. "
-    "다음 5 섹션을 순서대로 포함하라: "
+    "한국어 Markdown 으로 작성하라. "
+    "아래 5 개 섹션 헤딩을 반드시 이 순서·형식 그대로 사용하라 (다른 ### 소섹션은 자유): "
+    "## 1. 핵심 여론 예측 / ## 2. 입장 분포 / ## 3. 주요 논점 "
+    "/ ## 4. 여론 주도·확산 / ## 5. 신뢰도와 한계. "
     "(1) 핵심 여론 예측 — 이슈에 대해 가상 여론이 도달한 결론적 입장과 온도(지지·반대·유보의 "
     "전반 기류)를 첫머리에 단정적으로 제시한다. "
     "(2) 입장 분포 — 찬성·반대·중립이 어떻게 갈렸는지를 게시물 논조로 가늠하고, ideology 동질성"
     "(`follow_ideology_gap`·`ideology_assortativity`)으로 양극화 정도를 함께 짚는다. "
-    "(3) 주요 논점 — `categories.topic_flow.samples` 의 실제 게시물·인용 본문에서 등장한 "
-    "쟁점과 표현을 작성자 id 와 함께 직접 인용해 어떤 주장들이 부딪쳤는지 보인다. "
+    "(3) 주요 논점 — user message 의 '증거 은행(Evidence Bank)' 항목에서 발화 본문을 직접 "
+    "인용해 어떤 주장들이 부딪쳤는지 보인다. 인용마다 반드시 ID 를 붙여라: "
+    "\"...발화...\" - agent_XXXX [E001]. 증거 은행에 없는 발화는 절대 지어내지 않는다. "
     "(4) 여론 주도·확산 — 누가 여론을 끌었는지(상위 작성자·피팔로우 노드)와 메시지가 어떻게 "
     "번졌는지(`cascade_*` 깊이·규모, 인기 집중 `popularity_gini`·`early_mover_share`)를 서술한다. "
     "(5) 신뢰도와 한계 — 표본 규모·라운드 수·활성도(DO_NOTHING)·prompt 한계로 이 예측을 "
     "얼마나 신뢰할 수 있는지, 무엇이 관측되지 않았는지 밝힌다. "
     "행동 분포·네트워크 수치는 여론 자체가 아니라 (4)(5) 의 근거로만 쓰고 보고서를 메타 통계 "
     "나열로 만들지 말라. 수치 비교가 잦으면 표(`|`)로 정리해도 좋다. "
-    "주어진 통계·게시물·분석가 인사이트만을 근거로 하며, 데이터에 없는 사실은 절대 지어내지 "
+    "주어진 통계·증거 은행·분석가 인사이트만을 근거로 하며, 데이터에 없는 사실은 절대 지어내지 "
     "않고 관측되지 않은 항목은 '관측되지 않음' 으로 명시한다. ideology·진영 지표가 None 이면 "
     "입장 분포는 게시물 논조로만 정성 판단하고 그 한계를 밝힌다."
 )
@@ -61,15 +69,23 @@ class ComposedReport(BaseModel):
     model: str
     fallback_used: bool = False
     tokens_used: int = Field(default=0, ge=0)
+    repair_attempts: int = Field(default=0, ge=0)
 
 
 class ReportComposer:
-    def __init__(self, *, llm: LLMClient, primary_max_attempts: int = 2) -> None:
+    def __init__(
+        self,
+        *,
+        llm: LLMClient,
+        primary_max_attempts: int = 2,
+        validator: ReportValidator | None = None,
+    ) -> None:
         # primary_max_attempts=2 → 첫 시도 + 재시도 1 회 (PRD §4.3).
         if primary_max_attempts < 1:
             raise ValueError(f"primary_max_attempts must be >= 1, got {primary_max_attempts}")
         self._llm = llm
         self._primary_max_attempts = primary_max_attempts
+        self._validator = validator
 
     async def compose(
         self,
@@ -79,6 +95,7 @@ class ReportComposer:
         config: ReportConfig,
     ) -> ComposedReport:
         user = _build_user_prompt(result, insights)
+        repair_attempts = 0
         try:
             response = await self._call_primary(
                 system=_SYSTEM_PROMPT, user=user, model=config.composer_primary_model
@@ -101,12 +118,36 @@ class ReportComposer:
                 model=config.composer_fallback_model,
                 fallback_used=True,
                 tokens_used=response.prompt_tokens + response.completion_tokens,
+                repair_attempts=0,
             )
+
+        # Validation + 1회 repair (validator 가 주입된 경우에만)
+        if self._validator is not None:
+            vr = self._validator.validate(response.content, result)
+            if not vr.ok:
+                repair_attempts += 1
+                repair_user = user + "\n\n" + vr.to_repair_prompt()
+                _logger.info(
+                    "report_composer_repair",
+                    attempt=repair_attempts,
+                    errors=vr.errors,
+                )
+                try:
+                    response = await self._call_primary(
+                        system=_SYSTEM_PROMPT,
+                        user=repair_user,
+                        model=config.composer_primary_model,
+                    )
+                except Exception:
+                    _logger.warning("report_composer_repair_failed")
+                    # repair 실패 — 원본 응답 유지
+
         return ComposedReport(
             markdown=response.content,
             model=config.composer_primary_model,
             fallback_used=False,
             tokens_used=response.prompt_tokens + response.completion_tokens,
+            repair_attempts=repair_attempts,
         )
 
     async def _call_primary(self, *, system: str, user: str, model: str) -> LLMResponse:
@@ -121,14 +162,24 @@ class ReportComposer:
 
 
 def _build_user_prompt(result: AggregationResult, insights: PartialInsights) -> str:
-    """카테고리 raw 통계 + QA 지표 + 분석가 인사이트를 한 번에 composer 에 전달.
+    """카테고리 raw 통계 + 증거 은행 + 분석가 인사이트를 composer 에 전달.
 
-    이전 구현은 ``n_events / n_agents / n_rounds`` 와 ``CategoryInsight.summary``
-    텍스트만 넘겼다 — 분석가가 짚지 못한 상위 행위자·라운드별 추이·QaMetrics 가
-    composer 시야에서 사라져 보고서가 얇아졌다. 본 함수는 ``DataAggregator`` 가
-    이미 만들어 둔 풍부한 카테고리 dict 와 ``QaMetrics`` 를 JSON 으로 함께
-    실어, composer 가 표·글머리표 형태로 풀어낼 재료를 확보하게 한다.
+    evidence_pack 이 있으면 별도 '증거 은행' 섹션으로 먼저 제시하고,
+    JSON payload 에서는 evidence_pack 을 제거해 중복·토큰 낭비를 막는다.
     """
+    # evidence_pack 추출 + JSON payload 에서 제거
+    topic_flow_raw = result.categories.get(CATEGORY_TOPIC_FLOW)
+    evidence_items: list[dict[str, Any]] = (
+        list(topic_flow_raw.get("evidence_pack") or [])
+        if isinstance(topic_flow_raw, dict)
+        else []
+    )
+    categories_payload: dict[str, Any] = {}
+    for cat, data in result.categories.items():
+        data_dict = dict(data)
+        if cat == CATEGORY_TOPIC_FLOW:
+            data_dict.pop("evidence_pack", None)
+        categories_payload[cat] = data_dict
 
     payload = {
         "scope": {
@@ -151,7 +202,7 @@ def _build_user_prompt(result: AggregationResult, insights: PartialInsights) -> 
             "popularity_gini": result.phenomena.popularity_gini,
             "early_mover_share": result.phenomena.early_mover_share,
         },
-        "categories": {cat: dict(data) for cat, data in result.categories.items()},
+        "categories": categories_payload,
     }
 
     lines = [
@@ -169,15 +220,30 @@ def _build_user_prompt(result: AggregationResult, insights: PartialInsights) -> 
         lines.append(f"### {item.category}")
         lines.append(item.summary)
         lines.append("")
-    lines.append("## 원시 통계·게시물·현상 지표 (JSON)")
+
+    # 증거 은행 — Composer 가 직접 인용할 수 있는 발화 목록
+    if evidence_items:
+        lines.append("## 증거 은행 (Evidence Bank)")
+        lines.append(
+            "직접 인용(발화 본문)은 아래 목록의 항목만 사용한다. "
+            "인용 시 반드시 증거 ID 를 붙여라: \"...발화...\" - agent_XXXX [E001]"
+        )
+        lines.append("")
+        for item in evidence_items:
+            ideo_str = f" | {item['ideology_group']}" if item.get("ideology_group") else ""
+            lines.append(
+                f"[{item['id']}] R{item['round_num']} | {item['agent_id']}{ideo_str}"
+                f" | {item['action']}: {item['quote']!r}"
+            )
+        lines.append("")
+
+    lines.append("## 원시 통계·현상 지표 (JSON)")
     lines.append(
-        "여론 예측의 1 차 재료는 `categories.topic_flow.samples` 의 실제 게시물 본문이다 "
-        "— 작성자 id 와 함께 인용해 어떤 주장이 오갔는지 보여라. `phenomena` 의 "
-        "`follow_ideology_gap`·`ideology_assortativity` 는 양극화를, `cascade_*`·"
-        "`popularity_gini`·`early_mover_share` 는 확산과 여론 주도 집중을, action/network "
-        "통계는 신뢰도·활성도 근거로 쓴다. 분포별 집중도(*_concentration: n_unique·"
-        "top5_share·gini)도 함께 인용할 수 있다. n_amplifications 는 REPOST 건수와 같은 "
-        "값(본문 없는 증폭)이며 QUOTE_POST 와 구분한다."
+        "`phenomena` 의 `follow_ideology_gap`·`ideology_assortativity` 는 양극화를, "
+        "`cascade_*`·`popularity_gini`·`early_mover_share` 는 확산·여론 주도 집중을, "
+        "action/network 통계는 신뢰도·활성도 근거로 쓴다. "
+        "직접 인용은 위 증거 은행 항목만 쓴다. "
+        "n_amplifications 는 REPOST 건수와 같은 값(본문 없는 증폭)이며 QUOTE_POST 와 구분한다."
     )
     lines.append("```json")
     lines.append(json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str))

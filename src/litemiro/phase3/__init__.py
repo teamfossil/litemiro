@@ -23,6 +23,7 @@ from litemiro.phase3.models import (
 )
 from litemiro.phase3.pattern_analyzer import PatternAnalyzer
 from litemiro.phase3.report_composer import ComposedReport, ReportComposer
+from litemiro.phase3.report_validator import ReportValidator, ValidationResult
 
 __all__ = [
     "AggregationResult",
@@ -33,4 +34,6 @@ __all__ = [
     "PatternAnalyzer",
     "ReportComposer",
     "ReportConfig",
+    "ReportValidator",
+    "ValidationResult",
 ]
