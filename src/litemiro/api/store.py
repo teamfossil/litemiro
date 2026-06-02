@@ -443,11 +443,17 @@ class PlazaStore:
                     record.status = "composing"
                     self._persist(record)
                     _emit_status()
-                    composer_outcome = await self._composer(
-                        plaza_id=plaza_id,
-                        event_log_path=event_log_path,
-                        preset=record.preset,
-                    )
+                    try:
+                        composer_outcome = await self._composer(
+                            plaza_id=plaza_id,
+                            event_log_path=event_log_path,
+                            preset=record.preset,
+                        )
+                    except Exception as exc:
+                        record.status = "failed"
+                        record.error = f"{type(exc).__name__}: {exc}"
+                        self._persist(record)
+                        return
                     record.report_markdown = composer_outcome.markdown
                     record.report_fallback_used = composer_outcome.fallback_used
                     record.tokens_used += composer_outcome.tokens_used

@@ -317,19 +317,19 @@ export const api = {
   getDocument: (documentId: string, signal?: AbortSignal) =>
     request<DocumentResponse>(`/api/documents/${encodeURIComponent(documentId)}`, undefined, signal),
 
-  createOntology: (body: CreateOntologyRequest) =>
+  createOntology: (body: CreateOntologyRequest, signal?: AbortSignal) =>
     request<OntologyResponse>('/api/ontologies', {
       method: 'POST',
       body: JSON.stringify(body),
-    }),
+    }, signal),
   getOntology: (ontologyId: string, signal?: AbortSignal) =>
     request<OntologyResponse>(`/api/ontologies/${encodeURIComponent(ontologyId)}`, undefined, signal),
 
-  createPlaza: (body: CreatePlazaRequest) =>
+  createPlaza: (body: CreatePlazaRequest, signal?: AbortSignal) =>
     request<CreatePlazaResponse>('/api/plazas', {
       method: 'POST',
       body: JSON.stringify(body),
-    }),
+    }, signal),
   listPlazas: (params?: ListPlazasParams) => {
     const search = new URLSearchParams();
     if (params?.limit !== undefined) search.set('limit', String(params.limit));

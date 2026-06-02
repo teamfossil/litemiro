@@ -402,7 +402,7 @@ export default function Plaza() {
     : baseGo;
   // mock 312 노드를 초기값으로 — /layout 응답으로 교체. ready=false 면 mock 유지.
   const mockNodes = useMemo(() => lm.generatePlaza({ seed: 42, n: 312 }), []);
-  const [allNodes, setAllNodes] = useState<PlazaNode[]>(mockNodes);
+  const [allNodes, setAllNodes] = useState<PlazaNode[]>(isDemo ? mockNodes : []);
   const [selectedId, setSelected] = useState<string | null>(null);
   const [hoverId, setHover] = useState<string | null>(null);
   const [mouse, setMouse] = useState({ x: 0, y: 0 });

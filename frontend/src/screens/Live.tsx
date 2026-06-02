@@ -419,14 +419,14 @@ export default function Live() {
         setCounters((c) => bumpCounters(c, act.type));
       },
       onActionsSnapshot: (e) => {
-        // snapshot 은 누적 카운트의 진실값 — 그대로 리셋. 재연결 후 들어와도
-        // 카운터를 snapshot 기준으로 다시 맞춘다. 이후 개별 action 은 게이트로
-        // 중복을 막으므로, 게이트를 snapshot 의 마지막(=최신) timestamp 로 올린다.
         const all = e.actions.map(toAction);
         const lastTs = e.actions.length > 0 ? e.actions[e.actions.length - 1].timestamp : '';
+        // 첫 연결(게이트 미설정)만 카운터 초기화 — snapshot 은 최근 40개뿐이라
+        // 재연결 후 reset 하면 기존 누적값을 잃어 과소 집계된다.
+        const isFirst = !lastActionTsRef.current;
         if (lastTs) lastActionTsRef.current = lastTs;
         setLiveActions(all.slice(-40));
-        setCounters(countActions(all));
+        if (isFirst) setCounters(countActions(all));
       },
     });
     return () => stream.close();
