@@ -9,6 +9,9 @@ end-to-end 동작. 100 agent · 220s · $0.03 / 1 회 기준. Phase 2 (시뮬레
 Phase 3 (분석 + ReportComposer) 머지 완료. HTTP API (`litemiro-api`) + Vite/React
 프론트 골격까지 step 1~5 합류 — preset 별 보고서 합성 + SSE 진행률 까지 동작.
 plaza 메타데이터는 `--data-dir/plazas.db` (SQLite, WAL) 로 영속.
+`BeliefUpdater` (Deffuant bounded confidence) 가 Phase 2 에 통합 —
+라운드마다 `belief_trajectory.jsonl` 에 ideology 스냅샷을 기록하고,
+Phase 3 는 이를 자동탐색해 동적 양극화 메트릭을 산출한다.
 
 ## 설치 / 실행
 
@@ -40,6 +43,27 @@ JSONL 산출 검증:
 uv run litemiro-validate \
   --schema src/litemiro/schemas/round_event.schema.json \
   --jsonl path/to/run.jsonl
+```
+
+## Phase 3 보고서 CLI
+
+Phase 2 산출물 → Markdown 보고서.
+
+```bash
+uv run litemiro-report \
+  --events path/to/run/events.jsonl \
+  --ontology-a path/to/run/ontology_a_persona.json \
+  --preset quick
+```
+
+`belief_trajectory.jsonl` 이 `--events` 와 같은 디렉토리에 있으면 자동탐색해
+동적 ideology 로 양극화 메트릭을 계산한다. 다른 경로를 쓰려면 명시 지정:
+
+```bash
+uv run litemiro-report \
+  --events path/to/events.jsonl \
+  --belief-trajectory path/to/belief_trajectory.jsonl \
+  --preset standard
 ```
 
 ## HTTP API
@@ -76,7 +100,7 @@ src/litemiro/
   social/              B  SocialGraph (homophily augmentation 포함)
   prompts/             B  ActionSelector prompt templates
   topics/              B  TopicExtractor
-  core/                A  RoundManager / AgentScheduler / ConcurrencyController / StateStore
+  core/                A  RoundManager / AgentScheduler / ConcurrencyController / StateStore / BeliefUpdater
   phase1/              Phase 1 pipeline (chunker → ontology → entity → ranker → profile → memory)
   phase3/              Phase 3 pipeline (DataAggregator → PatternAnalyzer → ReportComposer)
   api/                 FastAPI app + PlazaStore (SQLite 영속화) + SSE 라우트
@@ -99,3 +123,19 @@ tests/  unit/  e2e/    pytest, asyncio_mode=auto
 Phase 2 → Phase 3 JSONL 계약. 한 줄에 한 이벤트. 권위 스키마:
 `src/litemiro/schemas/round_event.schema.json`. `RoundEvent.to_jsonl()` 가 표준
 직렬화 (sorted keys, ensure_ascii=False, exclude_none).
+
+## belief_trajectory.jsonl
+
+`BeliefUpdater` 가 Phase 2 시뮬레이션 중 `events.jsonl` 옆에 생성하는 부가 산출물.
+라운드마다 전 에이전트의 ideology 스냅샷을 기록한다. 한 줄 포맷:
+
+```json
+{"ideology": {"agent_id_1": 0.42, "agent_id_2": 0.71, ...}, "round_num": 5}
+```
+
+Phase 3 `DataAggregator` 가 이 파일을 자동탐색해 아래 메트릭을 추가 계산한다:
+
+- `ideology_std_final` — 최종 라운드 ideology 표준편차 (분포 퍼짐 / 수렴 여부)
+- `ideology_drift_mean` — 에이전트별 |final − initial| 평균 (신념 변동 크기)
+- `follow_ideology_gap`, `ideology_assortativity` — 최종 ideology 기준 재계산
+  (파일 없으면 `--ontology-a` 의 정적 초기값 사용, 둘 다 없으면 `None`)

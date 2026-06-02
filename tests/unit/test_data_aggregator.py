@@ -659,3 +659,56 @@ class TestPhenomenaMetrics:
         first = DataAggregator.aggregate_events(events, ideology=ideo).phenomena.model_dump()
         second = DataAggregator.aggregate_events(events, ideology=ideo).phenomena.model_dump()
         assert first == second
+
+    def test_trajectory_std_final_and_drift_mean(self) -> None:
+        # trajectory: round 0 → all 0.5, round 1 → diverged
+        traj = {0: {"a": 0.5, "b": 0.5}, 1: {"a": 0.2, "b": 0.8}}
+        ph = DataAggregator.aggregate_events([], trajectory=traj).phenomena
+        # std of [0.2, 0.8]: mean=0.5, var=0.09, std=0.3
+        assert ph.ideology_std_final == pytest.approx(0.3)
+        # drift: |0.2-0.5| + |0.8-0.5| = 0.3 + 0.3 = 0.6, mean=0.3
+        assert ph.ideology_drift_mean == pytest.approx(0.3)
+
+    def test_trajectory_polarization_uses_final_ideology(self) -> None:
+        # round 0: 중립(0.5/0.5), round 1: 동질성 수렴(0.1/0.1)
+        # _polarization 이 final 을 쓰면 gap=0, assortativity=None(분산0)
+        traj = {0: {"a": 0.5, "b": 0.5}, 1: {"a": 0.1, "b": 0.1}}
+        events = [
+            _event(round_num=0, agent_id="a", action_type=ActionType.FOLLOW, target_agent_id="b"),
+        ]
+        ph = DataAggregator.aggregate_events(events, trajectory=traj).phenomena
+        assert ph.follow_ideology_gap == pytest.approx(0.0)
+
+    def test_trajectory_none_fields_without_trajectory(self) -> None:
+        ph = DataAggregator.aggregate_events([]).phenomena
+        assert ph.ideology_std_final is None
+        assert ph.ideology_drift_mean is None
+
+    def test_aggregate_trajectory_path(self, tmp_path: Path) -> None:
+        traj_file = tmp_path / "belief_trajectory.jsonl"
+        traj_file.write_text(
+            '{"round_num": 0, "ideology": {"a": 0.4, "b": 0.6}}\n'
+            '{"round_num": 1, "ideology": {"a": 0.45, "b": 0.55}}\n',
+            encoding="utf-8",
+        )
+        events_file = tmp_path / "events.jsonl"
+        events_file.write_text("", encoding="utf-8")
+        result = DataAggregator.aggregate(events_file, trajectory_path=traj_file)
+        assert result.phenomena.ideology_std_final == pytest.approx(0.05)
+
+    def test_aggregate_auto_discovers_trajectory(self, tmp_path: Path) -> None:
+        # belief_trajectory.jsonl 이 events.jsonl 옆에 있으면 자동탐색
+        (tmp_path / "belief_trajectory.jsonl").write_text(
+            '{"round_num": 0, "ideology": {"a": 0.3, "b": 0.7}}\n',
+            encoding="utf-8",
+        )
+        events_file = tmp_path / "events.jsonl"
+        events_file.write_text("", encoding="utf-8")
+        result = DataAggregator.aggregate(events_file)
+        assert result.phenomena.ideology_std_final is not None
+
+    def test_aggregate_no_auto_discovery_when_absent(self, tmp_path: Path) -> None:
+        events_file = tmp_path / "events.jsonl"
+        events_file.write_text("", encoding="utf-8")
+        result = DataAggregator.aggregate(events_file)
+        assert result.phenomena.ideology_std_final is None

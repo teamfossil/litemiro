@@ -91,6 +91,8 @@ class PhenomenaMetrics(BaseModel):
     ideology_assortativity: float | None = Field(default=None, ge=-1.0, le=1.0)
     popularity_gini: float = Field(ge=0.0, le=1.0)
     early_mover_share: float | None = Field(default=None, ge=0.0, le=1.0)
+    ideology_std_final: float | None = Field(default=None, ge=0.0)
+    ideology_drift_mean: float | None = Field(default=None, ge=0.0)
 
 
 class AggregationResult(BaseModel):
