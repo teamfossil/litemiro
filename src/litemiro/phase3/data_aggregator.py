@@ -183,7 +183,9 @@ def _network_metrics(events: list[RoundEvent]) -> dict[str, Any]:
     }
 
 
-def _topic_flow(events: list[RoundEvent], ideology: dict[str, float] | None = None) -> dict[str, Any]:
+def _topic_flow(
+    events: list[RoundEvent], ideology: dict[str, float] | None = None
+) -> dict[str, Any]:
     """REPOST 가 round_manager 에서 새 Post 를 생성해 store/feed 에 들어가므로
     "신규 생성된 게시물" 이라는 표현은 CREATE+QUOTE+REPOST 합계가 맞다 (#110).
     반면 content sample 과 top_posters 는 작성자 인사이트용이라 본문이 있는
@@ -466,7 +468,7 @@ def _resolve_ideology(
     return ideology
 
 
-def _build_evidence_pack(
+def _build_evidence_pack(  # noqa: PLR0912
     events: list[RoundEvent],
     ideology: dict[str, float] | None,
     *,
@@ -480,7 +482,7 @@ def _build_evidence_pack(
 
     Stratification:
     1. round_diverse  : 라운드당 최대 2개 (시간 흐름 커버, 예산의 40%)
-    2. top_poster     : 상위 5 작성자 × 최대 3개 (주요 발화자 커버)
+    2. top_poster     : 상위 5 작성자 x 최대 3개 (주요 발화자 커버)
     3. ideology_diverse: ideology 그룹(left/moderate/right)당 최대 5개 (진영 커버)
     4. fill           : 나머지 슬롯을 순서대로 채움
     hard cap = budget. 중복 (agent_id, round_num) 쌍은 한 번만 포함.
@@ -516,7 +518,7 @@ def _build_evidence_pack(
         for e in by_round[r][:2]:
             try_add("round_diverse", e)
 
-    # 2. top-poster-diverse: 상위 5 작성자 × 최대 3개씩
+    # 2. top-poster-diverse: 상위 5 작성자 x 최대 3개씩
     poster_counts: Counter[str] = Counter(e.agent_id for e in content_events)
     poster_events: defaultdict[str, list[RoundEvent]] = defaultdict(list)
     for e in content_events:

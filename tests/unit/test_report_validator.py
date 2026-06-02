@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from litemiro.phase3.models import PhenomenaMetrics, QaMetrics
 from litemiro.phase3 import AggregationResult
+from litemiro.phase3.models import PhenomenaMetrics, QaMetrics
 from litemiro.phase3.report_validator import ReportValidator, ValidationResult
 
 _VALID_MD = """\
