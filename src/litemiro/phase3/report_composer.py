@@ -27,10 +27,14 @@ from litemiro.phase3.models import (
     ReportConfig,
 )
 
+from litemiro.phase3.report_validator import REQUIRED_HEADINGS
+
 if TYPE_CHECKING:
     from litemiro.phase3.report_validator import ReportValidator
 
 _logger = structlog.get_logger(__name__)
+
+_HEADINGS_INLINE = " / ".join(REQUIRED_HEADINGS)
 
 _SYSTEM_PROMPT = (
     "당신은 가상 인격들이 한 이슈를 두고 벌인 광장 토론을 읽고 '여론 예측' 보고서를 쓰는 "
@@ -39,8 +43,7 @@ _SYSTEM_PROMPT = (
     "싶은 것은 '이 이슈의 여론이 어떻게 될까' 이지 시뮬레이션의 메타 통계가 아니다. "
     "한국어 Markdown 으로 작성하라. "
     "아래 5 개 섹션 헤딩을 반드시 이 순서·형식 그대로 사용하라 (다른 ### 소섹션은 자유): "
-    "## 1. 핵심 여론 예측 / ## 2. 입장 분포 / ## 3. 주요 논점 "
-    "/ ## 4. 여론 주도·확산 / ## 5. 신뢰도와 한계. "
+    + _HEADINGS_INLINE + ". "
     "(1) 핵심 여론 예측 — 이슈에 대해 가상 여론이 도달한 결론적 입장과 온도(지지·반대·유보의 "
     "전반 기류)를 첫머리에 단정적으로 제시한다. "
     "(2) 입장 분포 — 찬성·반대·중립이 어떻게 갈렸는지를 게시물 논조로 가늠하고, ideology 동질성"

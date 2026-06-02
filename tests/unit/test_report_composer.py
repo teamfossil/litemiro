@@ -262,3 +262,27 @@ class TestRepairLoop:
         assert out.validation_failed is True
         assert out.repair_attempts == 1
         assert out.tokens_used == 45  # (10+20) + (5+10)
+
+    async def test_repair_exception_preserves_draft(self) -> None:
+        """repair 중 LLM 예외(모든 재시도 소진) → 초안 유지, validation_failed=True."""
+        llm = _FakeLLM()
+        # primary_max_attempts=2 이므로 repair 시도 2번 모두 실패하도록 큐잉
+        llm.queue(
+            "primary-m",
+            LLMResponse(content="초안", prompt_tokens=10, completion_tokens=20),
+            RuntimeError("repair down 1"),
+            RuntimeError("repair down 2"),
+        )
+        composer = ReportComposer(
+            llm=llm,
+            validator=_FakeValidator(self._FAIL, self._FAIL),
+        )
+        out = await composer.compose(
+            result=_result(),
+            insights=_insights(),
+            config=ReportConfig(composer_primary_model="primary-m"),
+        )
+        assert out.markdown == "초안"
+        assert out.repair_attempts == 1
+        assert out.validation_failed is True
+        assert out.tokens_used == 30  # 초기 호출(10+20)만, repair 예외라 미합산
