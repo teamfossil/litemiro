@@ -3,7 +3,7 @@ from __future__ import annotations
 import random
 
 from litemiro.phase1.local_graph import LocalGraph
-from litemiro.phase1.models import AgentOrigin, AgentSeed, Entity
+from litemiro.phase1.models import STANCE_QUOTA, AgentOrigin, AgentSeed, Entity, stance_bucket
 
 
 class AgentExpander:
@@ -12,6 +12,7 @@ class AgentExpander:
         self._requirement = requirement
         self._rng = random.Random(seed)
         self._seq = 0
+        self._stance_targets: list[float] = []
 
     def expand(self, core_seeds: list[AgentSeed], target_count: int) -> list[AgentSeed]:
         if len(core_seeds) >= target_count:
@@ -19,6 +20,8 @@ class AgentExpander:
 
         self._seq = len(core_seeds)
         result = list(core_seeds)
+        self._stance_targets = _allocate_stance_targets(target_count - len(core_seeds))
+        self._rng.shuffle(self._stance_targets)
 
         org_entities = [
             e
@@ -27,17 +30,15 @@ class AgentExpander:
         ]
 
         strategies = [
-            lambda: self._generate_affiliated(org_entities),
-            lambda: self._generate_public(self._requirement, 1),
-            lambda: self._generate_opposition(result),
+            lambda remaining: self._generate_affiliated(org_entities, remaining),
+            lambda remaining: self._generate_public(self._requirement, min(1, remaining)),
+            lambda remaining: self._generate_public(self._requirement, min(1, remaining)),
         ]
         strategy_idx = 0
 
         while len(result) < target_count:
-            new_agents = strategies[strategy_idx % 3]()
+            new_agents = strategies[strategy_idx % 3](target_count - len(result))
             for agent in new_agents:
-                if len(result) >= target_count:
-                    break
                 result.append(agent)
             strategy_idx += 1
 
@@ -48,16 +49,25 @@ class AgentExpander:
         self._seq += 1
         return aid
 
-    def _generate_affiliated(self, org_entities: list[Entity]) -> list[AgentSeed]:
+    def _next_stance_target(self) -> float:
+        if not self._stance_targets:
+            raise RuntimeError("derived stance quota exhausted")
+        return self._stance_targets.pop()
+
+    def _generate_affiliated(self, org_entities: list[Entity], limit: int) -> list[AgentSeed]:
         seeds: list[AgentSeed] = []
         for org in org_entities:
             count = self._rng.randint(3, 5)
             for _ in range(count):
+                if len(seeds) >= limit:
+                    return seeds
                 agent_id = self._next_id()
+                stance_target = self._next_stance_target()
                 context = (
                     f"소속 조직: {org.name} ({org.type})\n"
                     f"조직 요약: {org.summary}\n"
-                    f"역할: 소속 구성원"
+                    f"역할: 소속 구성원\n"
+                    f"{_stance_context(stance_target)}"
                 )
                 seeds.append(
                     AgentSeed(
@@ -66,6 +76,7 @@ class AgentExpander:
                         origin=AgentOrigin.DERIVED,
                         derived_from=org.id,
                         context=context,
+                        stance_target=stance_target,
                     )
                 )
         return seeds
@@ -103,6 +114,7 @@ class AgentExpander:
         seeds: list[AgentSeed] = []
         for _ in range(count):
             agent_id = self._next_id()
+            stance_target = self._next_stance_target()
             age = self._rng.choice(age_groups)
             region = self._rng.choice(regions)
             occupation = self._rng.choice(occupations)
@@ -111,7 +123,8 @@ class AgentExpander:
                 f"연령대: {age}\n"
                 f"지역: {region}\n"
                 f"직업: {occupation}\n"
-                f"관심 주제: {requirement[:100]}"
+                f"관심 주제: {requirement[:100]}\n"
+                f"{_stance_context(stance_target)}"
             )
             seeds.append(
                 AgentSeed(
@@ -120,44 +133,34 @@ class AgentExpander:
                     origin=AgentOrigin.DERIVED,
                     derived_from=None,
                     context=context,
+                    stance_target=stance_target,
                 )
             )
         return seeds
 
-    def _generate_opposition(self, existing_seeds: list[AgentSeed]) -> list[AgentSeed]:
-        if not existing_seeds:
-            return self._generate_public(self._requirement, 1)
 
-        ideologies = [
-            float(s.entity.attributes.get("ideology", 0.5))
-            if s.entity and "ideology" in s.entity.attributes
-            else 0.5
-            for s in existing_seeds
-        ]
-        avg_ideology = sum(ideologies) / len(ideologies) if ideologies else 0.5
+def _allocate_stance_targets(count: int) -> list[float]:
+    raw_counts = [count * ratio for _bucket, ratio, _target in STANCE_QUOTA]
+    counts = [int(raw) for raw in raw_counts]
+    remaining = count - sum(counts)
+    by_largest_remainder = sorted(
+        range(len(STANCE_QUOTA)),
+        key=lambda index: raw_counts[index] - counts[index],
+        reverse=True,
+    )
+    for index in by_largest_remainder[:remaining]:
+        counts[index] += 1
 
-        seeds: list[AgentSeed] = []
-        agent_id = self._next_id()
+    targets: list[float] = []
+    for count_for_bucket, (_bucket, _ratio, target) in zip(counts, STANCE_QUOTA, strict=True):
+        targets.extend([target] * count_for_bucket)
+    return targets
 
-        if avg_ideology < 0.5:
-            counter_ideology = round(self._rng.uniform(0.6, 0.9), 2)
-            stance = "보수적"
-        else:
-            counter_ideology = round(self._rng.uniform(0.1, 0.4), 2)
-            stance = "진보적"
 
-        context = (
-            f"layer: 일반시민\n"
-            f"이념 성향: {stance} (ideology={counter_ideology})\n"
-            f"관심 주제: {self._requirement[:100]}"
-        )
-        seeds.append(
-            AgentSeed(
-                agent_id=agent_id,
-                entity=None,
-                origin=AgentOrigin.DERIVED,
-                derived_from=None,
-                context=context,
-            )
-        )
-        return seeds
+def _stance_context(target: float) -> str:
+    labels = {
+        "critical": "비판적",
+        "neutral": "중립적",
+        "supportive": "우호적",
+    }
+    return f"현재 토론 주제 태도: {labels[stance_bucket(target)]} (stance_target={target:.1f})"
