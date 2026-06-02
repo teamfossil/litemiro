@@ -244,6 +244,7 @@ export default function Report() {
   const go = useScreenNav(plazaId);
   const [backendReport, setBackendReport] = useState<PlazaReportResponse | null>(null);
   const [layout, setLayout] = useState<PlazaLayoutResponse | null>(null);
+  const reportStatus = backendReport?.status ?? null;
 
   useEffect(() => {
     if (!plazaId) return;
@@ -289,7 +290,6 @@ export default function Report() {
   const tokensUsed = backendReport?.tokens_used ?? 0;
   const roundsDone = backendReport?.rounds_done ?? 0;
   const roundsTotal = backendReport?.rounds_total ?? 0;
-  const reportStatus = backendReport?.status ?? null;
 
   // 백엔드 categories 에서 안전하게 뽑기. shape 가 자유 dict 라 타입 단언 후 가드.
   const cats = (backendReport?.categories ?? {}) as Record<string, Record<string, unknown>>;
