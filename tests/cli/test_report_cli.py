@@ -31,7 +31,17 @@ class _FakeLLM:
 
     async def complete(self, *, system: str, user: str, model: str) -> LLMResponse:
         return LLMResponse(
-            content=f"# 보고서\n## {model}\n요약 문장.",
+            content=(
+                "# 보고서\n\n"
+                "## 1. 핵심 여론 예측\n"
+                "이번 가상 토론에서 여론은 해당 이슈에 대해 지지 기류가 우세하게 수렴했다."
+                f" {model} 기준 반대 목소리는 소수였다.\n\n"
+                "## 2. 입장 분포\n찬성이 다수, 중립 소수.\n\n"
+                "## 3. 주요 논점\n"
+                '"첫 글 — 주제 A" - agent_001 [E001]\n\n'
+                "## 4. 여론 주도·확산\nagent_001 이 주도했다.\n\n"
+                "## 5. 신뢰도와 한계\n표본이 작아 일반화에 한계가 있다.\n"
+            ),
             prompt_tokens=7,
             completion_tokens=11,
         )
