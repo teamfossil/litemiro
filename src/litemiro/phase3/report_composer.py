@@ -47,7 +47,7 @@ _SYSTEM_PROMPT = (
     "(`follow_ideology_gap`·`ideology_assortativity`)으로 양극화 정도를 함께 짚는다. "
     "(3) 주요 논점 — user message 의 '증거 은행(Evidence Bank)' 항목에서 발화 본문을 직접 "
     "인용해 어떤 주장들이 부딪쳤는지 보인다. 인용마다 반드시 ID 를 붙여라: "
-    "\"...발화...\" - agent_XXXX [E001]. 증거 은행에 없는 발화는 절대 지어내지 않는다. "
+    '"...발화..." - agent_XXXX [E001]. 증거 은행에 없는 발화는 절대 지어내지 않는다. '
     "(4) 여론 주도·확산 — 누가 여론을 끌었는지(상위 작성자·피팔로우 노드)와 메시지가 어떻게 "
     "번졌는지(`cascade_*` 깊이·규모, 인기 집중 `popularity_gini`·`early_mover_share`)를 서술한다. "
     "(5) 신뢰도와 한계 — 표본 규모·라운드 수·활성도(DO_NOTHING)·prompt 한계로 이 예측을 "
@@ -170,9 +170,7 @@ def _build_user_prompt(result: AggregationResult, insights: PartialInsights) -> 
     # evidence_pack 추출 + JSON payload 에서 제거
     topic_flow_raw = result.categories.get(CATEGORY_TOPIC_FLOW)
     evidence_items: list[dict[str, Any]] = (
-        list(topic_flow_raw.get("evidence_pack") or [])
-        if isinstance(topic_flow_raw, dict)
-        else []
+        list(topic_flow_raw.get("evidence_pack") or []) if isinstance(topic_flow_raw, dict) else []
     )
     categories_payload: dict[str, Any] = {}
     for cat, data in result.categories.items():
@@ -226,7 +224,7 @@ def _build_user_prompt(result: AggregationResult, insights: PartialInsights) -> 
         lines.append("## 증거 은행 (Evidence Bank)")
         lines.append(
             "직접 인용(발화 본문)은 아래 목록의 항목만 사용한다. "
-            "인용 시 반드시 증거 ID 를 붙여라: \"...발화...\" - agent_XXXX [E001]"
+            '인용 시 반드시 증거 ID 를 붙여라: "...발화..." - agent_XXXX [E001]'
         )
         lines.append("")
         for item in evidence_items:

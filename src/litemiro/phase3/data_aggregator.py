@@ -494,8 +494,7 @@ def _build_evidence_pack(  # noqa: PLR0912
     content_events = [
         e
         for e in events
-        if e.action.type in (ActionType.CREATE_POST, ActionType.QUOTE_POST)
-        and e.action.content
+        if e.action.type in (ActionType.CREATE_POST, ActionType.QUOTE_POST) and e.action.content
     ]
     if not content_events:
         return []

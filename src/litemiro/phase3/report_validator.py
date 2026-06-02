@@ -79,16 +79,10 @@ class ReportValidator:
 
         # 3. evidence ID 유효성 (evidence_pack 이 있을 때만)
         topic_flow = result.categories.get(CATEGORY_TOPIC_FLOW)
-        evidence_pack = (
-            topic_flow.get("evidence_pack")
-            if isinstance(topic_flow, dict)
-            else None
-        )
+        evidence_pack = topic_flow.get("evidence_pack") if isinstance(topic_flow, dict) else None
         if evidence_pack:
             valid_ids = {
-                item["id"]
-                for item in evidence_pack
-                if isinstance(item, dict) and "id" in item
+                item["id"] for item in evidence_pack if isinstance(item, dict) and "id" in item
             }
             cited_ids = {f"E{n}" for n in _EVIDENCE_ID_RE.findall(markdown)}
             invalid = cited_ids - valid_ids
