@@ -156,6 +156,7 @@ async def test_empty_profile_topics_fall_back(
     # follow_rate / like_rate 가 누락되어도 Phase 2 ActionSelector 가 신호를 받을 수 있게.
     assert profiles[0].behavior_tendency.follow_rate == 0.2
     assert profiles[0].behavior_tendency.like_rate == 0.4
+    assert profiles[0].behavior_tendency.repost_rate == 0.35
 
 
 @pytest.mark.asyncio

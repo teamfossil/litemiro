@@ -27,6 +27,7 @@ class TestBehaviorTendency:
         bt = BehaviorTendency()
         assert bt.post_rate == 0.5
         assert bt.reply_rate == 0.3
+        assert bt.repost_rate == 0.35
 
     def test_rejects_out_of_range(self) -> None:
         with pytest.raises(ValidationError):

@@ -392,6 +392,7 @@ class TestPromptComposition:
         system = llm.calls[0][0]
         assert "Routine agreement → LIKE" in system
         assert "would a stranger reading my added text learn something" in system
+        assert "unsure between QUOTE and REPOST" in system
 
     async def test_system_prompt_keeps_follow_alive(self) -> None:
         # FOLLOW 가 0 건으로 죽지 않도록 — "shape your network" 와
