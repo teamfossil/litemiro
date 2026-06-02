@@ -73,7 +73,7 @@ async def upload_document(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"unsupported extension {suffix!r}, allowed: .pdf .txt",
         )
-    content = await file.read()
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
     if not content:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

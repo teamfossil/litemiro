@@ -95,15 +95,22 @@ export default function App() {
   const hideHeader = currentScreen === 'landing';
 
   // 리포트 도달 여부 — 세션 동안 유지. 도달 전까지 헤더 phase nav 잠금.
+  const reportReachedKey = plazaId ? `${REPORT_REACHED_KEY}:${plazaId}` : null;
   const [reportReached, setReportReached] = useState<boolean>(
-    () => typeof window !== 'undefined' && sessionStorage.getItem(REPORT_REACHED_KEY) === '1'
+    () => typeof window !== 'undefined' && !!reportReachedKey && sessionStorage.getItem(reportReachedKey) === '1'
   );
+  // plazaId 전환 시 해당 plaza 의 도달 여부로 재동기.
   useEffect(() => {
-    if (currentScreen === 'report' && !reportReached) {
-      sessionStorage.setItem(REPORT_REACHED_KEY, '1');
+    setReportReached(
+      typeof window !== 'undefined' && !!reportReachedKey && sessionStorage.getItem(reportReachedKey) === '1'
+    );
+  }, [reportReachedKey]);
+  useEffect(() => {
+    if (currentScreen === 'report' && !reportReached && reportReachedKey) {
+      sessionStorage.setItem(reportReachedKey, '1');
       setReportReached(true);
     }
-  }, [currentScreen, reportReached]);
+  }, [currentScreen, reportReached, reportReachedKey]);
 
   return (
     <AppShell

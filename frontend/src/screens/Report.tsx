@@ -244,6 +244,7 @@ export default function Report() {
   const go = useScreenNav(plazaId);
   const [backendReport, setBackendReport] = useState<PlazaReportResponse | null>(null);
   const [layout, setLayout] = useState<PlazaLayoutResponse | null>(null);
+  const reportStatus = backendReport?.status ?? null;
 
   useEffect(() => {
     if (!plazaId) return;
@@ -252,6 +253,15 @@ export default function Report() {
     api.getLayout(plazaId, ac.signal).then((res) => { setLayout(res); }).catch(() => {});
     return () => ac.abort();
   }, [plazaId]);
+
+  // composing 상태면 2초마다 재조회 — 합성 완료 시 markdown 채움.
+  useEffect(() => {
+    if (!plazaId || reportStatus !== 'composing') return;
+    const id = setInterval(() => {
+      api.getReport(plazaId).then((res) => { setBackendReport(res); }).catch(() => {});
+    }, 2000);
+    return () => clearInterval(id);
+  }, [plazaId, reportStatus]);
 
   // /layout 의 agents 를 MiniPlaza 가 먹는 PlazaNode 형태로 변환. ready=false 면 빈 배열.
   const nodes = useMemo<PlazaNode[]>(() => {
@@ -280,7 +290,6 @@ export default function Report() {
   const tokensUsed = backendReport?.tokens_used ?? 0;
   const roundsDone = backendReport?.rounds_done ?? 0;
   const roundsTotal = backendReport?.rounds_total ?? 0;
-  const reportStatus = backendReport?.status ?? null;
 
   // 백엔드 categories 에서 안전하게 뽑기. shape 가 자유 dict 라 타입 단언 후 가드.
   const cats = (backendReport?.categories ?? {}) as Record<string, Record<string, unknown>>;
@@ -289,7 +298,7 @@ export default function Report() {
   const actionTotal = (actionDist.total as number) ?? 0;
   const timeSeries = cats.time_series ?? {};
   const seriesData = ((timeSeries.series as SeriesPoint[]) ?? []) as SeriesPoint[];
-  const networkMetrics = (cats.network_metrics as { n_follow_events?: number; top_followed?: { agent_id: string; followers: number }[]; top_followers?: { agent_id: string; following: number }[] }) ?? {};
+  const networkMetrics = (cats.network_metrics as { n_follow_events?: number; top_followed?: { agent_id: string; follows_received: number }[]; top_followers?: { agent_id: string; follows_given: number }[] }) ?? {};
   const topicFlow = (cats.topic_flow as { n_posts?: number; top_posters?: { agent_id: string; posts: number }[]; samples?: { round_num: number; agent_id: string; content: string }[] }) ?? {};
   const qaMetrics = (backendReport?.qa_metrics ?? {}) as Record<string, number>;
   const hasBackend = !!backendReport;
@@ -467,7 +476,7 @@ export default function Report() {
                 <div key={row.agent_id} className="lm-rep__inf-row">
                   <span className="lm-rep__inf-col-rank">{String(i + 1).padStart(2, '0')}</span>
                   <span className="lm-rep__inf-col-who">{row.agent_id}</span>
-                  <span className="lm-rep__inf-col-fol">+{row.followers}</span>
+                  <span className="lm-rep__inf-col-fol">+{row.follows_received}</span>
                 </div>
               ))}
             </div>

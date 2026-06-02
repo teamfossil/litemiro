@@ -400,9 +400,9 @@ export default function Plaza() {
     ? (target: 'live' | 'report' | 'plaza' | 'casting' | 'landing' | 'seed') =>
         navigate(target === 'landing' ? '/' : `/demo/${target}`)
     : baseGo;
-  // mock 312 노드를 초기값으로 — /layout 응답으로 교체. ready=false 면 mock 유지.
+  // 데모: mock 312 노드를 초기값으로 — /layout 응답으로 교체. ready=false 면 mock 유지. 비데모: [].
   const mockNodes = useMemo(() => lm.generatePlaza({ seed: 42, n: 312 }), []);
-  const [allNodes, setAllNodes] = useState<PlazaNode[]>(mockNodes);
+  const [allNodes, setAllNodes] = useState<PlazaNode[]>(isDemo ? mockNodes : []);
   const [selectedId, setSelected] = useState<string | null>(null);
   const [hoverId, setHover] = useState<string | null>(null);
   const [mouse, setMouse] = useState({ x: 0, y: 0 });
@@ -411,7 +411,7 @@ export default function Plaza() {
   const canvasRef = useRef<HTMLDivElement>(null);
 
   // /layout fetch — composing/completed 부터 의미 있는 응답. pending/running 은
-  // ready=false → mock 유지.
+  // ready=false → 데모: mock 유지, 비데모: [] 유지.
   useEffect(() => {
     if (!plazaId) return;
     const ac = new AbortController();
