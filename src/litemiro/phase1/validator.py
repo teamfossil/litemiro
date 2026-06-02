@@ -9,7 +9,15 @@ from dataclasses import dataclass, field
 
 import structlog
 
-from litemiro.phase1.models import OntologyA, OntologyB
+from litemiro.phase1.models import (
+    STANCE_DISTRIBUTION_MIN_DERIVED,
+    STANCE_DISTRIBUTION_TOLERANCE,
+    STANCE_QUOTA,
+    AgentOrigin,
+    OntologyA,
+    OntologyB,
+    stance_bucket,
+)
 
 log = structlog.get_logger(__name__)
 
@@ -32,6 +40,7 @@ class OntologyValidator:
         errors.extend(self._check_referential_integrity(a))
         errors.extend(self._check_memory_references(a, b))
         warnings.extend(self._check_ideology_distribution(a))
+        warnings.extend(self._check_stance_distribution(a))
         warnings.extend(self._check_persona_memory_topic_overlap(a, b))
 
         result = ValidationResult(valid=len(errors) == 0, errors=errors, warnings=warnings)
@@ -63,6 +72,8 @@ class OntologyValidator:
                 missing.append("skeleton")
             if profile.ideology is None:
                 missing.append("ideology")
+            if profile.stance is None:
+                missing.append("stance")
             if not profile.topics:
                 missing.append("topics")
             if profile.behavior_tendency is None:
@@ -81,6 +92,9 @@ class OntologyValidator:
                 errors.append(
                     f"agent '{agent_id}' ideology={ideology} out of [0,1] (will be clamped)"
                 )
+            stance = profile.stance
+            if not (0.0 <= stance <= 1.0):
+                errors.append(f"agent '{agent_id}' stance={stance} out of [0,1] (will be clamped)")
             bt = profile.behavior_tendency
             for rate_name, rate_val in (
                 ("post_rate", bt.post_rate),
@@ -142,6 +156,34 @@ class OntologyValidator:
                 "simulation may lack ideological diversity"
             )
         return warnings
+
+    def _check_stance_distribution(self, a: OntologyA) -> list[str]:
+        stances = [
+            profile.stance for profile in a.agents.values() if profile.origin == AgentOrigin.DERIVED
+        ]
+        if len(stances) < STANCE_DISTRIBUTION_MIN_DERIVED:
+            return []
+
+        counts = {bucket: 0 for bucket, _ratio, _target in STANCE_QUOTA}
+        for stance in stances:
+            counts[stance_bucket(stance)] += 1
+
+        actual = {bucket: count / len(stances) for bucket, count in counts.items()}
+        expected = {bucket: ratio for bucket, ratio, _target in STANCE_QUOTA}
+        if all(
+            abs(actual[bucket] - expected[bucket]) <= STANCE_DISTRIBUTION_TOLERANCE
+            for bucket in expected
+        ):
+            return []
+
+        distribution = ", ".join(
+            f"{bucket.value}={actual[bucket]:.3f} (expected={expected[bucket]:.3f})"
+            for bucket in expected
+        )
+        return [
+            "derived stance distribution outside tolerance "
+            f"(n={len(stances)}, tolerance={STANCE_DISTRIBUTION_TOLERANCE:.3f}): {distribution}"
+        ]
 
     def _check_persona_memory_topic_overlap(self, a: OntologyA, b: OntologyB) -> list[str]:
         warnings: list[str] = []

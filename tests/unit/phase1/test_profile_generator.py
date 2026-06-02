@@ -19,6 +19,7 @@ VALID_PROFILE_RESPONSE = json.dumps(
             "speech_style": "~다 체, 통계 인용",
             "background": "한겨레 입사 10년차 정치부 기자",
             "ideology": 0.3,
+            "stance": 0.2,
             "topics": ["정치", "경제"],
             "sensitive_topics": ["부동산"],
             "behavior_tendency": {
@@ -35,6 +36,7 @@ VALID_PROFILE_RESPONSE = json.dumps(
             "speech_style": "공식적 어투",
             "background": "개인정보보호위원회 위원장",
             "ideology": 0.4,
+            "stance": 0.8,
             "topics": ["개인정보", "규제"],
             "sensitive_topics": [],
             "behavior_tendency": {
@@ -60,6 +62,7 @@ async def test_generate_profiles(
     assert len(profiles) == 2
     assert profiles[0].agent_id == "agent_0001"
     assert profiles[0].ideology == 0.3
+    assert profiles[0].stance == 0.2
     assert profiles[0].personality == "날카로운 분석력과 비판적 시각"
     assert profiles[0].skeleton["source_entity_id"] == "journalist_kim"
     assert profiles[0].topics == ["정치", "경제"]
@@ -93,6 +96,7 @@ async def test_fallback_on_bad_response(fake_llm: Callable[..., Phase1LLMClient]
     assert len(profiles) == 1
     assert profiles[0].agent_id == "agent_0001"
     assert profiles[0].ideology == 0.5  # fallback default
+    assert profiles[0].stance == 0.5  # fallback default
     assert profiles[0].skeleton["source_entity_id"] == "e1"
     assert profiles[0].topics == ["Journalist", "김기자"]
     # #109: retry exhaust 로 배치 전체 fallback → seed 수만큼 카운트.
@@ -178,3 +182,24 @@ async def test_generate_reraises_content_filter(
     gen = ProfileGenerator(llm=_DummyLLM(), model="test")
     with pytest.raises(RuntimeError, match="data_inspection_failed"):
         await gen.generate(sample_agent_seeds[:1], "AI 규제 시뮬레이션")
+
+
+@pytest.mark.asyncio
+async def test_derived_seed_stance_target_is_prompted_and_used_by_fallback(
+    fake_llm: Callable[..., Phase1LLMClient],
+) -> None:
+    seed = AgentSeed(
+        agent_id="agent_derived",
+        origin=AgentOrigin.DERIVED,
+        stance_target=0.8,
+    )
+    llm = fake_llm("not valid json", "still bad", "nope")
+    gen = ProfileGenerator(llm=llm, model="test")
+
+    profiles = await gen.generate([seed], "AI 규제 시뮬레이션")
+
+    assert profiles[0].stance == 0.8
+    assert profiles[0].skeleton["stance_target"] == 0.8
+    assert "stance_target: 0.8" in llm.calls[0][1]  # type: ignore[attr-defined]
+    assert "0.0=진보, 1.0=보수" in llm.calls[0][1]  # type: ignore[attr-defined]
+    assert "0.0=비판, 0.5=중립, 1.0=우호" in llm.calls[0][1]  # type: ignore[attr-defined]

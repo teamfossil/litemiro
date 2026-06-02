@@ -45,6 +45,7 @@ class TestAgentProfile:
     def test_valid_profile(self, sample_agent_profile: AgentProfile) -> None:
         assert sample_agent_profile.agent_id == "agent_0001"
         assert sample_agent_profile.ideology == 0.3
+        assert sample_agent_profile.stance == 0.3
 
     def test_ideology_range(self) -> None:
         with pytest.raises(ValidationError):
@@ -55,6 +56,26 @@ class TestAgentProfile:
                 origin=AgentOrigin.EXTRACTED,
                 ideology=1.5,
             )
+
+    def test_stance_range(self) -> None:
+        with pytest.raises(ValidationError):
+            AgentProfile(
+                agent_id="a",
+                name="x",
+                entity_type="T",
+                origin=AgentOrigin.EXTRACTED,
+                stance=-0.1,
+            )
+
+    def test_legacy_profile_defaults_stance_from_ideology(self) -> None:
+        profile = AgentProfile(
+            agent_id="a",
+            name="x",
+            entity_type="T",
+            origin=AgentOrigin.EXTRACTED,
+            ideology=0.8,
+        )
+        assert profile.stance == 0.8
 
     def test_self_follow_removed(self) -> None:
         p = AgentProfile(
