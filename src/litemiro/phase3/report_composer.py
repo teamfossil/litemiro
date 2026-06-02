@@ -169,9 +169,10 @@ def _build_user_prompt(result: AggregationResult, insights: PartialInsights) -> 
     """
     # evidence_pack 추출 + JSON payload 에서 제거
     topic_flow_raw = result.categories.get(CATEGORY_TOPIC_FLOW)
-    evidence_items: list[dict[str, Any]] = (
-        list(topic_flow_raw.get("evidence_pack") or []) if isinstance(topic_flow_raw, dict) else []
+    _raw_pack: Any = (
+        topic_flow_raw.get("evidence_pack") if isinstance(topic_flow_raw, dict) else None
     )
+    evidence_items: list[Any] = list(_raw_pack or [])
     categories_payload: dict[str, Any] = {}
     for cat, data in result.categories.items():
         data_dict = dict(data)
