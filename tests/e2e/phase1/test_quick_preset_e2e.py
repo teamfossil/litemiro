@@ -9,9 +9,19 @@ from __future__ import annotations
 
 import json
 import re
+from collections import Counter
 from pathlib import Path
 
-from litemiro.phase1.models import OntologyA, OntologyB, Preset
+from litemiro.phase1.models import (
+    STANCE_DISTRIBUTION_TOLERANCE,
+    STANCE_QUOTA,
+    AgentOrigin,
+    OntologyA,
+    OntologyB,
+    Preset,
+    StanceBucket,
+    stance_bucket,
+)
 from litemiro.phase1.pipeline import OntologyPipeline, PipelineConfig
 from litemiro.phase1.serializer import OntologySerializer
 from litemiro.phase1.validator import OntologyValidator
@@ -540,7 +550,28 @@ async def test_quick_preset_agent_fields(tmp_path: Path) -> None:
     for agent_id, profile in ontology_a.agents.items():
         assert profile.skeleton, f"{agent_id} missing skeleton"
         assert 0.0 <= profile.ideology <= 1.0, f"{agent_id} ideology out of range"
+        assert 0.0 <= profile.stance <= 1.0, f"{agent_id} stance out of range"
         assert profile.topics, f"{agent_id} missing topics"
         bt = profile.behavior_tendency
         for field in ("post_rate", "reply_rate", "repost_rate", "controversy_affinity"):
             assert 0.0 <= getattr(bt, field) <= 1.0, f"{agent_id} {field} out of range"
+
+
+async def test_quick_preset_derived_stance_distribution(tmp_path: Path) -> None:
+    """Derived citizens keep the 30/40/30 stance plan through profile generation."""
+    ontology_a, ontology_b = await OntologyPipeline(_make_config(tmp_path), _MockLLM()).run()
+
+    derived = [
+        profile for profile in ontology_a.agents.values() if profile.origin == AgentOrigin.DERIVED
+    ]
+    counts = Counter(stance_bucket(profile.stance) for profile in derived)
+    expected = {bucket: ratio for bucket, ratio, _target in STANCE_QUOTA}
+    actual = {bucket: counts[bucket] / len(derived) for bucket in expected}
+
+    assert counts[StanceBucket.SUPPORTIVE] > 0
+    assert all(
+        abs(actual[bucket] - expected[bucket]) <= STANCE_DISTRIBUTION_TOLERANCE
+        for bucket in expected
+    )
+    result = OntologyValidator().validate(ontology_a, ontology_b)
+    assert not any("derived stance distribution" in warning for warning in result.warnings)
