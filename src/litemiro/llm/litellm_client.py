@@ -75,7 +75,7 @@ class LiteLLMClient:
         *,
         api_key: str | None = None,
         base_url: str | None = None,
-        timeout_seconds: float | None = 30.0,
+        timeout_seconds: float | None = 120.0,
         max_output_tokens: int | None = None,
     ) -> None:
         self._api_key = api_key if api_key is not None else os.environ.get("OPENROUTER_API_KEY")

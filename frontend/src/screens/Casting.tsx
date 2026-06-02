@@ -137,6 +137,7 @@ function CastingLoading() {
             rounds,
             preset,
             label: labelParam || undefined,
+            autostart: false,
           });
           if (!cancelled) {
             // ready 후 곧장 Live 가 아니라 CastingReveal 로 — 사용자에 추출된
@@ -259,9 +260,20 @@ function CastingReveal() {
     };
   }, [plazaId]);
 
-  const handleEnterLive = () => {
-    if (!plazaId) return;
-    navigate(`/live/${encodeURIComponent(plazaId)}`);
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
+
+  const handleEnterLive = async () => {
+    if (!plazaId || starting) return;
+    setStarting(true);
+    setStartError(null);
+    try {
+      await api.startPlaza(plazaId);
+      navigate(`/live/${encodeURIComponent(plazaId)}`);
+    } catch (e) {
+      setStartError(formatError(e, '광장 시작 실패'));
+      setStarting(false);
+    }
   };
 
   if (error) {
@@ -319,8 +331,8 @@ function CastingReveal() {
             </div>
           </div>
           <div className="lm-cast__head-actions">
-            <Button kind="primary" onClick={handleEnterLive} trailing={<ArrowGlyph dir="right" />}>
-              광장으로 입장
+            <Button kind="primary" onClick={handleEnterLive} disabled={starting} trailing={<ArrowGlyph dir="right" />}>
+              {starting ? '시작 중…' : '광장으로 입장'}
             </Button>
           </div>
         </header>

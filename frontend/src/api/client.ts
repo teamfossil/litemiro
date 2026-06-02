@@ -49,6 +49,7 @@ export interface CreatePlazaRequest {
   label?: string;
   // 미지정 시 백엔드가 quick 으로 채움 (CreatePlazaRequest.preset default).
   preset?: Preset;
+  autostart?: boolean;
 }
 
 export interface CreatePlazaResponse {
@@ -329,6 +330,10 @@ export const api = {
     request<CreatePlazaResponse>('/api/plazas', {
       method: 'POST',
       body: JSON.stringify(body),
+    }, signal),
+  startPlaza: (plazaId: string, signal?: AbortSignal) =>
+    request<void>(`/api/plazas/${encodeURIComponent(plazaId)}/start`, {
+      method: 'POST',
     }, signal),
   listPlazas: (params?: ListPlazasParams) => {
     const search = new URLSearchParams();

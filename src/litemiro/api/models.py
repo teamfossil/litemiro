@@ -48,6 +48,7 @@ class CreatePlazaRequest(BaseModel):
     # 보고서 합성 시 호출 수를 결정. quick=1 콜 / standard=4 콜 / full=8 콜.
     # 시뮬레이션 자체와는 직교 — sim 비용은 runner 설정이 본다.
     preset: Preset = Preset.QUICK
+    autostart: bool = True
 
 
 class CreatePlazaResponse(BaseModel):

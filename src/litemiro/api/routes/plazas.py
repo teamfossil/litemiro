@@ -224,6 +224,7 @@ async def create_plaza(payload: CreatePlazaRequest, request: Request) -> CreateP
         rounds=payload.rounds,
         label=payload.label,
         preset=payload.preset,
+        autostart=payload.autostart,
     )
     return CreatePlazaResponse(plaza_id=record.plaza_id, status=record.status)
 
@@ -459,6 +460,19 @@ async def get_layout(plaza_id: str, request: Request) -> PlazaLayoutResponse:
         for p in profiles
     ]
     return PlazaLayoutResponse(plaza_id=plaza_id, ready=True, agents=items)
+
+
+@router.post("/{plaza_id}/start", status_code=status.HTTP_204_NO_CONTENT)
+async def start_plaza(plaza_id: str, request: Request) -> Response:
+    """autostart=False 로 생성된 plaza 의 시뮬레이션을 시작한다."""
+    store = _store(request)
+    ok = await store.start(plaza_id)
+    if not ok:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"plaza {plaza_id!r} is already running or does not exist",
+        )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.delete("/{plaza_id}", status_code=status.HTTP_204_NO_CONTENT)
