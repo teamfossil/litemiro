@@ -218,6 +218,7 @@ class PlazaReportResponse(BaseModel):
     qa_metrics: dict[str, float]
     report_markdown: str | None = None
     report_fallback_used: bool = False
+    report_validation_failed: bool = False
 
 
 class DocumentResponse(BaseModel):

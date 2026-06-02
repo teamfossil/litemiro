@@ -118,6 +118,7 @@ CREATE TABLE IF NOT EXISTS plazas (
     checkpoint_dir TEXT,
     report_markdown TEXT,
     report_fallback_used INTEGER NOT NULL DEFAULT 0,
+    report_validation_failed INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -172,15 +173,19 @@ _ONTOLOGY_MIGRATION_COLUMNS: tuple[tuple[str, str], ...] = (
     ("fallback_model", "TEXT"),
 )
 
+_PLAZA_MIGRATION_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("report_validation_failed", "INTEGER NOT NULL DEFAULT 0"),
+)
+
 _UPSERT_SQL = """
 INSERT INTO plazas (
     plaza_id, status, rounds_total, rounds_done, label, error,
     tokens_used, preset,
     ontology_a_path, ontology_b_path, event_log_path, checkpoint_dir,
-    report_markdown, report_fallback_used,
+    report_markdown, report_fallback_used, report_validation_failed,
     created_at, updated_at
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(plaza_id) DO UPDATE SET
     status=excluded.status,
     rounds_total=excluded.rounds_total,
@@ -195,6 +200,7 @@ ON CONFLICT(plaza_id) DO UPDATE SET
     checkpoint_dir=excluded.checkpoint_dir,
     report_markdown=excluded.report_markdown,
     report_fallback_used=excluded.report_fallback_used,
+    report_validation_failed=excluded.report_validation_failed,
     updated_at=excluded.updated_at
 """
 
@@ -203,7 +209,7 @@ SELECT
     plaza_id, status, rounds_total, rounds_done, label, error,
     tokens_used, preset,
     ontology_a_path, ontology_b_path, event_log_path, checkpoint_dir,
-    report_markdown, report_fallback_used,
+    report_markdown, report_fallback_used, report_validation_failed,
     created_at, updated_at
 FROM plazas
 """
@@ -284,6 +290,9 @@ def connect(db_path: Path) -> sqlite3.Connection:
     for col_name, col_type in _ONTOLOGY_MIGRATION_COLUMNS:
         with contextlib.suppress(sqlite3.OperationalError):
             conn.execute(f"ALTER TABLE ontologies ADD COLUMN {col_name} {col_type}")
+    for col_name, col_type in _PLAZA_MIGRATION_COLUMNS:
+        with contextlib.suppress(sqlite3.OperationalError):
+            conn.execute(f"ALTER TABLE plazas ADD COLUMN {col_name} {col_type}")
     return conn
 
 
@@ -321,6 +330,7 @@ def upsert_record(conn: sqlite3.Connection, record: PlazaRecord) -> None:
             str(record.checkpoint_dir) if record.checkpoint_dir else None,
             record.report_markdown,
             1 if record.report_fallback_used else 0,
+            1 if record.report_validation_failed else 0,
             created.isoformat(timespec="seconds"),
             now_dt.isoformat(timespec="seconds"),
         ),
@@ -365,6 +375,7 @@ def load_all(conn: sqlite3.Connection) -> list[PlazaRecord]:
             checkpoint_dir=Path(row["checkpoint_dir"]) if row["checkpoint_dir"] else None,
             report_markdown=row["report_markdown"],
             report_fallback_used=bool(row["report_fallback_used"]),
+            report_validation_failed=bool(row["report_validation_failed"]),
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
         )

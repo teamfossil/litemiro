@@ -216,6 +216,7 @@ class PlazaRecord:
     # 그대로 노출.
     report_markdown: str | None = None
     report_fallback_used: bool = False
+    report_validation_failed: bool = False
     # ``DataAggregator.aggregate`` 결과 캐시. composer 가 한 번 돌면 outcome 을
     # 통해 채워지고, ``/report`` 가 매 호출마다 events.jsonl 을 재집계하지 않는다.
     # composer 가 없는 fake 경로는 ``build_report`` 가 lazy 로 채운다.
@@ -450,6 +451,7 @@ class PlazaStore:
                     )
                     record.report_markdown = composer_outcome.markdown
                     record.report_fallback_used = composer_outcome.fallback_used
+                    record.report_validation_failed = composer_outcome.validation_failed
                     record.tokens_used += composer_outcome.tokens_used
                     # composer 가 자기 집계를 outcome 으로 흘려보냈으면 그대로
                     # 캐시 — /report 가 같은 events.jsonl 을 다시 안 본다.

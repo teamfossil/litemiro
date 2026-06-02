@@ -140,12 +140,23 @@ def test_report_404_for_unknown_plaza(tmp_path: Path) -> None:
     assert resp.status_code == 404
 
 
-def _stub_composer(markdown: str | None, *, tokens: int = 0, fallback: bool = False) -> Any:
+def _stub_composer(
+    markdown: str | None,
+    *,
+    tokens: int = 0,
+    fallback: bool = False,
+    validation_failed: bool = False,
+) -> Any:
     """events.jsonl 은 무시하고 미리 정한 outcome 만 돌려주는 fake composer."""
 
     async def _compose(*, plaza_id: str, event_log_path: Path, preset: Preset) -> ComposerOutcome:
         del plaza_id, event_log_path, preset
-        return ComposerOutcome(markdown=markdown, tokens_used=tokens, fallback_used=fallback)
+        return ComposerOutcome(
+            markdown=markdown,
+            tokens_used=tokens,
+            fallback_used=fallback,
+            validation_failed=validation_failed,
+        )
 
     return _compose
 
@@ -269,3 +280,28 @@ def test_report_409_while_running(tmp_path: Path) -> None:
         ).json()
         resp = client.get(f"/api/plazas/{created['plaza_id']}/report")
     assert resp.status_code == 409
+
+
+def test_report_exposes_validation_failed_flag(tmp_path: Path) -> None:
+    """validation_failed=True 가 DB를 거쳐 /report 응답에 노출돼야 한다."""
+    lines = [_make_event(0, "agent_a", "CREATE_POST", content="hello")]
+    app = create_app(
+        runner=_writing_runner(lines),
+        base_dir=tmp_path,
+        composer=_stub_composer("# 열화 보고서", tokens=10, validation_failed=True),
+    )
+    with TestClient(app) as client:
+        created = client.post(
+            "/api/plazas",
+            json={
+                "ontology_a_path": "/tmp/a.json",
+                "ontology_b_path": "/tmp/b.json",
+                "rounds": 1,
+            },
+        ).json()
+        _wait_completed(client, created["plaza_id"])
+        resp = client.get(f"/api/plazas/{created['plaza_id']}/report")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["report_validation_failed"] is True
+    assert body["report_markdown"] == "# 열화 보고서"

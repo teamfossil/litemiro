@@ -54,6 +54,7 @@ class _ReportSummary:
     preset: Preset
     composer_model: str
     composer_fallback_used: bool
+    validation_failed: bool
     analyzer_total_tokens: int
     composer_tokens: int
     markdown: str
@@ -171,6 +172,7 @@ async def _run(
         preset=args.preset,
         composer_model=report.model,
         composer_fallback_used=report.fallback_used,
+        validation_failed=report.validation_failed,
         analyzer_total_tokens=sum(item.tokens_used for item in insights.items),
         composer_tokens=report.tokens_used,
         markdown=report.markdown,
@@ -213,7 +215,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     _print_summary(summary)
-    return 0
+    return 1 if summary.validation_failed else 0
 
 
 if __name__ == "__main__":  # pragma: no cover

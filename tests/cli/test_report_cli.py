@@ -47,6 +47,16 @@ class _FakeLLM:
         )
 
 
+class _InvalidContentLLM:
+    """필수 헤딩 없는 내용 반환 → validator 항상 실패 → validation_failed=True."""
+
+    def __init__(self, **_: object) -> None: ...
+
+    async def complete(self, *, system: str, user: str, model: str) -> LLMResponse:
+        del system, user, model
+        return LLMResponse(content="헤딩 없는 본문.", prompt_tokens=3, completion_tokens=5)
+
+
 class _FailingPrimaryLLM:
     """``--composer-primary-model`` 호출 시만 raise → Composer 폴백 진입."""
 
@@ -350,3 +360,17 @@ def test_sample_events_jsonl_is_well_formed(tmp_path: Path) -> None:
     # Aggregator 가 읽을 수 있어야 한다.
     for line in lines:
         RoundEvent.model_validate(line)
+
+
+def test_main_returns_one_when_validation_failed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """repair 후에도 validator 실패 → exit code 1, 파일은 기록됨."""
+    monkeypatch.setattr(report_cli, "LiteLLMClient", _InvalidContentLLM)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    events = _write_sample_jsonl(tmp_path / "events.jsonl")
+    output = tmp_path / "report.md"
+    exit_code = report_cli.main(_argv_for(events, output))
+    assert exit_code == 1
+    assert output.is_file()  # 열화 상태여도 파일은 기록된다

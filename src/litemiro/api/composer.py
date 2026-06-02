@@ -50,6 +50,7 @@ class ComposerOutcome:
     markdown: str | None
     tokens_used: int = 0
     fallback_used: bool = False
+    validation_failed: bool = False
     aggregation: AggregationResult | None = None
 
 
@@ -123,6 +124,7 @@ class RealPlazaComposer:
             markdown=report.markdown,
             tokens_used=sum(item.tokens_used for item in insights.items) + report.tokens_used,
             fallback_used=report.fallback_used,
+            validation_failed=report.validation_failed,
             aggregation=aggregation,
         )
 
