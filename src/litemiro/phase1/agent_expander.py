@@ -2,16 +2,8 @@ from __future__ import annotations
 
 import random
 
-from litemiro.phase1.actor_classifier import infer_persona_mode
 from litemiro.phase1.local_graph import LocalGraph
-from litemiro.phase1.models import (
-    STANCE_QUOTA,
-    AgentOrigin,
-    AgentSeed,
-    Entity,
-    PersonaMode,
-    stance_bucket,
-)
+from litemiro.phase1.models import STANCE_QUOTA, AgentOrigin, AgentSeed, Entity, stance_bucket
 
 
 class AgentExpander:
@@ -32,15 +24,9 @@ class AgentExpander:
         self._rng.shuffle(self._stance_targets)
 
         org_entities = [
-            entity
-            for entity in self._graph.entities.values()
-            if infer_persona_mode(
-                type_name=entity.type,
-                name=entity.name,
-                attributes=entity.attributes,
-                summary=entity.summary,
-            )
-            == PersonaMode.REPRESENTATIVE
+            e
+            for e in self._graph.entities.values()
+            if e.type.lower() in ("organization", "org", "기관", "조직", "언론사", "기업")
         ]
 
         strategies = [

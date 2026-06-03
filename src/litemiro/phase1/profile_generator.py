@@ -8,10 +8,9 @@ from typing import cast
 from json_repair import repair_json
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
-from litemiro.phase1.actor_classifier import representative_role_for_entity
 from litemiro.phase1.content_filter import is_content_filter_error, retry_unless_content_filter
 from litemiro.phase1.llm import Phase1LLMClient, response_text
-from litemiro.phase1.models import ActorKind, AgentProfile, AgentSeed, BehaviorTendency
+from litemiro.phase1.models import AgentProfile, AgentSeed, BehaviorTendency
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +53,7 @@ class ProfileGenerator:
         results = await asyncio.gather(*tasks)
         return [profile for batch_result in results for profile in batch_result]
 
-    async def _generate_batch(  # noqa: PLR0912
+    async def _generate_batch(
         self, batch: list[AgentSeed], simulation_requirement: str
     ) -> list[AgentProfile]:
         async with self._semaphore:
@@ -75,19 +74,9 @@ class ProfileGenerator:
                         f"\n  stance_target: {seed.stance_target:.1f} "
                         "(최종 stance 를 같은 비판-중립-우호 구간으로 유지)"
                     )
-                actor_info = f"\n  actor_kind: {seed.actor_kind.value}"
-                if seed.represented_entity_id:
-                    actor_info += f"\n  represented_entity_id: {seed.represented_entity_id}"
-                if seed.actor_kind == ActorKind.REPRESENTATIVE and seed.entity:
-                    role = representative_role_for_entity(seed.entity)
-                    actor_info += (
-                        f"\n  대표자 역할: {role}"
-                        "\n  작성 규칙: 원본 entity 자체가 아니라, 해당 entity를 대표해 "
-                        "발화할 수 있는 사람 persona로 작성"
-                    )
                 agent_lines.append(
                     f"agent_id: {seed.agent_id}\n{entity_info}\n  문맥: {seed.context}"
-                    f"{actor_info}{stance_target}"
+                    f"{stance_target}"
                 )
 
             user_prompt = (
@@ -163,15 +152,13 @@ class ProfileGenerator:
     def _build_fallback_profile(self, seed: AgentSeed) -> AgentProfile:
         entity_type = seed.entity.type if seed.entity else "citizen"
         defaults = _ENTITY_TYPE_DEFAULTS.get(entity_type.lower(), {})
-        entity_name = _profile_name(seed)
+        entity_name = seed.entity.name if seed.entity else f"시민_{seed.agent_id}"
         return AgentProfile(
             agent_id=seed.agent_id,
             name=entity_name,
             entity_type=entity_type,
             origin=seed.origin,
             derived_from=seed.derived_from,
-            actor_kind=seed.actor_kind,
-            represented_entity_id=seed.represented_entity_id,
             skeleton=_build_skeleton(seed),
             ideology=0.5,
             stance=seed.stance_target if seed.stance_target is not None else 0.5,
@@ -196,7 +183,7 @@ def _parse_profile(item: dict[str, object], seed: AgentSeed) -> AgentProfile:
         follow_rate=_float_value(bt_raw.get("follow_rate"), 0.2),
         controversy_affinity=_float_value(bt_raw.get("controversy_affinity"), 0.5),
     )
-    entity_name = _profile_name_from_item(item, seed)
+    entity_name = seed.entity.name if seed.entity else f"시민_{seed.agent_id}"
     entity_type = seed.entity.type if seed.entity else "citizen"
 
     topics = item.get("topics", [])
@@ -210,12 +197,10 @@ def _parse_profile(item: dict[str, object], seed: AgentSeed) -> AgentProfile:
 
     return AgentProfile(
         agent_id=seed.agent_id,
-        name=entity_name,
+        name=str(item.get("name", entity_name)),
         entity_type=entity_type,
         origin=seed.origin,
         derived_from=seed.derived_from,
-        actor_kind=seed.actor_kind,
-        represented_entity_id=seed.represented_entity_id,
         skeleton=_build_skeleton(seed),
         ideology=_float_value(item.get("ideology"), 0.5),
         stance=_float_value(
@@ -234,7 +219,6 @@ def _build_skeleton(seed: AgentSeed) -> dict[str, object]:
     entity = seed.entity
     skeleton: dict[str, object] = {
         "origin": seed.origin.value,
-        "actor_kind": seed.actor_kind.value,
         "layer": entity.type if entity else "derived",
         "entity_type": entity.type if entity else "citizen",
         "name": entity.name if entity else f"시민_{seed.agent_id}",
@@ -245,36 +229,9 @@ def _build_skeleton(seed: AgentSeed) -> dict[str, object]:
             skeleton["attributes"] = dict(entity.attributes)
     if seed.derived_from:
         skeleton["derived_from"] = seed.derived_from
-    if seed.represented_entity_id:
-        skeleton["represented_entity_id"] = seed.represented_entity_id
-        if entity:
-            skeleton["represented_entity_name"] = entity.name
-            skeleton["represented_entity_type"] = entity.type
     if seed.stance_target is not None:
         skeleton["stance_target"] = seed.stance_target
     return skeleton
-
-
-def _profile_name(seed: AgentSeed) -> str:
-    if seed.entity is None:
-        return f"시민_{seed.agent_id}"
-    if seed.actor_kind == ActorKind.REPRESENTATIVE:
-        role = representative_role_for_entity(seed.entity)
-        return f"{seed.entity.name} {role}"
-    return seed.entity.name
-
-
-def _profile_name_from_item(item: dict[str, object], seed: AgentSeed) -> str:
-    raw_name = item.get("name")
-    if isinstance(raw_name, str) and raw_name.strip():
-        if (
-            seed.actor_kind == ActorKind.REPRESENTATIVE
-            and seed.entity is not None
-            and raw_name.strip() == seed.entity.name
-        ):
-            return _profile_name(seed)
-        return raw_name.strip()
-    return _profile_name(seed)
 
 
 def _fallback_topics(seed: AgentSeed) -> list[str]:

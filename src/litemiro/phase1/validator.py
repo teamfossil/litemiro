@@ -9,16 +9,13 @@ from dataclasses import dataclass, field
 
 import structlog
 
-from litemiro.phase1.actor_classifier import ActorClassifier
 from litemiro.phase1.models import (
     STANCE_DISTRIBUTION_MIN_DERIVED,
     STANCE_DISTRIBUTION_TOLERANCE,
     STANCE_QUOTA,
-    ActorKind,
     AgentOrigin,
     OntologyA,
     OntologyB,
-    PersonaMode,
     stance_bucket,
 )
 
@@ -40,7 +37,6 @@ class OntologyValidator:
         errors.extend(self._check_agent_id_match(a, b))
         errors.extend(self._check_required_fields(a))
         errors.extend(self._check_value_ranges(a))
-        errors.extend(self._check_actor_modes(a))
         errors.extend(self._check_referential_integrity(a))
         errors.extend(self._check_memory_references(a, b))
         warnings.extend(self._check_ideology_distribution(a))
@@ -110,48 +106,6 @@ class OntologyValidator:
                     errors.append(
                         f"agent '{agent_id}' {rate_name}={rate_val} out of [0,1] (will be clamped)"
                     )
-        return errors
-
-    def _check_actor_modes(self, a: OntologyA) -> list[str]:
-        errors: list[str] = []
-        classifier = ActorClassifier(a.ontology)
-        explicit_modes = {
-            type_def.name.casefold(): type_def.persona_mode
-            for type_def in a.ontology.entity_types
-            if type_def.persona_mode is not None
-        }
-        for agent_id, profile in a.agents.items():
-            explicit_mode = explicit_modes.get(profile.entity_type.casefold())
-            has_actor_contract = (
-                "actor_kind" in profile.skeleton
-                or profile.actor_kind != ActorKind.DIRECT_PERSON
-                or profile.represented_entity_id is not None
-            )
-            if explicit_mode is None and not has_actor_contract:
-                continue
-
-            expected_mode = explicit_mode or classifier.persona_mode_for_profile(profile)
-            if expected_mode == PersonaMode.CONTEXT_ONLY:
-                errors.append(
-                    f"agent '{agent_id}' uses context_only entity_type "
-                    f"'{profile.entity_type}' as a persona"
-                )
-                continue
-
-            if (
-                expected_mode == PersonaMode.REPRESENTATIVE
-                and profile.actor_kind != ActorKind.REPRESENTATIVE
-            ):
-                errors.append(
-                    f"agent '{agent_id}' entity_type '{profile.entity_type}' must be "
-                    "represented by actor_kind='representative'"
-                )
-
-            if profile.actor_kind == ActorKind.REPRESENTATIVE and not profile.represented_entity_id:
-                errors.append(
-                    f"agent '{agent_id}' actor_kind='representative' is missing "
-                    "represented_entity_id"
-                )
         return errors
 
     def _check_referential_integrity(self, a: OntologyA) -> list[str]:

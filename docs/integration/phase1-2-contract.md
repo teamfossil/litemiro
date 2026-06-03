@@ -41,25 +41,9 @@ Phase 2(라운드 시뮬레이션)의 입력 객체(`Agent`, `SocialGraph`, `Sta
 - `behavior_tendency.post_rate: float ∈ [0,1]` → `Agent.activation_rate`
 - `initial_following: list[str]` → `SocialGraph`
 
-MVP에서 미사용(보존만): `entity_type`, `origin`, `derived_from`, `actor_kind`,
-`represented_entity_id`, `skeleton`, `ideology`, `sensitive_topics`,
-`behavior_tendency.{reply_rate,repost_rate,controversy_affinity}`.
+MVP에서 미사용(보존만): `entity_type`, `origin`, `derived_from`, `skeleton`,
+`ideology`, `sensitive_topics`, `behavior_tendency.{reply_rate,repost_rate,controversy_affinity}`.
 이들은 `Agent.persona_traits`에 그대로 들어가 후속 단계에서 참조 가능하다.
-
-### 2.2.1 Actor persona contract
-
-Phase 1 ontology type은 선택적으로 `persona_mode`를 가진다.
-
-- `direct_person`: 사람 entity를 그대로 발화 가능한 persona로 사용한다.
-- `representative`: 기관, 기업, 언론사, 시민단체 등은 원본 entity id를 유지하되
-  profile 의미는 발화 가능한 대표자 persona로 변환한다.
-- `context_only`: 정책, 법안, 규제 쟁점, 프레임워크, 제품, 개념 등은 직접 agent로
-  만들지 않고 graph/topic/semantic memory context로만 유지한다.
-
-`AgentProfile.actor_kind`는 실제 생성된 actor의 종류이며 현재 `direct_person` 또는
-`representative`이다. `representative`인 경우 `represented_entity_id`가 원본 entity id를
-가리킨다. `derived_from`은 기존처럼 파생 시민/소속 구성원 seed의 출처를 뜻하므로,
-기관 대표자 관계에는 재사용하지 않는다.
 
 ### 2.3 `OntologyB` (필수 소비 필드)
 

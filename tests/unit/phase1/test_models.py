@@ -8,22 +8,17 @@ import pytest
 from pydantic import ValidationError
 
 from litemiro.phase1.models import (
-    ActorKind,
     AgentOrigin,
     AgentProfile,
     BehaviorTendency,
     Entity,
-    EntityTypeDef,
     MemoryConfig,
     MemoryStore,
     Ontology,
     OntologyA,
     OntologyB,
-    PersonaMode,
     Preset,
     SemanticMemory,
-    StanceBucket,
-    stance_bucket,
 )
 
 
@@ -82,28 +77,6 @@ class TestAgentProfile:
         )
         assert profile.stance == 0.8
 
-    def test_actor_metadata_defaults_to_direct_person(self) -> None:
-        profile = AgentProfile(
-            agent_id="a",
-            name="x",
-            entity_type="Person",
-            origin=AgentOrigin.EXTRACTED,
-        )
-        assert profile.actor_kind is ActorKind.DIRECT_PERSON
-        assert profile.represented_entity_id is None
-
-    def test_representative_actor_metadata(self) -> None:
-        profile = AgentProfile(
-            agent_id="org",
-            name="Org spokesperson",
-            entity_type="Organization",
-            origin=AgentOrigin.EXTRACTED,
-            actor_kind=ActorKind.REPRESENTATIVE,
-            represented_entity_id="org",
-        )
-        assert profile.actor_kind is ActorKind.REPRESENTATIVE
-        assert profile.represented_entity_id == "org"
-
     def test_self_follow_removed(self) -> None:
         p = AgentProfile(
             agent_id="agent_0001",
@@ -128,14 +101,6 @@ class TestAgentProfile:
             )
 
 
-class TestStanceBucket:
-    def test_bucket_boundaries(self) -> None:
-        assert stance_bucket(0.39) is StanceBucket.CRITICAL
-        assert stance_bucket(0.4) is StanceBucket.NEUTRAL
-        assert stance_bucket(0.6) is StanceBucket.NEUTRAL
-        assert stance_bucket(0.61) is StanceBucket.SUPPORTIVE
-
-
 class TestEntity:
     def test_basic(self) -> None:
         e = Entity(id="e1", type="Person", name="김철수")
@@ -145,20 +110,6 @@ class TestEntity:
     def test_with_attributes(self) -> None:
         e = Entity(id="e1", type="Person", name="김철수", attributes={"age": 30})
         assert e.attributes["age"] == 30
-
-
-class TestEntityTypeDef:
-    def test_persona_mode_is_optional_for_legacy_ontologies(self) -> None:
-        type_def = EntityTypeDef(name="PolicyDocument", description="policy")
-        assert type_def.persona_mode is None
-
-    def test_persona_mode_enum(self) -> None:
-        type_def = EntityTypeDef(
-            name="PolicyDocument",
-            description="policy",
-            persona_mode=PersonaMode.CONTEXT_ONLY,
-        )
-        assert type_def.persona_mode is PersonaMode.CONTEXT_ONLY
 
 
 class TestOntologyA:
