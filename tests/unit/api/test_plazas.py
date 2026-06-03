@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import sqlite3
 import time
 from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
@@ -30,11 +31,17 @@ from litemiro.api.store import PlazaRecord, ProgressCallback, RunnerOutcome
 from litemiro.phase1.models import Preset
 
 
-def _write_ontology_a(path: Path, agent_specs: list[tuple[str, str, str, float]]) -> Path:
+def _write_ontology_a(
+    path: Path,
+    agent_specs: list[tuple[str, str, str, float]],
+    agent_stances: dict[str, float] | None = None,
+) -> Path:
     """테스트용 ``ontology_a_persona.json`` 을 만든다.
 
     ``agent_specs`` 는 ``(agent_id, name, entity_type, ideology)`` 튜플. 라우트가
     실제 ``OntologyA.model_validate`` 를 거치므로 모든 필수 필드를 채워야 한다.
+    ``agent_stances`` 가 있으면 해당 agent 의 stance 를 ideology 와 다르게 설정한다.
+    없으면 legacy fallback (stance == ideology) 으로 처리된다.
     """
     data = {
         "version": 1,
@@ -54,6 +61,9 @@ def _write_ontology_a(path: Path, agent_specs: list[tuple[str, str, str, float]]
                 "derived_from": None,
                 "skeleton": {},
                 "ideology": ideology,
+                **(
+                    {"stance": agent_stances[aid]} if agent_stances and aid in agent_stances else {}
+                ),
                 "topics": [f"{aid}-topic"],
                 "sensitive_topics": [],
                 "personality": "",
@@ -569,8 +579,6 @@ class TestPersistence:
         assert body["error"] is not None
         assert "restart" in body["error"].lower()
 
-        import sqlite3
-
         conn = sqlite3.connect(str(tmp_path / "plazas.db"))
         conn.row_factory = sqlite3.Row
         row = conn.execute(
@@ -600,8 +608,6 @@ class TestPersistence:
                 },
             ).json()
             _wait_until(client, created["plaza_id"], terminal={"completed", "failed"})
-
-        import sqlite3
 
         conn = sqlite3.connect(str(tmp_path / "plazas.db"))
         conn.row_factory = sqlite3.Row
@@ -1053,15 +1059,17 @@ class TestGetLayout:
     def test_x_axis_is_stance(self, tmp_path: Path) -> None:
         """``x`` 는 ``AgentProfile.stance`` 그대로 (#133, #179).
 
-        FR force-directed 는 폐기 — 토론 태도 (stance) 를 x 축에 직결한다.
+        ideology 와 stance 를 의도적으로 다르게 설정해
+        라우트가 ideology 가 아닌 stance 를 사용하는지 검증한다.
         """
         onto_a = _write_ontology_a(
             tmp_path / "ontology_a.json",
             [
-                ("a01", "A1", "Role", 0.1),
-                ("a02", "A2", "Role", 0.5),
+                ("a01", "A1", "Role", 0.9),
+                ("a02", "A2", "Role", 0.9),
                 ("a03", "A3", "Role", 0.9),
             ],
+            agent_stances={"a01": 0.1, "a02": 0.5, "a03": 0.8},
         )
         app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
         with TestClient(app) as client:
@@ -1077,9 +1085,9 @@ class TestGetLayout:
             _wait_until(client, plaza_id, terminal={"completed", "failed"})
             resp = client.get(f"/api/plazas/{plaza_id}/layout")
         by_id = {a["id"]: a for a in resp.json()["agents"]}
-        assert by_id["a01"]["x"] == 0.1
+        assert by_id["a01"]["x"] == 0.1  # ideology=0.9 이므로 ideology 사용 시 실패
         assert by_id["a02"]["x"] == 0.5
-        assert by_id["a03"]["x"] == 0.9
+        assert by_id["a03"]["x"] == 0.8
 
     def test_y_axis_is_activity_normalized(self, tmp_path: Path) -> None:
         """``y`` 는 활동량 (보낸 액션 수) 의 plaza 내 max 정규화 (#133).
