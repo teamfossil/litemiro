@@ -379,7 +379,7 @@ async def get_agents(plaza_id: str, request: Request) -> PlazaAgentsResponse:
             id=profile.agent_id,
             name=profile.name,
             role=profile.entity_type,
-            ideology=profile.ideology,
+            stance=profile.stance,
             topics=list(profile.topics),
             base_influence=_compute_base_influence(profile.behavior_tendency),
             avatar_seed=_avatar_seed(profile.agent_id),
@@ -444,14 +444,14 @@ async def get_layout(plaza_id: str, request: Request) -> PlazaLayoutResponse:
     max_score = max(influence_scores.values(), default=0)
     max_activity = max(activity_counts.values(), default=0)
     # x / y 의미 분리 (#133). FR force-directed 결과는 sim 의 follower=0 long-tail
-    # 에서 1D 로 압축돼 양 극단 64%, 좌표 중복 25% 가 측정됐다. x = ideology (정적
-    # 좌-우 spectrum), y = 활동량 (라이브 동안 변하는 발화 적극성) — 둘이 직교한다.
+    # 에서 1D 로 압축돼 양 극단 64%, 좌표 중복 25% 가 측정됐다. x = stance (토론
+    # 주제 태도), y = 활동량 (라이브 동안 변하는 발화 적극성) — 둘이 직교한다.
     items = [
         PlazaLayoutAgentItem(
             id=p.agent_id,
             name=p.name,
             role=p.entity_type,
-            x=p.ideology,
+            x=p.stance,
             y=((activity_counts.get(p.agent_id, 0) / max_activity) if max_activity > 0 else 0.0),
             follower_count=follower_counts.get(p.agent_id, 0),
             influence=((influence_scores.get(p.agent_id, 0) / max_score) if max_score > 0 else 0.0),
