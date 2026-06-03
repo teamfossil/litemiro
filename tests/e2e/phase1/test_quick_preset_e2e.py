@@ -15,6 +15,7 @@ from pathlib import Path
 from litemiro.phase1.models import (
     STANCE_DISTRIBUTION_TOLERANCE,
     STANCE_QUOTA,
+    ActorKind,
     AgentOrigin,
     OntologyA,
     OntologyB,
@@ -83,6 +84,24 @@ ONTOLOGY_RESP = json.dumps(
                 "name": "IndustryAlliance",
                 "description": "산업 연합",
                 "attributes": ["name", "members"],
+            },
+            {
+                "name": "PolicyDocument",
+                "description": "법률 또는 정책 문서",
+                "persona_mode": "context_only",
+                "attributes": ["name", "status"],
+            },
+            {
+                "name": "RegulatoryIssue",
+                "description": "규제 토론의 쟁점",
+                "persona_mode": "context_only",
+                "attributes": ["name", "domain"],
+            },
+            {
+                "name": "InternationalRegulatoryFramework",
+                "description": "국제 규제 프레임워크",
+                "persona_mode": "context_only",
+                "attributes": ["name", "region"],
             },
         ],
         "edge_types": [
@@ -205,6 +224,30 @@ EXTRACT_RESP = json.dumps(
                 "attributes": {},
                 "summary": "중소 AI 스타트업 연합, 규제 비용 부담 우려",
                 "source_chunks": [0],
+            },
+            {
+                "id": "policy_ai_basic_act",
+                "type": "PolicyDocument",
+                "name": "AI 기본법",
+                "attributes": {"status": "시행 예정"},
+                "summary": "AI 산업 진흥과 안전 기준을 함께 다루는 정책 문서",
+                "source_chunks": [0, 1],
+            },
+            {
+                "id": "issue_data_sovereignty",
+                "type": "RegulatoryIssue",
+                "name": "데이터 주권",
+                "attributes": {"domain": "개인정보"},
+                "summary": "AI 학습 데이터 통제권과 국외 이전을 둘러싼 규제 쟁점",
+                "source_chunks": [1],
+            },
+            {
+                "id": "framework_eu_ai_act",
+                "type": "InternationalRegulatoryFramework",
+                "name": "EU AI Act",
+                "attributes": {"region": "EU"},
+                "summary": "고위험 AI 규제와 투명성 의무를 담은 국제 규제 프레임워크",
+                "source_chunks": [1],
             },
             {
                 "id": "res_snu",
@@ -409,6 +452,24 @@ EXTRACT_RESP = json.dumps(
                 "description": "AI 규제",
             },
             {
+                "source": "gov_msit",
+                "target": "policy_ai_basic_act",
+                "type": "REGULATES",
+                "description": "AI 기본법 시행",
+            },
+            {
+                "source": "gov_pipc",
+                "target": "issue_data_sovereignty",
+                "type": "REGULATES",
+                "description": "데이터 주권 쟁점 검토",
+            },
+            {
+                "source": "policy_ai_basic_act",
+                "target": "framework_eu_ai_act",
+                "type": "REGULATES",
+                "description": "EU AI Act 참고",
+            },
+            {
                 "source": "cso_pam",
                 "target": "gov_msit",
                 "type": "OPPOSES",
@@ -438,35 +499,58 @@ EXTRACT_RESP = json.dumps(
 )
 
 
-def _build_profile_response(agent_ids: list[str]) -> str:
+def _stance_targets_by_agent(user: str) -> dict[str, float]:
+    targets: dict[str, float] = {}
+    current_agent_id: str | None = None
+    for line in user.splitlines():
+        agent_match = re.match(r"agent_id:\s*(\S+)", line)
+        if agent_match:
+            current_agent_id = agent_match.group(1)
+            continue
+        target_match = re.search(r"stance_target:\s*([0-9.]+)", line)
+        if current_agent_id is not None and target_match:
+            targets[current_agent_id] = float(target_match.group(1))
+    return targets
+
+
+def _build_profile_response(
+    agent_ids: list[str],
+    *,
+    stance_targets: dict[str, float] | None = None,
+    stance_mode: str = "omit",
+) -> str:
     ideologies = [0.2, 0.35, 0.4, 0.5, 0.55, 0.6, 0.65, 0.7, 0.45, 0.3]
     profiles = []
     for i, aid in enumerate(agent_ids):
-        profiles.append(
-            {
-                "agent_id": aid,
-                "personality": "분석적이고 논리적인 성향",
-                "speech_style": "격식체" if i % 2 == 0 else "구어체",
-                "background": "AI 규제 관련 이해관계자",
-                "ideology": ideologies[i % len(ideologies)],
-                "topics": ["AI 규제", "기술 정책"],
-                "sensitive_topics": ["개인정보"],
-                "behavior_tendency": {
-                    "post_rate": round(0.3 + (i % 5) * 0.1, 2),
-                    "reply_rate": round(0.2 + (i % 4) * 0.1, 2),
-                    "repost_rate": round(0.1 + (i % 3) * 0.1, 2),
-                    "controversy_affinity": round(0.3 + (i % 5) * 0.1, 2),
-                },
-            }
-        )
+        profile = {
+            "agent_id": aid,
+            "personality": "분석적이고 논리적인 성향",
+            "speech_style": "격식체" if i % 2 == 0 else "구어체",
+            "background": "AI 규제 관련 이해관계자",
+            "ideology": ideologies[i % len(ideologies)],
+            "topics": ["AI 규제", "기술 정책"],
+            "sensitive_topics": ["개인정보"],
+            "behavior_tendency": {
+                "post_rate": round(0.3 + (i % 5) * 0.1, 2),
+                "reply_rate": round(0.2 + (i % 4) * 0.1, 2),
+                "repost_rate": round(0.1 + (i % 3) * 0.1, 2),
+                "controversy_affinity": round(0.3 + (i % 5) * 0.1, 2),
+            },
+        }
+        if stance_mode == "target":
+            profile["stance"] = (stance_targets or {}).get(aid, 0.5)
+        elif stance_mode == "critical":
+            profile["stance"] = 0.2
+        profiles.append(profile)
     return json.dumps(profiles, ensure_ascii=False)
 
 
 class _MockLLM:
     """Dispatches realistic responses based on system prompt content."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, stance_mode: str = "omit") -> None:
         self.calls: list[tuple[str, str, str]] = []
+        self._stance_mode = stance_mode
 
     async def complete(self, *, system: str, user: str, model: str) -> str:
         self.calls.append((system, user, model))
@@ -477,7 +561,16 @@ class _MockLLM:
             return EXTRACT_RESP
         if "프로필" in system or "에이전트" in system:
             agent_ids = re.findall(r"agent_id:\s*(\S+)", user)
-            return _build_profile_response(agent_ids) if agent_ids else "[]"
+            stance_targets = _stance_targets_by_agent(user)
+            return (
+                _build_profile_response(
+                    agent_ids,
+                    stance_targets=stance_targets,
+                    stance_mode=self._stance_mode,
+                )
+                if agent_ids
+                else "[]"
+            )
         return "[]"
 
 
@@ -557,9 +650,36 @@ async def test_quick_preset_agent_fields(tmp_path: Path) -> None:
             assert 0.0 <= getattr(bt, field) <= 1.0, f"{agent_id} {field} out of range"
 
 
-async def test_quick_preset_derived_stance_distribution(tmp_path: Path) -> None:
-    """Derived citizens keep the 30/40/30 stance plan through profile generation."""
+async def test_quick_preset_actor_modes_are_speakable(tmp_path: Path) -> None:
+    """Context-only objects stay out of agents; institutions become representatives."""
     ontology_a, ontology_b = await OntologyPipeline(_make_config(tmp_path), _MockLLM()).run()
+
+    context_only_ids = {
+        "policy_ai_basic_act",
+        "issue_data_sovereignty",
+        "framework_eu_ai_act",
+    }
+    assert context_only_ids.isdisjoint(ontology_a.agents)
+    assert context_only_ids.isdisjoint(ontology_b.stores)
+
+    for agent_id in ("gov_msit", "corp_naver", "media_hankyoreh", "alliance_kai"):
+        profile = ontology_a.agents[agent_id]
+        assert profile.actor_kind is ActorKind.REPRESENTATIVE
+        assert profile.represented_entity_id == agent_id
+        assert profile.skeleton["represented_entity_id"] == agent_id
+
+    for agent_id in ("pol_kim", "journalist_kim_ys", "researcher_jung", "activist_choi"):
+        assert ontology_a.agents[agent_id].actor_kind is ActorKind.DIRECT_PERSON
+
+    result = OntologyValidator().validate(ontology_a, ontology_b)
+    assert result.valid, f"errors: {result.errors}"
+
+
+async def test_quick_preset_derived_stance_distribution(tmp_path: Path) -> None:
+    """Derived citizens keep the 30/40/30 stance plan when the LLM returns stance."""
+    ontology_a, ontology_b = await OntologyPipeline(
+        _make_config(tmp_path), _MockLLM(stance_mode="target")
+    ).run()
 
     derived = [
         profile for profile in ontology_a.agents.values() if profile.origin == AgentOrigin.DERIVED
@@ -575,3 +695,15 @@ async def test_quick_preset_derived_stance_distribution(tmp_path: Path) -> None:
     )
     result = OntologyValidator().validate(ontology_a, ontology_b)
     assert not any("derived stance distribution" in warning for warning in result.warnings)
+
+
+async def test_quick_preset_warns_when_llm_ignores_stance_targets(tmp_path: Path) -> None:
+    """Validator surfaces LLM outputs that ignore the preallocated stance plan."""
+    ontology_a, ontology_b = await OntologyPipeline(
+        _make_config(tmp_path), _MockLLM(stance_mode="critical")
+    ).run()
+
+    result = OntologyValidator().validate(ontology_a, ontology_b)
+
+    assert result.valid
+    assert any("derived stance distribution" in warning for warning in result.warnings)

@@ -15,6 +15,7 @@ from litemiro.phase1.entity_extractor import EntityExtractor
 from litemiro.phase1.llm import Phase1LLMClient
 from litemiro.phase1.models import (
     PRESET_AGENT_COUNTS,
+    ActorKind,
     AgentProfile,
     AgentSeed,
     ExtractionResult,
@@ -151,16 +152,36 @@ class OntologyPipeline:
 
         ranker = EntityRanker(graph=graph, simulation_requirement=cfg.requirement)
         ranked = ranker.rank()
-        top_entities = [entity for entity, _ in ranked[:target_count]]
-        core_seeds: list[AgentSeed] = [
-            AgentSeed(
-                agent_id=entity.id,
-                entity=entity,
-                origin="extracted",  # type: ignore[arg-type]
-                context=ranker.build_entity_context(entity.id),
+        from litemiro.phase1.actor_classifier import ActorClassifier  # noqa: PLC0415
+        from litemiro.phase1.models import PersonaMode  # noqa: PLC0415
+
+        actor_classifier = ActorClassifier(ontology)
+        core_seeds: list[AgentSeed] = []
+        context_only_count = 0
+        representative_count = 0
+        for entity, _score in ranked:
+            if len(core_seeds) >= target_count:
+                break
+            persona_mode = actor_classifier.persona_mode_for_entity(entity)
+            if persona_mode == PersonaMode.CONTEXT_ONLY:
+                context_only_count += 1
+                continue
+
+            is_representative = persona_mode == PersonaMode.REPRESENTATIVE
+            if is_representative:
+                representative_count += 1
+            core_seeds.append(
+                AgentSeed(
+                    agent_id=entity.id,
+                    entity=entity,
+                    origin="extracted",  # type: ignore[arg-type]
+                    actor_kind=(
+                        ActorKind.REPRESENTATIVE if is_representative else ActorKind.DIRECT_PERSON
+                    ),
+                    represented_entity_id=entity.id if is_representative else None,
+                    context=ranker.build_entity_context(entity.id),
+                )
             )
-            for entity in top_entities
-        ]
 
         from litemiro.phase1.agent_expander import AgentExpander  # noqa: PLC0415
 
@@ -169,6 +190,9 @@ class OntologyPipeline:
         log.info(
             "step3_seeds_expanded",
             seed_count=len(seeds),
+            core_seed_count=len(core_seeds),
+            representative_count=representative_count,
+            context_only_skipped=context_only_count,
             elapsed=f"{time.monotonic() - t3:.2f}s",
         )
 

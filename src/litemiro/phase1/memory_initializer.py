@@ -143,17 +143,25 @@ class MemoryInitializer:
                 merged = [fid for fid in merged if fid != agent_id]
                 agents[agent_id] = profile.model_copy(update={"initial_following": merged})
 
+        valid_agent_ids = set(agents)
         return {
             agent_id: MemoryStore(
                 agent_id=agent_id,
                 episodic=[],
-                semantic=self._generate_seed_memories(profile, self._graph.entities.get(agent_id)),
+                semantic=self._generate_seed_memories(
+                    profile,
+                    self._graph.entities.get(agent_id),
+                    valid_agent_ids,
+                ),
             )
             for agent_id, profile in agents.items()
         }
 
     def _generate_seed_memories(
-        self, agent: AgentProfile, entity: Entity | None
+        self,
+        agent: AgentProfile,
+        entity: Entity | None,
+        valid_agent_ids: set[str],
     ) -> list[SemanticMemory]:
         memories: list[SemanticMemory] = []
         seq = 0
@@ -185,7 +193,11 @@ class MemoryInitializer:
                 if neighbor is None:
                     continue
 
-                neighbor_agent_id = _find_agent_for_entity(neighbor_id, self._graph)
+                neighbor_agent_id = _find_agent_for_entity(
+                    neighbor_id,
+                    self._graph,
+                    valid_agent_ids,
+                )
                 sentiment = _infer_sentiment(edge.type)
                 memory_topics = _derive_relationship_topics(edge, neighbor)
                 summary = f"{neighbor.name}와(과) {edge.description}"
@@ -272,8 +284,12 @@ class MemoryInitializer:
                     following[agent_id].append(other_id)
 
 
-def _find_agent_for_entity(entity_id: str, graph: LocalGraph) -> str | None:
-    return entity_id if entity_id in graph.entities else None
+def _find_agent_for_entity(
+    entity_id: str,
+    graph: LocalGraph,
+    valid_agent_ids: set[str],
+) -> str | None:
+    return entity_id if entity_id in graph.entities and entity_id in valid_agent_ids else None
 
 
 def _infer_sentiment(edge_type: str) -> str:

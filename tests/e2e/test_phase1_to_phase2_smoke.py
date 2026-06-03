@@ -37,6 +37,7 @@ def _profile(
     *,
     topics: list[str],
     post_rate: float,
+    stance: float = 0.5,
     following: Iterable[str] = (),
 ) -> AgentProfile:
     return AgentProfile(
@@ -48,6 +49,7 @@ def _profile(
         personality="중립적이고 분석적",
         speech_style="~다 체",
         background="테스트용 가상 프로필",
+        stance=stance,
         behavior_tendency=BehaviorTendency(
             post_rate=post_rate, reply_rate=0.3, repost_rate=0.2, controversy_affinity=0.5
         ),
@@ -81,6 +83,7 @@ def ontology_a() -> OntologyA:
                 "agent_001",
                 topics=["정치", "경제"],
                 post_rate=0.7,
+                stance=0.2,
                 following=["agent_002", "agent_001", "agent_999"],  # self + unknown
             ),
             "agent_002": _profile(
@@ -162,6 +165,7 @@ def test_persona_traits_preserve_unused_fields(
 
     assert traits["behavior_tendency"]["reply_rate"] == pytest.approx(0.3)
     assert traits["entity_type"] == "Journalist"
+    assert traits["stance"] == pytest.approx(0.2)
 
 
 def test_memory_summary_orders_by_sim_count_then_recency(

@@ -20,6 +20,12 @@ _FROZEN: ConfigDict = ConfigDict(extra="forbid", frozen=True)
 _STRICT: ConfigDict = ConfigDict(extra="forbid", strict=True)
 
 
+class PersonaMode(StrEnum):
+    DIRECT_PERSON = "direct_person"
+    REPRESENTATIVE = "representative"
+    CONTEXT_ONLY = "context_only"
+
+
 # ── Ontology schema (Step 1 output) ──────────────────────────────────
 
 
@@ -29,6 +35,7 @@ class EntityTypeDef(BaseModel):
     name: str
     description: str
     attributes: list[str] = Field(default_factory=list)
+    persona_mode: PersonaMode | None = None
 
 
 class EdgeTypeDef(BaseModel):
@@ -95,6 +102,11 @@ class AgentOrigin(StrEnum):
     DERIVED = "derived"
 
 
+class ActorKind(StrEnum):
+    DIRECT_PERSON = "direct_person"
+    REPRESENTATIVE = "representative"
+
+
 class StanceBucket(StrEnum):
     CRITICAL = "critical"
     NEUTRAL = "neutral"
@@ -109,14 +121,18 @@ STANCE_QUOTA: tuple[tuple[StanceBucket, float, float], ...] = (
     (StanceBucket.NEUTRAL, 0.4, 0.5),
     (StanceBucket.SUPPORTIVE, 0.3, 0.8),
 )
+# Validator tolerance is intentionally wider than the largest remainder rounding
+# drift so LLM variation warns on real stance skew, not on small preset sizes.
 STANCE_DISTRIBUTION_TOLERANCE = 0.15
 STANCE_DISTRIBUTION_MIN_DERIVED = 10
+STANCE_CRITICAL_MAX = 0.4
+STANCE_SUPPORTIVE_MIN = 0.6
 
 
 def stance_bucket(value: float) -> StanceBucket:
-    if value < 0.4:
+    if value < STANCE_CRITICAL_MAX:
         return StanceBucket.CRITICAL
-    if value > 0.6:
+    if value > STANCE_SUPPORTIVE_MIN:
         return StanceBucket.SUPPORTIVE
     return StanceBucket.NEUTRAL
 
@@ -140,6 +156,8 @@ class AgentProfile(BaseModel):
     entity_type: str
     origin: AgentOrigin
     derived_from: str | None = None
+    actor_kind: ActorKind = ActorKind.DIRECT_PERSON
+    represented_entity_id: str | None = None
     skeleton: dict[str, Any] = Field(default_factory=dict)
     ideology: float = Field(default=0.5, ge=0.0, le=1.0)
     stance: float = Field(default=0.5, ge=0.0, le=1.0)
@@ -268,15 +286,20 @@ class AgentSeed(BaseModel):
     entity: Entity | None = None
     origin: AgentOrigin
     derived_from: str | None = None
+    actor_kind: ActorKind = ActorKind.DIRECT_PERSON
+    represented_entity_id: str | None = None
     context: str = ""
     stance_target: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
 __all__ = [
     "PRESET_AGENT_COUNTS",
+    "STANCE_CRITICAL_MAX",
     "STANCE_DISTRIBUTION_MIN_DERIVED",
     "STANCE_DISTRIBUTION_TOLERANCE",
     "STANCE_QUOTA",
+    "STANCE_SUPPORTIVE_MIN",
+    "ActorKind",
     "AgentOrigin",
     "AgentProfile",
     "AgentSeed",
@@ -292,6 +315,7 @@ __all__ = [
     "Ontology",
     "OntologyA",
     "OntologyB",
+    "PersonaMode",
     "Preset",
     "SemanticMemory",
     "StanceBucket",
