@@ -233,6 +233,12 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--llm-model",
         default=os.environ.get("LITEMIRO_API_LLM_MODEL", "openrouter/qwen/qwen-plus"),
     )
+    parser.add_argument(
+        "--profile-max-concurrency",
+        type=_positive_int,
+        default=_positive_int(os.environ.get("LITEMIRO_API_PROFILE_MAX_CONCURRENCY", "5")),
+        help="Maximum concurrent Phase 1 profile batch calls across API ontology jobs",
+    )
     # Phase 1 ontology generation 이 provider content filter (#121, Qwen 의
     # data_inspection_failed) 에 막혔을 때 자동 우회할 모델 리스트. 콤마 구분.
     # 정상 케이스는 primary 모델만 호출 — fallback 비용 영향 없음. 빈 문자열
@@ -247,6 +253,16 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
 
 def _parse_fallback_models(raw: str) -> list[str]:
     return [m.strip() for m in raw.split(",") if m.strip()]
+
+
+def _positive_int(raw: str) -> int:
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be an integer") from exc
+    if value < 1:
+        raise argparse.ArgumentTypeError("must be greater than 0")
+    return value
 
 
 def _build_real_runner_and_composer(*, llm_model: str) -> tuple[PlazaRunner, PlazaComposer]:
@@ -270,7 +286,10 @@ def _build_real_runner_and_composer(*, llm_model: str) -> tuple[PlazaRunner, Pla
 
 
 def _build_real_ontology_runner(
-    *, llm_model: str, fallback_models: list[str] | None = None
+    *,
+    llm_model: str,
+    fallback_models: list[str] | None = None,
+    profile_max_concurrency: int = 5,
 ) -> OntologyRunner:
     """Phase 1 ``OntologyPipeline`` 을 감싸 ``OntologyStore`` 가 부르는 시그니처에
     맞춘 closure 를 만든다. ``litellm.acompletion`` 콜이 1건의 ontology 당 분 단위
@@ -299,8 +318,11 @@ def _build_real_ontology_runner(
     )
 
     log = logging.getLogger(__name__)
+    if profile_max_concurrency < 1:
+        raise ValueError("profile_max_concurrency must be greater than 0")
     chain = [llm_model, *(fallback_models or [])]
     llm = Phase1LiteLLMClient()
+    profile_semaphore = asyncio.Semaphore(profile_max_concurrency)
 
     async def _run(
         *,
@@ -335,9 +357,12 @@ def _build_real_ontology_runner(
                 preset=preset,
                 output_dir=output_dir,
                 model=model,
+                profile_max_concurrency=profile_max_concurrency,
             )
             try:
-                ontology_a, _ = await OntologyPipeline(config, llm).run(
+                ontology_a, _ = await OntologyPipeline(
+                    config, llm, profile_semaphore=profile_semaphore
+                ).run(
                     on_progress=_step_callback, state=state
                 )
             except Exception as exc:
@@ -389,6 +414,7 @@ def main(argv: list[str] | None = None) -> int:
         ontology_runner = _build_real_ontology_runner(
             llm_model=args.llm_model,
             fallback_models=_parse_fallback_models(args.llm_fallback_models),
+            profile_max_concurrency=args.profile_max_concurrency,
         )
 
     # uvicorn 은 ``[api]`` extra 에서만 들어오므로 main 안에서 import — fastapi

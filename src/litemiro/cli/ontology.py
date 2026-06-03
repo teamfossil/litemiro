@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 import time
 from pathlib import Path
@@ -29,6 +30,16 @@ class Phase1LiteLLMClient:
             ],
         )
         return str(response.choices[0].message.content or "")
+
+
+def _positive_int(raw: str) -> int:
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be an integer") from exc
+    if value < 1:
+        raise argparse.ArgumentTypeError("must be greater than 0")
+    return value
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -58,6 +69,12 @@ def main(argv: list[str] | None = None) -> int:
         default="openrouter/qwen/qwen-plus",
         help="LLM model identifier (default: openrouter/qwen/qwen-plus)",
     )
+    parser.add_argument(
+        "--profile-max-concurrency",
+        type=_positive_int,
+        default=_positive_int(os.environ.get("LITEMIRO_PHASE1_PROFILE_MAX_CONCURRENCY", "5")),
+        help="Maximum concurrent Phase 1 profile batch calls (default: 5)",
+    )
 
     args = parser.parse_args(argv)
 
@@ -68,6 +85,7 @@ def main(argv: list[str] | None = None) -> int:
         seed=args.seed,
         output_dir=args.output_dir,
         model=args.model,
+        profile_max_concurrency=args.profile_max_concurrency,
     )
 
     llm = Phase1LiteLLMClient()

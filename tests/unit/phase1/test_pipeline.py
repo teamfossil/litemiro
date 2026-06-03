@@ -165,6 +165,42 @@ async def test_pipeline_config_defaults() -> None:
     config = PipelineConfig(input_path=Path("x.pdf"), requirement="r")
     assert config.preset is Preset.QUICK
     assert config.seed == 42
+    assert config.profile_max_concurrency == 5
+
+
+@pytest.mark.asyncio
+async def test_pipeline_passes_profile_max_concurrency(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    config = _resume_config(tmp_path).model_copy(update={"profile_max_concurrency": 8})
+    llm = _QueueLLM([ONTOLOGY_RESP, EXTRACT_RESP, PROFILE_RESP])
+    captured: dict[str, object] = {}
+    original_init = ProfileGenerator.__init__
+
+    def _spy_init(
+        self: ProfileGenerator,
+        llm: object,
+        model: str = "openrouter/qwen/qwen-plus",
+        max_concurrency: int = 5,
+        semaphore: object | None = None,
+    ) -> None:
+        captured["max_concurrency"] = max_concurrency
+        captured["semaphore"] = semaphore
+        original_init(
+            self,
+            llm=llm,  # type: ignore[arg-type]
+            model=model,
+            max_concurrency=max_concurrency,
+            semaphore=semaphore,  # type: ignore[arg-type]
+        )
+
+    monkeypatch.setattr(ProfileGenerator, "__init__", _spy_init)
+
+    await OntologyPipeline(config, llm).run()
+
+    assert captured["max_concurrency"] == 8
+    assert captured["semaphore"] is None
 
 
 @pytest.mark.asyncio

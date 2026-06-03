@@ -284,6 +284,7 @@ async def _run(args: argparse.Namespace) -> int:
     started = time.monotonic()
     status = "ok"
     error: str | None = None
+    pipeline: OntologyPipeline | None = None
     try:
         config = PipelineConfig(
             input_path=args.input,
@@ -292,8 +293,10 @@ async def _run(args: argparse.Namespace) -> int:
             seed=args.seed,
             output_dir=out_dir,
             model=args.model,
+            profile_max_concurrency=args.profile_max_concurrency,
         )
-        ontology_a, ontology_b = await OntologyPipeline(config, llm).run()
+        pipeline = OntologyPipeline(config, llm)
+        ontology_a, ontology_b = await pipeline.run()
     except Exception as exc:
         status = "failed"
         error = f"{type(exc).__name__}: {exc}"
@@ -337,6 +340,7 @@ async def _run(args: argparse.Namespace) -> int:
         "preset": args.preset,
         "seed": args.seed,
         "llm_seed": args.llm_seed,
+        "profile_max_concurrency": args.profile_max_concurrency,
         "response_format_json": args.response_format_json,
         "elapsed_seconds": round(elapsed, 2),
         "call_count": len(llm.calls),
@@ -344,6 +348,7 @@ async def _run(args: argparse.Namespace) -> int:
         "total_tokens": total_tokens,
         "total_cost_usd": round(total_cost, 8) if total_cost else None,
         "fallback_count": len(fallback_seeds),
+        "duplicate_id_count": pipeline.profile_duplicate_id_count if pipeline else None,
         "fallback_rate": round(len(fallback_seeds) / expected_agents, 4),
         "fallback_reasons": {
             reason: sum(1 for item in fallback_diagnostics if item["reason"] == reason)
@@ -407,6 +412,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-root", required=True, type=Path)
     parser.add_argument("--label", required=True)
     parser.add_argument("--model", required=True)
+    parser.add_argument("--profile-max-concurrency", default=5, type=int)
     parser.add_argument("--response-format-json", action="store_true")
     return parser
 

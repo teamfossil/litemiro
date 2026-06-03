@@ -15,6 +15,7 @@ from litemiro.api.__main__ import (
     _noop_composer,
     _noop_ontology_runner,
     _noop_runner,
+    _parse_args,
 )
 from litemiro.api.sample_fixtures import (
     DEFAULT_ONTOLOGY_A_PATH,
@@ -22,6 +23,11 @@ from litemiro.api.sample_fixtures import (
 )
 from litemiro.models import ActionType, RoundEvent
 from litemiro.phase1.models import Preset
+
+
+def test_parse_args_accepts_profile_max_concurrency() -> None:
+    args = _parse_args(["--fake", "--profile-max-concurrency", "8"])
+    assert args.profile_max_concurrency == 8
 
 
 async def test_noop_ontology_runner_copies_default_fixtures(tmp_path: Path) -> None:

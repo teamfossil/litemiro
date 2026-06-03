@@ -129,6 +129,55 @@ async def test_fallback_count_includes_missing_agent_ids(
 
 
 @pytest.mark.asyncio
+async def test_duplicate_agent_id_response_is_detected_and_filled(
+    fake_llm: Callable[..., Phase1LLMClient],
+    sample_agent_seeds: list[AgentSeed],
+) -> None:
+    duplicate = json.dumps(
+        [
+            {
+                "agent_id": "agent_0001",
+                "personality": "analytical",
+                "speech_style": "formal",
+                "background": "first profile",
+                "ideology": 0.3,
+                "topics": ["policy"],
+                "sensitive_topics": [],
+                "behavior_tendency": {},
+            },
+            {
+                "agent_id": "agent_0001",
+                "personality": "duplicate",
+                "speech_style": "casual",
+                "background": "duplicate profile",
+                "ideology": 0.8,
+                "topics": ["duplicate"],
+                "sensitive_topics": [],
+                "behavior_tendency": {},
+            },
+        ]
+    )
+    llm = fake_llm(duplicate)
+    gen = ProfileGenerator(llm=llm, model="test")
+    profiles = await gen.generate(sample_agent_seeds, "req")
+
+    agent_ids = [profile.agent_id for profile in profiles]
+    assert agent_ids.count("agent_0001") == 1
+    assert "agent_0002" in agent_ids
+    assert gen.duplicate_id_count == 1
+    assert gen.fallback_count == 1
+    fallback = next(profile for profile in profiles if profile.agent_id == "agent_0002")
+    assert fallback.ideology == 0.5
+
+
+def test_rejects_non_positive_max_concurrency(
+    fake_llm: Callable[..., Phase1LLMClient],
+) -> None:
+    with pytest.raises(ValueError, match="max_concurrency"):
+        ProfileGenerator(llm=fake_llm(), model="test", max_concurrency=0)
+
+
+@pytest.mark.asyncio
 async def test_empty_profile_topics_fall_back(
     fake_llm: Callable[..., Phase1LLMClient],
     sample_agent_seeds: list[AgentSeed],
