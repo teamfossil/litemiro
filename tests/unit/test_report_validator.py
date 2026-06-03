@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from litemiro.phase3 import AggregationResult
 from litemiro.phase3.models import PhenomenaMetrics, QaMetrics
 from litemiro.phase3.report_validator import ReportValidator, ValidationResult
@@ -113,6 +115,53 @@ class TestEvidenceIDValidation:
         vr = ReportValidator().validate(_VALID_MD, _result(evidence_pack=pack))
         assert not vr.ok
         assert any("인용이 0건" in e for e in vr.errors)
+
+
+class TestCitationIntegrity:
+    """인용 패턴 agent_id · quote 근사 매칭 검증."""
+
+    _PACK: ClassVar[list[dict[str, str]]] = [
+        {
+            "id": "E001",
+            "agent_id": "agent_0029",
+            "quote": "AI는 거울이 아니라 전광판입니다.",
+        }
+    ]
+
+    def _md(self, citation: str) -> str:
+        return _VALID_MD + f"\n{citation}\n"
+
+    def test_matching_citation_no_warning(self) -> None:
+        md = self._md('"AI는 거울이 아니라 전광판입니다." - agent_0029 [E001]')
+        vr = ReportValidator().validate(md, _result(evidence_pack=self._PACK))
+        assert vr.ok
+        assert vr.warnings == ()
+
+    def test_agent_id_mismatch_gives_warning(self) -> None:
+        md = self._md('"AI는 거울이 아니라 전광판입니다." - agent_0099 [E001]')
+        vr = ReportValidator().validate(md, _result(evidence_pack=self._PACK))
+        assert vr.ok  # warning 이지 error 가 아님
+        assert any("agent_id 불일치" in w for w in vr.warnings)
+
+    def test_quote_mismatch_gives_warning(self) -> None:
+        md = self._md('"완전히 다른 내용의 발화를 지어낸 케이스입니다." - agent_0029 [E001]')
+        vr = ReportValidator().validate(md, _result(evidence_pack=self._PACK))
+        assert vr.ok
+        assert any("evidence pack 에 없음" in w for w in vr.warnings)
+
+    def test_short_citation_skipped(self) -> None:
+        # 6자 미만 인용은 _CITATION_RE 대상 밖 — warning 이 0건이어야 함
+        md = self._md('"짧음" - agent_0099 [E001]')
+        vr = ReportValidator().validate(md, _result(evidence_pack=self._PACK))
+        assert vr.warnings == ()
+
+    def test_whitespace_normalization_no_false_positive(self) -> None:
+        # 내부 이중 공백·줄바꿈이 달라도 정당한 인용은 warning 없어야 함
+        pack = [{"id": "E001", "agent_id": "agent_0029", "quote": "AI는  거울이  아니라 전광판."}]
+        md = self._md('"AI는 거울이 아니라 전광판." - agent_0029 [E001]')
+        vr = ReportValidator().validate(md, _result(evidence_pack=pack))
+        assert vr.ok
+        assert not any("없음" in w for w in vr.warnings)
 
 
 class TestRepairPrompt:
