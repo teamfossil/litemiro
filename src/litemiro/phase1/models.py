@@ -20,6 +20,12 @@ _FROZEN: ConfigDict = ConfigDict(extra="forbid", frozen=True)
 _STRICT: ConfigDict = ConfigDict(extra="forbid", strict=True)
 
 
+class PersonaMode(StrEnum):
+    DIRECT_PERSON = "direct_person"
+    REPRESENTATIVE = "representative"
+    CONTEXT_ONLY = "context_only"
+
+
 # ── Ontology schema (Step 1 output) ──────────────────────────────────
 
 
@@ -29,6 +35,7 @@ class EntityTypeDef(BaseModel):
     name: str
     description: str
     attributes: list[str] = Field(default_factory=list)
+    persona_mode: PersonaMode | None = None
 
 
 class EdgeTypeDef(BaseModel):
@@ -95,6 +102,11 @@ class AgentOrigin(StrEnum):
     DERIVED = "derived"
 
 
+class ActorKind(StrEnum):
+    DIRECT_PERSON = "direct_person"
+    REPRESENTATIVE = "representative"
+
+
 class StanceBucket(StrEnum):
     CRITICAL = "critical"
     NEUTRAL = "neutral"
@@ -144,6 +156,8 @@ class AgentProfile(BaseModel):
     entity_type: str
     origin: AgentOrigin
     derived_from: str | None = None
+    actor_kind: ActorKind = ActorKind.DIRECT_PERSON
+    represented_entity_id: str | None = None
     skeleton: dict[str, Any] = Field(default_factory=dict)
     ideology: float = Field(default=0.5, ge=0.0, le=1.0)
     stance: float = Field(default=0.5, ge=0.0, le=1.0)
@@ -272,6 +286,8 @@ class AgentSeed(BaseModel):
     entity: Entity | None = None
     origin: AgentOrigin
     derived_from: str | None = None
+    actor_kind: ActorKind = ActorKind.DIRECT_PERSON
+    represented_entity_id: str | None = None
     context: str = ""
     stance_target: float | None = Field(default=None, ge=0.0, le=1.0)
 
@@ -283,6 +299,7 @@ __all__ = [
     "STANCE_DISTRIBUTION_TOLERANCE",
     "STANCE_QUOTA",
     "STANCE_SUPPORTIVE_MIN",
+    "ActorKind",
     "AgentOrigin",
     "AgentProfile",
     "AgentSeed",
@@ -298,6 +315,7 @@ __all__ = [
     "Ontology",
     "OntologyA",
     "OntologyB",
+    "PersonaMode",
     "Preset",
     "SemanticMemory",
     "StanceBucket",

@@ -22,6 +22,7 @@ Output ONLY valid JSON with this exact shape:
     {
       "name": "PascalCaseName",
       "description": "what this entity type represents",
+      "persona_mode": "direct_person | representative | context_only",
       "attributes": ["attr1", "attr2"]
     }
   ],
@@ -40,6 +41,11 @@ Rules:
 - Extract 6-10 edge/relationship types that are meaningful for the simulation.
 - All type names must be PascalCase.
 - Attributes should be concrete, observable properties of that entity type.
+- persona_mode classifies whether entities of that type can become debate personas:
+  direct_person = a human actor who can speak directly;
+  representative = an institution/company/media/group represented by a human speaker;
+  context_only = a policy, law, bill, issue, framework, product, concept, or object that
+  should remain graph/topic/memory context only.
 - No commentary, no markdown fences — raw JSON only.
 """
 

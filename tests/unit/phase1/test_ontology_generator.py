@@ -17,6 +17,7 @@ VALID_ONTOLOGY_RESPONSE = json.dumps(
             {
                 "name": "Journalist",
                 "description": "보도 기사를 작성하는 기자",
+                "persona_mode": "direct_person",
                 "attributes": ["name", "affiliation", "beat"],
             },
             {"name": "Politician", "description": "정치인", "attributes": ["name", "party"]},
@@ -82,6 +83,7 @@ async def test_generate_returns_ontology(fake_llm: Callable[..., Phase1LLMClient
     assert len(ontology.entity_types) == 5
     assert len(ontology.edge_types) == 6
     assert ontology.entity_types[0].name == "Journalist"
+    assert ontology.entity_types[0].persona_mode == "direct_person"
 
 
 @pytest.mark.asyncio

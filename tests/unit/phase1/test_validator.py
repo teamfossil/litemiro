@@ -5,14 +5,17 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from litemiro.phase1.models import (
+    ActorKind,
     AgentOrigin,
     AgentProfile,
     BehaviorTendency,
+    EntityTypeDef,
     KeyRelationship,
     MemoryStore,
     Ontology,
     OntologyA,
     OntologyB,
+    PersonaMode,
     Preset,
     SemanticMemory,
 )
@@ -106,6 +109,127 @@ class TestOntologyValidator:
         )
         result = OntologyValidator().validate(_make_a(agents), b)
         assert any("key_relationships" in e and "nonexistent" in e for e in result.errors)
+
+    def test_context_only_entity_type_cannot_be_direct_agent(self) -> None:
+        profile = _make_profile("policy_ai_basic_act", topics=["AI 기본법"])
+        profile = profile.model_copy(update={"entity_type": "PolicyDocument", "name": "AI 기본법"})
+        a = _make_a({"policy_ai_basic_act": profile})
+        a = a.model_copy(
+            update={
+                "ontology": Ontology(
+                    entity_types=[
+                        EntityTypeDef(
+                            name="PolicyDocument",
+                            description="policy document",
+                            persona_mode=PersonaMode.CONTEXT_ONLY,
+                        )
+                    ],
+                    edge_types=[],
+                )
+            }
+        )
+        result = OntologyValidator().validate(
+            a,
+            _make_b(["policy_ai_basic_act"]),
+        )
+
+        assert any("context_only" in error for error in result.errors)
+
+    def test_representative_entity_type_requires_actor_metadata(self) -> None:
+        profile = _make_profile("gov_msit")
+        profile = profile.model_copy(
+            update={"entity_type": "GovernmentAgency", "name": "과학기술정보통신부"}
+        )
+        a = _make_a({"gov_msit": profile})
+        a = a.model_copy(
+            update={
+                "ontology": Ontology(
+                    entity_types=[
+                        EntityTypeDef(
+                            name="GovernmentAgency",
+                            description="public agency",
+                            persona_mode=PersonaMode.REPRESENTATIVE,
+                        )
+                    ],
+                    edge_types=[],
+                )
+            }
+        )
+        result = OntologyValidator().validate(a, _make_b(["gov_msit"]))
+
+        assert any("actor_kind='representative'" in error for error in result.errors)
+
+    def test_representative_entity_type_passes_with_source_tracking(self) -> None:
+        profile = _make_profile("gov_msit")
+        profile = profile.model_copy(
+            update={
+                "entity_type": "GovernmentAgency",
+                "name": "과학기술정보통신부 public official",
+                "actor_kind": ActorKind.REPRESENTATIVE,
+                "represented_entity_id": "gov_msit",
+            }
+        )
+        a = _make_a({"gov_msit": profile})
+        a = a.model_copy(
+            update={
+                "ontology": Ontology(
+                    entity_types=[
+                        EntityTypeDef(
+                            name="GovernmentAgency",
+                            description="public agency",
+                            persona_mode=PersonaMode.REPRESENTATIVE,
+                        )
+                    ],
+                    edge_types=[],
+                )
+            }
+        )
+        result = OntologyValidator().validate(a, _make_b(["gov_msit"]))
+
+        assert result.valid
+
+    def test_explicit_persona_mode_drives_actor_validation(self) -> None:
+        profile = _make_profile("custom_org")
+        profile = profile.model_copy(
+            update={
+                "entity_type": "StakeholderNode",
+                "actor_kind": ActorKind.REPRESENTATIVE,
+                "represented_entity_id": "custom_org",
+            }
+        )
+        a = _make_a({"custom_org": profile})
+        a = a.model_copy(
+            update={
+                "ontology": Ontology(
+                    entity_types=[
+                        EntityTypeDef(
+                            name="StakeholderNode",
+                            description="custom type",
+                            persona_mode=PersonaMode.CONTEXT_ONLY,
+                        )
+                    ],
+                    edge_types=[],
+                )
+            }
+        )
+
+        result = OntologyValidator().validate(a, _make_b(["custom_org"]))
+
+        assert any("context_only" in error for error in result.errors)
+
+    def test_new_actor_contract_enables_heuristic_validation(self) -> None:
+        profile = _make_profile("gov_msit")
+        profile = profile.model_copy(
+            update={
+                "entity_type": "GovernmentAgency",
+                "name": "과학기술정보통신부",
+                "skeleton": {"actor_kind": "direct_person", "layer": "GovernmentAgency"},
+            }
+        )
+
+        result = OntologyValidator().validate(_make_a({"gov_msit": profile}), _make_b(["gov_msit"]))
+
+        assert any("actor_kind='representative'" in error for error in result.errors)
 
     def test_ideology_distribution_warning(self) -> None:
         agents = {

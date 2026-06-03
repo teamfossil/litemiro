@@ -188,7 +188,10 @@ class TestMemoryInitializer:
                 ]
             )
         )
-        agents = {"a1": _make_profile("a1", topics=["sports"])}
+        agents = {
+            "a1": _make_profile("a1", topics=["sports"]),
+            "a2": _make_profile("a2", topics=["housing"]),
+        }
 
         stores = MemoryInitializer(graph=graph, seed=42).initialize(agents)
 
@@ -220,9 +223,12 @@ class TestMemoryInitializer:
         agents = {"a1": _make_profile("a1", topics=["sports"])}
 
         stores = MemoryInitializer(graph=graph, seed=42).initialize(agents)
-        relationship_memory = next(m for m in stores["a1"].semantic if m.key_relationships)
+        relationship_memory = next(
+            m for m in stores["a1"].semantic if m.topics == ["housing", "Agency", "audits"]
+        )
 
         assert relationship_memory.topics == ["housing", "Agency", "audits"]
+        assert relationship_memory.key_relationships == []
 
     def test_relationship_memories_created(self) -> None:
         graph = _build_rich_graph()
