@@ -362,9 +362,7 @@ def _build_real_ontology_runner(
             try:
                 ontology_a, _ = await OntologyPipeline(
                     config, llm, profile_semaphore=profile_semaphore
-                ).run(
-                    on_progress=_step_callback, state=state
-                )
+                ).run(on_progress=_step_callback, state=state)
             except Exception as exc:
                 if not is_content_filter_error(exc):
                     raise
