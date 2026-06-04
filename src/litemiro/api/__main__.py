@@ -238,7 +238,10 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--profile-max-concurrency",
         type=positive_int,
         default=os.environ.get("LITEMIRO_API_PROFILE_MAX_CONCURRENCY", "5"),
-        help="Maximum concurrent Phase 1 profile batch calls across API ontology jobs",
+        help=(
+            "Maximum concurrent Phase 1 profile batch calls across API ontology jobs; "
+            "lower this for provider rate limits"
+        ),
     )
     # Phase 1 ontology generation 이 provider content filter (#121, Qwen 의
     # data_inspection_failed) 에 막혔을 때 자동 우회할 모델 리스트. 콤마 구분.

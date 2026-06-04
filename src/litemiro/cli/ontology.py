@@ -64,7 +64,10 @@ def main(argv: list[str] | None = None) -> int:
         "--profile-max-concurrency",
         type=positive_int,
         default=os.environ.get("LITEMIRO_PHASE1_PROFILE_MAX_CONCURRENCY", "5"),
-        help="Maximum concurrent Phase 1 profile batch calls (default: 5)",
+        help=(
+            "Maximum concurrent Phase 1 profile batch calls; lower this for provider "
+            "rate limits (default: 5)"
+        ),
     )
 
     args = parser.parse_args(argv)
