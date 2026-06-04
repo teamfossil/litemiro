@@ -47,6 +47,8 @@ class ProfileGenerator:
         # 경로 모두 카운트. logger.warning 만으로는 사용자가 알아채기
         # 어려워 호출자가 후처리 (CLI 출력 / 메트릭 기록) 할 수 있게 노출.
         self.fallback_count: int = 0
+        # Counts duplicate agent_id items within a single LLM batch response.
+        # Batches are disjoint, and each batch only accepts ids from its own seed map.
         self.duplicate_id_count: int = 0
 
     async def generate(
@@ -55,19 +57,7 @@ class ProfileGenerator:
         batches = [seeds[i : i + _BATCH_SIZE] for i in range(0, len(seeds), _BATCH_SIZE)]
         tasks = [self._generate_batch(batch, simulation_requirement) for batch in batches]
         results = await asyncio.gather(*tasks)
-        profiles: list[AgentProfile] = []
-        returned_ids: set[str] = set()
-        for batch_result in results:
-            for profile in batch_result:
-                if profile.agent_id in returned_ids:
-                    logger.warning(
-                        "Duplicate profile generated for %s; keeping first", profile.agent_id
-                    )
-                    self.duplicate_id_count += 1
-                    continue
-                returned_ids.add(profile.agent_id)
-                profiles.append(profile)
-        return profiles
+        return [profile for batch_result in results for profile in batch_result]
 
     async def _generate_batch(
         self, batch: list[AgentSeed], simulation_requirement: str
