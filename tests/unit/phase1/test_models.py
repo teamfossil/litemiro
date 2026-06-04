@@ -139,14 +139,8 @@ class TestStanceBucket:
 
 class TestActorKindMapping:
     def test_actor_kind_from_persona_mode(self) -> None:
-        assert (
-            actor_kind_from_persona_mode(PersonaMode.DIRECT_PERSON)
-            is ActorKind.DIRECT_PERSON
-        )
-        assert (
-            actor_kind_from_persona_mode(PersonaMode.REPRESENTATIVE)
-            is ActorKind.REPRESENTATIVE
-        )
+        assert actor_kind_from_persona_mode(PersonaMode.DIRECT_PERSON) is ActorKind.DIRECT_PERSON
+        assert actor_kind_from_persona_mode(PersonaMode.REPRESENTATIVE) is ActorKind.REPRESENTATIVE
         assert actor_kind_from_persona_mode(PersonaMode.CONTEXT_ONLY) is None
 
 
