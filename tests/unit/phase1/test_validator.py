@@ -49,6 +49,8 @@ def _make_b(agent_ids: list[str]) -> OntologyB:
 def _make_profile(
     agent_id: str,
     ideology: float = 0.5,
+    stance: float = 0.5,
+    origin: AgentOrigin = AgentOrigin.EXTRACTED,
     following: list[str] | None = None,
     topics: list[str] | None = None,
 ) -> AgentProfile:
@@ -56,9 +58,10 @@ def _make_profile(
         agent_id=agent_id,
         name=f"Agent {agent_id}",
         entity_type="Person",
-        origin=AgentOrigin.EXTRACTED,
+        origin=origin,
         skeleton={"layer": "test"},
         ideology=ideology,
+        stance=stance,
         topics=topics or ["AI"],
         behavior_tendency=BehaviorTendency(),
         initial_following=following or [],
@@ -112,6 +115,31 @@ class TestOntologyValidator:
         }
         result = OntologyValidator().validate(_make_a(agents), _make_b(["a1", "a2", "a3"]))
         assert len(result.warnings) >= 1
+
+    def test_derived_stance_distribution_warning(self) -> None:
+        agents = {
+            f"a{i}": _make_profile(
+                f"a{i}",
+                stance=0.2,
+                origin=AgentOrigin.DERIVED,
+            )
+            for i in range(10)
+        }
+        result = OntologyValidator().validate(_make_a(agents), _make_b(list(agents)))
+        assert any("derived stance distribution" in warning for warning in result.warnings)
+
+    def test_balanced_derived_stance_distribution_does_not_warn(self) -> None:
+        stances = [0.2] * 3 + [0.5] * 4 + [0.8] * 3
+        agents = {
+            f"a{i}": _make_profile(
+                f"a{i}",
+                stance=stance,
+                origin=AgentOrigin.DERIVED,
+            )
+            for i, stance in enumerate(stances)
+        }
+        result = OntologyValidator().validate(_make_a(agents), _make_b(list(agents)))
+        assert not any("derived stance distribution" in warning for warning in result.warnings)
 
     def test_persona_memory_topic_mismatch_warning(self) -> None:
         agents = {"a1": _make_profile("a1")}

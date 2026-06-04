@@ -14,7 +14,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 _FROZEN: ConfigDict = ConfigDict(extra="forbid", frozen=True)
 _STRICT: ConfigDict = ConfigDict(extra="forbid", strict=True)
@@ -95,6 +95,36 @@ class AgentOrigin(StrEnum):
     DERIVED = "derived"
 
 
+class StanceBucket(StrEnum):
+    CRITICAL = "critical"
+    NEUTRAL = "neutral"
+    SUPPORTIVE = "supportive"
+
+
+# (bucket, quota ratio, seed target value). Derived citizens receive one of
+# these targets before profile generation so the prompt can preserve topic
+# attitude independently from progressive-conservative ideology.
+STANCE_QUOTA: tuple[tuple[StanceBucket, float, float], ...] = (
+    (StanceBucket.CRITICAL, 0.3, 0.2),
+    (StanceBucket.NEUTRAL, 0.4, 0.5),
+    (StanceBucket.SUPPORTIVE, 0.3, 0.8),
+)
+# Validator tolerance is intentionally wider than the largest remainder rounding
+# drift so LLM variation warns on real stance skew, not on small preset sizes.
+STANCE_DISTRIBUTION_TOLERANCE = 0.15
+STANCE_DISTRIBUTION_MIN_DERIVED = 10
+STANCE_CRITICAL_MAX = 0.4
+STANCE_SUPPORTIVE_MIN = 0.6
+
+
+def stance_bucket(value: float) -> StanceBucket:
+    if value < STANCE_CRITICAL_MAX:
+        return StanceBucket.CRITICAL
+    if value > STANCE_SUPPORTIVE_MIN:
+        return StanceBucket.SUPPORTIVE
+    return StanceBucket.NEUTRAL
+
+
 class BehaviorTendency(BaseModel):
     model_config = _FROZEN
 
@@ -116,6 +146,7 @@ class AgentProfile(BaseModel):
     derived_from: str | None = None
     skeleton: dict[str, Any] = Field(default_factory=dict)
     ideology: float = Field(default=0.5, ge=0.0, le=1.0)
+    stance: float = Field(default=0.5, ge=0.0, le=1.0)
     topics: list[str] = Field(default_factory=list)
     sensitive_topics: list[str] = Field(default_factory=list)
     personality: str = ""
@@ -123,6 +154,14 @@ class AgentProfile(BaseModel):
     background: str = ""
     behavior_tendency: BehaviorTendency = Field(default_factory=BehaviorTendency)
     initial_following: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _default_stance_from_legacy_ideology(cls, data: Any) -> Any:
+        """Keep ontology files created before stance existed readable."""
+        if isinstance(data, dict) and "stance" not in data and "ideology" in data:
+            return {**data, "stance": data["ideology"]}
+        return data
 
     @field_validator("initial_following")
     @classmethod
@@ -234,10 +273,16 @@ class AgentSeed(BaseModel):
     origin: AgentOrigin
     derived_from: str | None = None
     context: str = ""
+    stance_target: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
 __all__ = [
     "PRESET_AGENT_COUNTS",
+    "STANCE_CRITICAL_MAX",
+    "STANCE_DISTRIBUTION_MIN_DERIVED",
+    "STANCE_DISTRIBUTION_TOLERANCE",
+    "STANCE_QUOTA",
+    "STANCE_SUPPORTIVE_MIN",
     "AgentOrigin",
     "AgentProfile",
     "AgentSeed",
@@ -255,5 +300,7 @@ __all__ = [
     "OntologyB",
     "Preset",
     "SemanticMemory",
+    "StanceBucket",
     "TextChunk",
+    "stance_bucket",
 ]

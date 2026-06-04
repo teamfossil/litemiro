@@ -11,7 +11,7 @@ prompt is the per-round payload (feed + recent + counts + round). Both
 are pure functions of the inputs so they are deterministic across runs.
 
 Phase 1 (dual-ontology) freezes the persona key set: ``agent_id, name,
-entity_type, personality, speech_style, background, ideology, topics,
+entity_type, personality, speech_style, background, ideology, stance, topics,
 sensitive_topics, behavior_tendency{post_rate, reply_rate, repost_rate,
 like_rate, follow_rate, controversy_affinity}``. ``Agent.persona_traits`` is still a loose
 ``Mapping[str, Any]`` (Phase 1 hands these in via ``OntologyLoader``),
@@ -106,6 +106,7 @@ _PHASE1_PERSONA_KEYS: tuple[str, ...] = (
     "speech_style",
     "background",
     "ideology",
+    "stance",
     "sensitive_topics",
 )
 

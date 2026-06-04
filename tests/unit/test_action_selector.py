@@ -427,7 +427,7 @@ class TestPromptComposition:
 
 
 class TestPhase1PersonaSchema:
-    """Phase 1 (dual-ontology) freezes ten persona keys; the prompt layer
+    """Phase 1 (dual-ontology) freezes persona keys; the prompt layer
     hoists the well-known keys to predictable positions and renders the
     behavior weights and the sensitive-topic list as explicit hints."""
 
@@ -441,6 +441,7 @@ class TestPhase1PersonaSchema:
                 "speech_style": "casual",
                 "background": "30대 직장인",
                 "ideology": "moderate_left",
+                "stance": 0.2,
             },
         )
         llm = _FakeLLM(_payload(ActionType.DO_NOTHING))
@@ -453,6 +454,7 @@ class TestPhase1PersonaSchema:
             "casual",
             "30대 직장인",
             "moderate_left",
+            '"stance": 0.2',
         ):
             assert value in system
 

@@ -68,15 +68,24 @@ class ProfileGenerator:
                     )
                 else:
                     entity_info = "  엔티티: 없음 (파생 에이전트)"
+                stance_target = ""
+                if seed.stance_target is not None:
+                    stance_target = (
+                        f"\n  stance_target: {seed.stance_target:.1f} "
+                        "(최종 stance 를 같은 비판-중립-우호 구간으로 유지)"
+                    )
                 agent_lines.append(
                     f"agent_id: {seed.agent_id}\n{entity_info}\n  문맥: {seed.context}"
+                    f"{stance_target}"
                 )
 
             user_prompt = (
                 f"시뮬레이션 요구사항:\n{simulation_requirement}\n\n"
                 f"다음 에이전트들에 대한 프로필을 JSON 배열로 생성하세요.\n"
                 "각 항목은 반드시 agent_id, personality, speech_style, background, "
-                "ideology (0.0~1.0), topics (list[str]), sensitive_topics (list[str]), "
+                "ideology (0.0=진보, 1.0=보수), "
+                "stance (현재 토론 주제에 대한 태도: 0.0=비판, 0.5=중립, 1.0=우호), "
+                "topics (list[str]), sensitive_topics (list[str]), "
                 "behavior_tendency (post_rate, reply_rate, repost_rate, like_rate, "
                 "follow_rate, controversy_affinity) 포함.\n\n"
                 + "\n\n".join(agent_lines)
@@ -152,6 +161,7 @@ class ProfileGenerator:
             derived_from=seed.derived_from,
             skeleton=_build_skeleton(seed),
             ideology=0.5,
+            stance=seed.stance_target if seed.stance_target is not None else 0.5,
             topics=_fallback_topics(seed),
             sensitive_topics=[],
             personality=str(defaults.get("personality", "일반적인 소셜 미디어 사용자")),
@@ -193,6 +203,9 @@ def _parse_profile(item: dict[str, object], seed: AgentSeed) -> AgentProfile:
         derived_from=seed.derived_from,
         skeleton=_build_skeleton(seed),
         ideology=_float_value(item.get("ideology"), 0.5),
+        stance=_float_value(
+            item.get("stance"), seed.stance_target if seed.stance_target is not None else 0.5
+        ),
         topics=[str(t) for t in topics],
         sensitive_topics=[str(t) for t in sensitive_topics],
         personality=str(item.get("personality", "")),
@@ -216,6 +229,8 @@ def _build_skeleton(seed: AgentSeed) -> dict[str, object]:
             skeleton["attributes"] = dict(entity.attributes)
     if seed.derived_from:
         skeleton["derived_from"] = seed.derived_from
+    if seed.stance_target is not None:
+        skeleton["stance_target"] = seed.stance_target
     return skeleton
 
 

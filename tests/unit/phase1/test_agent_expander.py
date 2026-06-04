@@ -2,9 +2,17 @@
 
 from __future__ import annotations
 
+from collections import Counter
+
 from litemiro.phase1.agent_expander import AgentExpander
 from litemiro.phase1.local_graph import LocalGraph
-from litemiro.phase1.models import AgentOrigin, AgentSeed, ExtractionResult
+from litemiro.phase1.models import (
+    AgentOrigin,
+    AgentSeed,
+    ExtractionResult,
+    StanceBucket,
+    stance_bucket,
+)
 
 
 class TestAgentExpander:
@@ -39,6 +47,8 @@ class TestAgentExpander:
         assert len(result) == 10
         derived = [s for s in result if s.origin == AgentOrigin.DERIVED]
         assert len(derived) >= 1
+        assert all(s.stance_target is not None for s in derived)
+        assert all("stance_target=" in s.context for s in derived)
 
     def test_deterministic_with_same_seed(
         self,
@@ -51,6 +61,7 @@ class TestAgentExpander:
         r1 = exp1.expand(sample_agent_seeds, target_count=5)
         r2 = exp2.expand(sample_agent_seeds, target_count=5)
         assert [s.agent_id for s in r1] == [s.agent_id for s in r2]
+        assert [s.stance_target for s in r1] == [s.stance_target for s in r2]
 
     def test_expand_empty_seeds(self, sample_extraction: ExtractionResult) -> None:
         graph = LocalGraph.build(sample_extraction)
@@ -58,3 +69,21 @@ class TestAgentExpander:
         result = expander.expand([], target_count=5)
         assert len(result) == 5
         assert all(s.origin == AgentOrigin.DERIVED for s in result)
+
+    def test_derived_stance_targets_follow_quota(
+        self,
+        sample_extraction: ExtractionResult,
+        sample_agent_seeds: list[AgentSeed],
+    ) -> None:
+        graph = LocalGraph.build(sample_extraction)
+        expander = AgentExpander(graph=graph, requirement="AI 규제", seed=42)
+
+        result = expander.expand(sample_agent_seeds, target_count=102)
+
+        derived = [seed for seed in result if seed.origin == AgentOrigin.DERIVED]
+        counts = Counter(stance_bucket(seed.stance_target or 0.5) for seed in derived)
+        assert counts == {
+            StanceBucket.CRITICAL: 30,
+            StanceBucket.NEUTRAL: 40,
+            StanceBucket.SUPPORTIVE: 30,
+        }
