@@ -9,7 +9,7 @@ from collections.abc import Callable
 import pytest
 
 from litemiro.phase1.llm import Phase1LLMClient
-from litemiro.phase1.models import AgentOrigin, AgentSeed, Entity
+from litemiro.phase1.models import ActorKind, AgentOrigin, AgentSeed, Entity
 from litemiro.phase1.profile_generator import ProfileGenerator
 
 VALID_PROFILE_RESPONSE = json.dumps(
@@ -75,6 +75,50 @@ async def test_generate_profiles(
 
 
 @pytest.mark.asyncio
+async def test_representative_seed_metadata_is_preserved(
+    fake_llm: Callable[..., Phase1LLMClient],
+) -> None:
+    seed = AgentSeed(
+        agent_id="gov_msit",
+        entity=Entity(
+            id="gov_msit",
+            type="GovernmentAgency",
+            name="과학기술정보통신부",
+            summary="AI 정책 담당 기관",
+        ),
+        origin=AgentOrigin.EXTRACTED,
+        actor_kind=ActorKind.REPRESENTATIVE,
+        represented_entity_id="gov_msit",
+    )
+    response = json.dumps(
+        [
+            {
+                "agent_id": "gov_msit",
+                "name": "과학기술정보통신부",
+                "personality": "공식 입장을 명확히 설명함",
+                "speech_style": "공식적",
+                "background": "AI 정책 담당자",
+                "ideology": 0.5,
+                "topics": ["AI 정책"],
+                "sensitive_topics": [],
+                "behavior_tendency": {},
+            }
+        ],
+        ensure_ascii=False,
+    )
+    llm = fake_llm(response)
+    gen = ProfileGenerator(llm=llm, model="test")
+
+    profiles = await gen.generate([seed], "AI 규제 토론")
+
+    assert profiles[0].actor_kind is ActorKind.REPRESENTATIVE
+    assert profiles[0].represented_entity_id == "gov_msit"
+    assert profiles[0].name != "과학기술정보통신부"
+    assert profiles[0].skeleton["represented_entity_id"] == "gov_msit"
+    assert "actor_kind: representative" in llm.calls[0][1]  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
 async def test_generate_empty_seeds(fake_llm: Callable[..., Phase1LLMClient]) -> None:
     llm = fake_llm()
     gen = ProfileGenerator(llm=llm, model="test")
@@ -102,6 +146,27 @@ async def test_fallback_on_bad_response(fake_llm: Callable[..., Phase1LLMClient]
     assert profiles[0].topics == ["Journalist", "김기자"]
     # #109: retry exhaust 로 배치 전체 fallback → seed 수만큼 카운트.
     assert gen.fallback_count == 1
+
+
+@pytest.mark.asyncio
+async def test_representative_fallback_uses_speaker_name(
+    fake_llm: Callable[..., Phase1LLMClient],
+) -> None:
+    seed = AgentSeed(
+        agent_id="corp_naver",
+        entity=Entity(id="corp_naver", type="TechCompany", name="네이버"),
+        origin=AgentOrigin.EXTRACTED,
+        actor_kind=ActorKind.REPRESENTATIVE,
+        represented_entity_id="corp_naver",
+    )
+    llm = fake_llm("not valid json", "still bad", "nope")
+    gen = ProfileGenerator(llm=llm, model="test")
+
+    profiles = await gen.generate([seed], "AI 규제 토론")
+
+    assert profiles[0].name == "네이버 company representative"
+    assert profiles[0].actor_kind is ActorKind.REPRESENTATIVE
+    assert profiles[0].represented_entity_id == "corp_naver"
 
 
 @pytest.mark.asyncio

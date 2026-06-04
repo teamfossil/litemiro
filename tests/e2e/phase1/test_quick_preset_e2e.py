@@ -15,6 +15,7 @@ from pathlib import Path
 from litemiro.phase1.models import (
     STANCE_DISTRIBUTION_TOLERANCE,
     STANCE_QUOTA,
+    ActorKind,
     AgentOrigin,
     OntologyA,
     OntologyB,
@@ -83,6 +84,24 @@ ONTOLOGY_RESP = json.dumps(
                 "name": "IndustryAlliance",
                 "description": "산업 연합",
                 "attributes": ["name", "members"],
+            },
+            {
+                "name": "PolicyDocument",
+                "description": "법률 또는 정책 문서",
+                "persona_mode": "context_only",
+                "attributes": ["name", "status"],
+            },
+            {
+                "name": "RegulatoryIssue",
+                "description": "규제 토론의 쟁점",
+                "persona_mode": "context_only",
+                "attributes": ["name", "domain"],
+            },
+            {
+                "name": "InternationalRegulatoryFramework",
+                "description": "국제 규제 프레임워크",
+                "persona_mode": "context_only",
+                "attributes": ["name", "region"],
             },
         ],
         "edge_types": [
@@ -205,6 +224,30 @@ EXTRACT_RESP = json.dumps(
                 "attributes": {},
                 "summary": "중소 AI 스타트업 연합, 규제 비용 부담 우려",
                 "source_chunks": [0],
+            },
+            {
+                "id": "policy_ai_basic_act",
+                "type": "PolicyDocument",
+                "name": "AI 기본법",
+                "attributes": {"status": "시행 예정"},
+                "summary": "AI 산업 진흥과 안전 기준을 함께 다루는 정책 문서",
+                "source_chunks": [0, 1],
+            },
+            {
+                "id": "issue_data_sovereignty",
+                "type": "RegulatoryIssue",
+                "name": "데이터 주권",
+                "attributes": {"domain": "개인정보"},
+                "summary": "AI 학습 데이터 통제권과 국외 이전을 둘러싼 규제 쟁점",
+                "source_chunks": [1],
+            },
+            {
+                "id": "framework_eu_ai_act",
+                "type": "InternationalRegulatoryFramework",
+                "name": "EU AI Act",
+                "attributes": {"region": "EU"},
+                "summary": "고위험 AI 규제와 투명성 의무를 담은 국제 규제 프레임워크",
+                "source_chunks": [1],
             },
             {
                 "id": "res_snu",
@@ -409,6 +452,24 @@ EXTRACT_RESP = json.dumps(
                 "description": "AI 규제",
             },
             {
+                "source": "gov_msit",
+                "target": "policy_ai_basic_act",
+                "type": "REGULATES",
+                "description": "AI 기본법 시행",
+            },
+            {
+                "source": "gov_pipc",
+                "target": "issue_data_sovereignty",
+                "type": "REGULATES",
+                "description": "데이터 주권 쟁점 검토",
+            },
+            {
+                "source": "policy_ai_basic_act",
+                "target": "framework_eu_ai_act",
+                "type": "REGULATES",
+                "description": "EU AI Act 참고",
+            },
+            {
                 "source": "cso_pam",
                 "target": "gov_msit",
                 "type": "OPPOSES",
@@ -587,6 +648,31 @@ async def test_quick_preset_agent_fields(tmp_path: Path) -> None:
         bt = profile.behavior_tendency
         for field in ("post_rate", "reply_rate", "repost_rate", "controversy_affinity"):
             assert 0.0 <= getattr(bt, field) <= 1.0, f"{agent_id} {field} out of range"
+
+
+async def test_quick_preset_actor_modes_are_speakable(tmp_path: Path) -> None:
+    """Context-only objects stay out of agents; institutions become representatives."""
+    ontology_a, ontology_b = await OntologyPipeline(_make_config(tmp_path), _MockLLM()).run()
+
+    context_only_ids = {
+        "policy_ai_basic_act",
+        "issue_data_sovereignty",
+        "framework_eu_ai_act",
+    }
+    assert context_only_ids.isdisjoint(ontology_a.agents)
+    assert context_only_ids.isdisjoint(ontology_b.stores)
+
+    for agent_id in ("gov_msit", "corp_naver", "media_hankyoreh", "alliance_kai"):
+        profile = ontology_a.agents[agent_id]
+        assert profile.actor_kind is ActorKind.REPRESENTATIVE
+        assert profile.represented_entity_id == agent_id
+        assert profile.skeleton["represented_entity_id"] == agent_id
+
+    for agent_id in ("pol_kim", "journalist_kim_ys", "researcher_jung", "activist_choi"):
+        assert ontology_a.agents[agent_id].actor_kind is ActorKind.DIRECT_PERSON
+
+    result = OntologyValidator().validate(ontology_a, ontology_b)
+    assert result.valid, f"errors: {result.errors}"
 
 
 async def test_quick_preset_derived_stance_distribution(tmp_path: Path) -> None:

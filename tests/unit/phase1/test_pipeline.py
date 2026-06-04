@@ -9,6 +9,7 @@ import pytest
 
 from litemiro.phase1.entity_extractor import EntityExtractor
 from litemiro.phase1.models import (
+    ActorKind,
     AgentProfile,
     AgentSeed,
     ExtractionResult,
@@ -137,6 +138,9 @@ async def test_pipeline_end_to_end(tmp_path: Path) -> None:
     assert a.preset is Preset.QUICK
     assert len(a.agents) >= 1
     assert len(b.stores) == len(a.agents)
+    assert a.agents["journalist_kim"].actor_kind is ActorKind.DIRECT_PERSON
+    assert a.agents["org_daily"].actor_kind is ActorKind.REPRESENTATIVE
+    assert a.agents["org_daily"].represented_entity_id == "org_daily"
     assert OntologyValidator().validate(a, b).valid
     assert (tmp_path / "ontology_a_persona.json").exists()
     assert (tmp_path / "ontology_b_memory.json").exists()
