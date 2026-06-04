@@ -21,3 +21,15 @@ def test_main_loads_dotenv_before_parsing(monkeypatch: pytest.MonkeyPatch) -> No
         ontology.main([])
 
     assert called
+
+
+def test_main_rejects_invalid_profile_max_concurrency_env(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("LITEMIRO_PHASE1_PROFILE_MAX_CONCURRENCY", "0")
+
+    with pytest.raises(SystemExit):
+        ontology.main(["--input", "doc.txt", "--requirement", "req"])
+
+    assert "must be greater than 0" in capsys.readouterr().err

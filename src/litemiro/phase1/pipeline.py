@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -40,6 +41,7 @@ class PipelineConfig(BaseModel):
     seed: int = 42
     output_dir: Path = Field(default_factory=lambda: Path("."))
     model: str = "openrouter/qwen/qwen-plus"
+    profile_max_concurrency: int = Field(default=5, ge=1)
 
 
 @dataclass
@@ -57,15 +59,23 @@ class OntologyResumeState:
     extraction_result: ExtractionResult | None = None
     profiles: list[AgentProfile] | None = None
     profile_fallback_count: int = 0
+    profile_duplicate_id_count: int = 0
 
 
 class OntologyPipeline:
-    def __init__(self, config: PipelineConfig, llm: Phase1LLMClient) -> None:
+    def __init__(
+        self,
+        config: PipelineConfig,
+        llm: Phase1LLMClient,
+        profile_semaphore: asyncio.Semaphore | None = None,
+    ) -> None:
         self._config = config
         self._llm = llm
+        self._profile_semaphore = profile_semaphore
         # Step 4 (profile_generator) 의 fallback 카운트 — run() 후 CLI 가
         # 읽어 사용자에게 노출. #109: silent fallback 19% 사례 가시화.
         self.profile_fallback_count: int = 0
+        self.profile_duplicate_id_count: int = 0
 
     async def run(  # noqa: PLR0915 — 7 step 시퀀스 + 검증/직렬화 → 자연스레 길다. 분할은 리팩토링 사안.
         self,
@@ -178,18 +188,26 @@ class OntologyPipeline:
             t4 = time.monotonic()
             from litemiro.phase1.profile_generator import ProfileGenerator  # noqa: PLC0415
 
-            profile_generator = ProfileGenerator(llm=self._llm, model=cfg.model)
+            profile_generator = ProfileGenerator(
+                llm=self._llm,
+                model=cfg.model,
+                max_concurrency=cfg.profile_max_concurrency,
+                semaphore=self._profile_semaphore,
+            )
             state.profiles = await profile_generator.generate(seeds, cfg.requirement)
             state.profile_fallback_count = profile_generator.fallback_count
+            state.profile_duplicate_id_count = profile_generator.duplicate_id_count
             log.info(
                 "step4_profiles_generated",
                 profile_count=len(state.profiles),
                 fallback_count=state.profile_fallback_count,
+                duplicate_id_count=state.profile_duplicate_id_count,
                 elapsed=f"{time.monotonic() - t4:.2f}s",
             )
         assert state.profiles is not None
         profiles: list[AgentProfile] = state.profiles
         self.profile_fallback_count = state.profile_fallback_count
+        self.profile_duplicate_id_count = state.profile_duplicate_id_count
         agents: dict[str, AgentProfile] = {p.agent_id: p for p in profiles}
 
         # Step 5: Initialize memory stores

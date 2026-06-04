@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 import time
 from pathlib import Path
@@ -11,6 +12,7 @@ from pathlib import Path
 import structlog
 from dotenv import load_dotenv
 
+from litemiro.cli._utils import positive_int
 from litemiro.phase1.models import Preset
 from litemiro.phase1.pipeline import OntologyPipeline, PipelineConfig
 
@@ -58,6 +60,15 @@ def main(argv: list[str] | None = None) -> int:
         default="openrouter/qwen/qwen-plus",
         help="LLM model identifier (default: openrouter/qwen/qwen-plus)",
     )
+    parser.add_argument(
+        "--profile-max-concurrency",
+        type=positive_int,
+        default=os.environ.get("LITEMIRO_PHASE1_PROFILE_MAX_CONCURRENCY", "5"),
+        help=(
+            "Maximum concurrent Phase 1 profile batch calls; lower this for provider "
+            "rate limits (default: 5)"
+        ),
+    )
 
     args = parser.parse_args(argv)
 
@@ -68,6 +79,7 @@ def main(argv: list[str] | None = None) -> int:
         seed=args.seed,
         output_dir=args.output_dir,
         model=args.model,
+        profile_max_concurrency=args.profile_max_concurrency,
     )
 
     llm = Phase1LiteLLMClient()
