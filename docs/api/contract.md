@@ -189,15 +189,15 @@ Casting 화면이 슬롯에 띄울 앵커 리스트. plaza 에 묶인 `ontology_
 {
   "plaza_id": "ab12cd34...",
   "agents": [
-    { "id": "agent_001", "name": "AI 기본법", "role": "AIRegulationPolicy", "ideology": 0.65, "topics": ["AI 규제 기본 원칙"], "base_influence": 0.43, "avatar_seed": 2853741920 },
-    { "id": "agent_002", "name": "스타트업 협회", "role": "IndustryGroup", "ideology": 0.30, "topics": [...], "base_influence": 0.58, "avatar_seed": 1937204815 }
+    { "id": "agent_001", "name": "AI 기본법", "role": "AIRegulationPolicy", "stance": 0.65, "topics": ["AI 규제 기본 원칙"], "base_influence": 0.43, "avatar_seed": 2853741920 },
+    { "id": "agent_002", "name": "스타트업 협회", "role": "IndustryGroup", "stance": 0.30, "topics": [...], "base_influence": 0.58, "avatar_seed": 1937204815 }
   ]
 }
 ```
 
 - `id`: `AgentProfile.agent_id`.
 - `role`: `AgentProfile.entity_type` raw 값 — 백엔드는 enum 으로 안 좁힌다 (새 카테고리 추가될 때마다 백엔드 패치하지 않으려고). 프론트가 아래 매핑 테이블로 `RoleId` 로 좁힌다.
-- `ideology`: 0.0 ~ 1.0. **0.0 = 진보 / 1.0 = 보수** (Phase 1 ontology 추출 단계 의미). 0.5 근처는 중도/판단 보류.
+- `stance`: 0.0 ~ 1.0. **0.0 = 비판 / 0.5 = 중립 / 1.0 = 우호** (현재 토론 주제에 대한 태도). Phase 1 에서 ideology (진보-보수 성향) 와 분리된 필드 (#179).
 - `topics`: `AgentProfile.topics`. 자유 문자열 리스트.
 - `base_influence`: 0.0 ~ 1.0. `behavior_tendency` 가중합으로 산출한 prior 영향력. Phase 2 가 도는 동안의 engagement-weighted `/layout` `influence` 와 달리 sim 결과와 무관하고 ontology 만으로 결정되는 "광장 진입 전" 정적 기대치. Casting 화면이 "주역" 같은 노출 우선순위 / Badge 분기에 쓴다. 가중치 (합 = 1.0 → 결과는 항상 [0, 1]):
   - `post_rate × 0.45` — 새 post 생성, 다른 agent feed 진입 (가장 강한 신호)
@@ -228,8 +228,8 @@ Casting 화면이 슬롯에 띄울 앵커 리스트. plaza 에 묶인 `ontology_
 ## `GET /api/plazas/{plaza_id}/layout`
 
 Plaza 부감 뷰 화면이 노드를 배치할 때 쓸 좌표 + 영향력. 좌표는 의미 차원 직접
-매핑 — `x = ontology_a.profile.ideology` (Phase 1 이 박은 정적 좌-우 spectrum,
-0=비판적/1=우호적), `y = 같은 plaza 내 활동량 (DO_NOTHING 제외 액션 카운트)
+매핑 — `x = ontology_a.profile.stance` (현재 토론 주제에 대한 태도,
+0=비판/0.5=중립/1=우호), `y = 같은 plaza 내 활동량 (DO_NOTHING 제외 액션 카운트)
 최댓값 정규화`. 같은 plaza 면 폴링/리로드 어디서 불러도 x 는 안 튀고 y 는
 라운드가 가며 monotonically 증가한다. FR force-directed 을 떼낸 이유는 sim 의
 follower=0 long-tail 에서 1D 로 압축되는 측정값 때문 — 정적 prior + 라이브
@@ -267,8 +267,7 @@ events.jsonl 이 아직 안정적이지 않으므로 `ready: false` + `agents: [
 - `ready`: `true` 면 sim 라운드 끝나 events.jsonl 이 안정적 (composing /
   completed / failed). `false` 면 `agents=[]` — pending / running 인 동안만
   떨어진다. 프론트는 `ready` 로 부감 뷰 빈 상태 / 채워진 상태를 분기.
-- `x`: `ontology_a` 의 `AgentProfile.ideology` 그대로 (`[0.0, 1.0]`, 0=비판적,
-  1=우호적). 정적이라 plaza 진행과 무관 — `/agents` 와 같은 값.
+- `x`: `ontology_a` 의 `AgentProfile.stance` (`[0.0, 1.0]`, 0=비판/0.5=중립/1=우호). 정적이라 plaza 진행과 무관.
 - `y`: 같은 plaza 내 활동량 (events.jsonl 의 DO_NOTHING 제외 액션 카운트) 최댓값
   정규화 `[0.0, 1.0]`. 라운드가 가면 monotonically 증가 (활동 없는 agent 는 0.0).
   모든 agent 의 활동량이 0 이면 전부 0.0.
@@ -285,7 +284,7 @@ events.jsonl 이 아직 안정적이지 않으므로 `ready: false` + `agents: [
 - `404`: 존재하지 않는 `plaza_id`, 또는 `ontology_a_path` 가 디스크에 없는 경우.
 - `500`: ontology_a 가 있지만 스키마 파싱 실패.
 - events.jsonl 자체가 없으면 (`--fake` 모드 등) 활동량 / follower / influence 모두 0
-  으로 계산. `y` 는 전 agent 0.0, `x` 는 ontology 의 ideology 그대로. `ready` 는
+  으로 계산. `y` 는 전 agent 0.0, `x` 는 ontology 의 stance 그대로. `ready` 는
   record status 기준이라 ontology_a 만 있으면 그래도 `true` 로 떨어진다.
 
 ## `GET /api/plazas/{plaza_id}/report`

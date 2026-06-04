@@ -89,7 +89,7 @@ class PlazaAgentItem(BaseModel):
     # 라벨 — 프론트가 자체 매핑 테이블로 RoleId enum 으로 좁힌다.
     # 매핑 테이블 SSoT 는 ``docs/api/contract.md`` 의 ``/agents`` 섹션.
     role: str
-    ideology: float = Field(ge=0.0, le=1.0)
+    stance: float = Field(ge=0.0, le=1.0)
     topics: list[str] = Field(default_factory=list)
     # behavior_tendency 가중합으로 산출한 prior 영향력 [0.0, 1.0]. Phase 2 가 도는
     # 동안의 engagement-weighted ``/layout`` ``influence`` 와 달리 sim 결과와 무관 —
@@ -112,7 +112,7 @@ class PlazaAgentsResponse(BaseModel):
 
 class PlazaLayoutAgentItem(BaseModel):
     """Plaza 부감 뷰의 노드 1개. ``ontology_a`` 의 시각화 메타 (name/role) +
-    의미 차원 좌표 (x = ideology, y = 활동량) + engagement-weighted 영향력.
+    의미 차원 좌표 (x = stance, y = 활동량) + engagement-weighted 영향력.
 
     ``x`` / ``y`` 는 ``[0.0, 1.0]`` 정규화 — 프론트가 캔버스 크기 곱해 그린다.
     의미 분리는 #133 — 기존 FR force-directed 가 sim 의 follower=0 long-tail
@@ -124,7 +124,7 @@ class PlazaLayoutAgentItem(BaseModel):
     id: str
     name: str
     role: str
-    # x = profile.ideology — Phase 1 이 박은 정적 좌-우 spectrum (0=비판적, 1=우호적).
+    # x = profile.stance — 현재 토론 주제 태도 (0=비판, 0.5=중립, 1=우호).
     x: float = Field(ge=0.0, le=1.0)
     # y = 같은 plaza 내 활동량 (DO_NOTHING 제외 카운트) 최댓값 정규화. 라운드가 가면
     # monotonically 증가 — "광장에서 얼마나 적극적으로 발화 중인가".
