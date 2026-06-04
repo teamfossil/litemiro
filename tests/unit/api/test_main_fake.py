@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from litemiro.api.__main__ import (
     _noop_composer,
     _noop_ontology_runner,
@@ -28,6 +30,18 @@ from litemiro.phase1.models import Preset
 def test_parse_args_accepts_profile_max_concurrency() -> None:
     args = _parse_args(["--fake", "--profile-max-concurrency", "8"])
     assert args.profile_max_concurrency == 8
+
+
+def test_parse_args_rejects_invalid_profile_max_concurrency_env(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("LITEMIRO_API_PROFILE_MAX_CONCURRENCY", "0")
+
+    with pytest.raises(SystemExit):
+        _parse_args(["--fake"])
+
+    assert "must be greater than 0" in capsys.readouterr().err
 
 
 async def test_noop_ontology_runner_copies_default_fixtures(tmp_path: Path) -> None:

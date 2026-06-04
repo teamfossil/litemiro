@@ -12,6 +12,7 @@ from pathlib import Path
 import structlog
 from dotenv import load_dotenv
 
+from litemiro.cli._utils import positive_int
 from litemiro.phase1.models import Preset
 from litemiro.phase1.pipeline import OntologyPipeline, PipelineConfig
 
@@ -30,16 +31,6 @@ class Phase1LiteLLMClient:
             ],
         )
         return str(response.choices[0].message.content or "")
-
-
-def _positive_int(raw: str) -> int:
-    try:
-        value = int(raw)
-    except ValueError as exc:
-        raise argparse.ArgumentTypeError("must be an integer") from exc
-    if value < 1:
-        raise argparse.ArgumentTypeError("must be greater than 0")
-    return value
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -71,8 +62,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--profile-max-concurrency",
-        type=_positive_int,
-        default=_positive_int(os.environ.get("LITEMIRO_PHASE1_PROFILE_MAX_CONCURRENCY", "5")),
+        type=positive_int,
+        default=os.environ.get("LITEMIRO_PHASE1_PROFILE_MAX_CONCURRENCY", "5"),
         help="Maximum concurrent Phase 1 profile batch calls (default: 5)",
     )
 

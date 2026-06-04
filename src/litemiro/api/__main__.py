@@ -28,6 +28,7 @@ from litemiro.api.ontology_store import OntologyRunResult
 from litemiro.api.runner import RealPlazaRunner
 from litemiro.api.sample_fixtures import DEFAULT_ONTOLOGY_A_PATH, DEFAULT_ONTOLOGY_B_PATH
 from litemiro.api.store import RunnerOutcome
+from litemiro.cli._utils import positive_int
 from litemiro.models import Action, ActionType, RoundEvent
 
 if TYPE_CHECKING:
@@ -235,8 +236,8 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--profile-max-concurrency",
-        type=_positive_int,
-        default=_positive_int(os.environ.get("LITEMIRO_API_PROFILE_MAX_CONCURRENCY", "5")),
+        type=positive_int,
+        default=os.environ.get("LITEMIRO_API_PROFILE_MAX_CONCURRENCY", "5"),
         help="Maximum concurrent Phase 1 profile batch calls across API ontology jobs",
     )
     # Phase 1 ontology generation 이 provider content filter (#121, Qwen 의
@@ -253,16 +254,6 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
 
 def _parse_fallback_models(raw: str) -> list[str]:
     return [m.strip() for m in raw.split(",") if m.strip()]
-
-
-def _positive_int(raw: str) -> int:
-    try:
-        value = int(raw)
-    except ValueError as exc:
-        raise argparse.ArgumentTypeError("must be an integer") from exc
-    if value < 1:
-        raise argparse.ArgumentTypeError("must be greater than 0")
-    return value
 
 
 def _build_real_runner_and_composer(*, llm_model: str) -> tuple[PlazaRunner, PlazaComposer]:
