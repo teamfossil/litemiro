@@ -25,6 +25,7 @@ from litemiro.phase1.models import (
     OntologyA,
     OntologyB,
     Preset,
+    actor_kind_from_persona_mode,
 )
 from litemiro.phase1.ontology_generator import OntologyGenerator
 from litemiro.phase1.serializer import OntologySerializer
@@ -153,7 +154,6 @@ class OntologyPipeline:
         ranker = EntityRanker(graph=graph, simulation_requirement=cfg.requirement)
         ranked = ranker.rank()
         from litemiro.phase1.actor_classifier import ActorClassifier  # noqa: PLC0415
-        from litemiro.phase1.models import PersonaMode  # noqa: PLC0415
 
         actor_classifier = ActorClassifier(ontology)
         core_seeds: list[AgentSeed] = []
@@ -163,11 +163,12 @@ class OntologyPipeline:
             if len(core_seeds) >= target_count:
                 break
             persona_mode = actor_classifier.persona_mode_for_entity(entity)
-            if persona_mode == PersonaMode.CONTEXT_ONLY:
+            actor_kind = actor_kind_from_persona_mode(persona_mode)
+            if actor_kind is None:
                 context_only_count += 1
                 continue
 
-            is_representative = persona_mode == PersonaMode.REPRESENTATIVE
+            is_representative = actor_kind is ActorKind.REPRESENTATIVE
             if is_representative:
                 representative_count += 1
             core_seeds.append(
@@ -175,9 +176,7 @@ class OntologyPipeline:
                     agent_id=entity.id,
                     entity=entity,
                     origin="extracted",  # type: ignore[arg-type]
-                    actor_kind=(
-                        ActorKind.REPRESENTATIVE if is_representative else ActorKind.DIRECT_PERSON
-                    ),
+                    actor_kind=actor_kind,
                     represented_entity_id=entity.id if is_representative else None,
                     context=ranker.build_entity_context(entity.id),
                 )

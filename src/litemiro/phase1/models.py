@@ -107,6 +107,15 @@ class ActorKind(StrEnum):
     REPRESENTATIVE = "representative"
 
 
+def actor_kind_from_persona_mode(mode: PersonaMode) -> ActorKind | None:
+    """Map ontology persona classification to generated agent actor metadata."""
+    if mode == PersonaMode.CONTEXT_ONLY:
+        return None
+    if mode == PersonaMode.REPRESENTATIVE:
+        return ActorKind.REPRESENTATIVE
+    return ActorKind.DIRECT_PERSON
+
+
 class StanceBucket(StrEnum):
     CRITICAL = "critical"
     NEUTRAL = "neutral"
@@ -320,5 +329,6 @@ __all__ = [
     "SemanticMemory",
     "StanceBucket",
     "TextChunk",
+    "actor_kind_from_persona_mode",
     "stance_bucket",
 ]

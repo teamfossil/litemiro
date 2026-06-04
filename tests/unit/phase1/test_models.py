@@ -23,6 +23,7 @@ from litemiro.phase1.models import (
     Preset,
     SemanticMemory,
     StanceBucket,
+    actor_kind_from_persona_mode,
     stance_bucket,
 )
 
@@ -134,6 +135,19 @@ class TestStanceBucket:
         assert stance_bucket(0.4) is StanceBucket.NEUTRAL
         assert stance_bucket(0.6) is StanceBucket.NEUTRAL
         assert stance_bucket(0.61) is StanceBucket.SUPPORTIVE
+
+
+class TestActorKindMapping:
+    def test_actor_kind_from_persona_mode(self) -> None:
+        assert (
+            actor_kind_from_persona_mode(PersonaMode.DIRECT_PERSON)
+            is ActorKind.DIRECT_PERSON
+        )
+        assert (
+            actor_kind_from_persona_mode(PersonaMode.REPRESENTATIVE)
+            is ActorKind.REPRESENTATIVE
+        )
+        assert actor_kind_from_persona_mode(PersonaMode.CONTEXT_ONLY) is None
 
 
 class TestEntity:
