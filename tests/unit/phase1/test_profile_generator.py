@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Callable
 
@@ -168,6 +169,58 @@ async def test_duplicate_agent_id_response_is_detected_and_filled(
     assert gen.fallback_count == 1
     fallback = next(profile for profile in profiles if profile.agent_id == "agent_0002")
     assert fallback.ideology == 0.5
+
+
+@pytest.mark.asyncio
+async def test_profile_generation_respects_max_concurrency() -> None:
+    class ConcurrencyTrackingLLM:
+        def __init__(self) -> None:
+            self.in_flight = 0
+            self.max_seen = 0
+
+        async def complete(self, *, system: str, user: str, model: str) -> str:
+            self.in_flight += 1
+            self.max_seen = max(self.max_seen, self.in_flight)
+            try:
+                await asyncio.sleep(0.01)
+                agent_ids = [
+                    line.removeprefix("agent_id: ").strip()
+                    for line in user.splitlines()
+                    if line.startswith("agent_id: ")
+                ]
+                return json.dumps(
+                    [
+                        {
+                            "agent_id": agent_id,
+                            "personality": "analytical",
+                            "speech_style": "formal",
+                            "background": "generated profile",
+                            "ideology": 0.4,
+                            "topics": ["policy"],
+                            "sensitive_topics": [],
+                            "behavior_tendency": {},
+                        }
+                        for agent_id in agent_ids
+                    ]
+                )
+            finally:
+                self.in_flight -= 1
+
+    seeds = [
+        AgentSeed(
+            agent_id=f"agent_{index:04d}",
+            origin=AgentOrigin.DERIVED,
+            context=f"context {index}",
+        )
+        for index in range(25)
+    ]
+    llm = ConcurrencyTrackingLLM()
+    gen = ProfileGenerator(llm=llm, model="test", max_concurrency=2)
+
+    profiles = await gen.generate(seeds, "req")
+
+    assert len(profiles) == 25
+    assert llm.max_seen == 2
 
 
 def test_rejects_non_positive_max_concurrency(
