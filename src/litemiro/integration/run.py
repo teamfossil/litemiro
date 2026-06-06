@@ -39,7 +39,7 @@ from litemiro.topics.extractor import TopicExtractor
 log = structlog.get_logger(__name__)
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
     from pathlib import Path
 
     from litemiro.interfaces import EmbedderLike, LLMClient
@@ -75,6 +75,7 @@ async def run_simulation(
     semaphore_limit: int = 10,
     batch_size: int = 20,
     cooldown_seconds: float = 0.5,
+    on_progress: Callable[..., None] | None = None,
 ) -> SimulationResult:
     """결정성 보장: 동일 입력 + 동일 seed → 동일 JSONL + 체크포인트.
 
@@ -161,6 +162,11 @@ async def run_simulation(
                 early_exit = True
                 break
             rounds_run += 1
+            # 라운드 완료마다 진행률 보고 — store 의 ``rounds_done`` 갱신 + SSE
+            # progress broadcast. None 이면 (CLI 등) 무시. 콜백 예외는 시뮬을
+            # 죽이지 않도록 호출측(store)이 책임진다.
+            if on_progress is not None:
+                on_progress(rounds_done=rounds_run)
     finally:
         await logger.aclose()
         belief_updater.close()
