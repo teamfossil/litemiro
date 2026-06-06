@@ -158,9 +158,11 @@ export interface PlazaAgentItem {
   // AgentProfile.entity_type raw 값. 프론트가 docs/api/contract.md 의 매핑 표로
   // RoleId enum 으로 좁힌다 (예: AIRegulationPolicy → policy).
   role: string;
-  // 0.0 = 진보 / 1.0 = 보수 (Phase 1 ontology 정의). Casting position bar 의
-  // 시각 라벨과 의미가 다르므로 화면 단에서 라벨 갱신 필요.
-  ideology: number;
+  // 0.0 = 비판/반대 · 0.5 = 중립 · 1.0 = 우호 (현재 토론 주제 태도). #180 에서
+  // ideology → stance 로 교체됨. Casting position bar 의 시각 라벨이 이 의미.
+  stance: number;
+  // 정적 prior 영향력 (behavior_tendency 기반, sim 결과와 무관). #135 추가.
+  base_influence: number;
   topics: string[];
   // sha256(agent_id)[:4] 의 uint32. reload·재연결에서도 동일 — 프론트
   // deterministic 아바타 생성 시드.
