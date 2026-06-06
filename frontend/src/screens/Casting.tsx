@@ -360,12 +360,12 @@ function AgentRow({ agent }: { agent: PlazaAgentItem }) {
         </span>
         <span className="lm-cast__row-name-text">{agent.name}</span>
       </div>
-      <div className="lm-cast__row-bar" aria-label={`ideology ${agent.ideology.toFixed(2)}`}>
+      <div className="lm-cast__row-bar" aria-label={`stance ${agent.stance.toFixed(2)}`}>
         <span className="lm-cast__row-bar-label lm-cast__row-bar-label--left">비판적</span>
         <div className="lm-cast__row-bar-track">
           <span
             className="lm-cast__row-bar-tick"
-            style={{ left: `${agent.ideology * 100}%`, background: role.color }}
+            style={{ left: `${agent.stance * 100}%`, background: role.color }}
           />
         </div>
         <span className="lm-cast__row-bar-label lm-cast__row-bar-label--right">우호적</span>
