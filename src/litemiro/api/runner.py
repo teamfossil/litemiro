@@ -77,10 +77,12 @@ class RealPlazaRunner:
             semaphore_limit=self._semaphore_limit,
             batch_size=self._batch_size,
             cooldown_seconds=self._cooldown_seconds,
+            on_progress=on_progress,
         )
-        # SSE 도입 전까지는 종료 시점에 한 번만 진행률을 채운다. ``rounds_run``
-        # 은 early-exit (토큰 예산 소진 등) 으로 ``< rounds`` 일 수 있으므로
-        # store 가 요청 total 로 덮지 않도록 outcome 으로도 같이 넘긴다.
+        # 라운드별 진행률은 위 ``on_progress`` 로 라이브 갱신된다. 종료 시점에
+        # 한 번 더 확정값을 박는다 — ``rounds_run`` 은 early-exit (토큰 예산
+        # 소진 등) 으로 ``< rounds`` 일 수 있고, rounds=0 으로 루프가 한 번도
+        # 안 돌아 콜백이 안 불린 경우도 최종값으로 맞춘다.
         on_progress(rounds_done=result.rounds_run)
         return RunnerOutcome(tokens_used=result.tokens_used, rounds_run=result.rounds_run)
 

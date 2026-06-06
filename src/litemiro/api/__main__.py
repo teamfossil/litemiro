@@ -235,6 +235,15 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         default=os.environ.get("LITEMIRO_API_LLM_MODEL", "openrouter/qwen/qwen-plus"),
     )
     parser.add_argument(
+        "--token-budget",
+        type=positive_int,
+        default=os.environ.get("LITEMIRO_API_TOKEN_BUDGET", "10000000"),
+        help=(
+            "plaza 시뮬 1회당 LLM 토큰 예산 — 소진 시 early-exit. "
+            "기본 10M ≈ 7라운드, 50라운드 완주는 ~80M 필요"
+        ),
+    )
+    parser.add_argument(
         "--profile-max-concurrency",
         type=positive_int,
         default=os.environ.get("LITEMIRO_API_PROFILE_MAX_CONCURRENCY", "5"),
@@ -259,7 +268,9 @@ def _parse_fallback_models(raw: str) -> list[str]:
     return [m.strip() for m in raw.split(",") if m.strip()]
 
 
-def _build_real_runner_and_composer(*, llm_model: str) -> tuple[PlazaRunner, PlazaComposer]:
+def _build_real_runner_and_composer(
+    *, llm_model: str, token_budget: int
+) -> tuple[PlazaRunner, PlazaComposer]:
     """실 시뮬레이션 runner + LLM composer — LLM 키 없이는 만들지 말 것.
 
     embedder / LiteLLM client 로딩이 무거워 모듈 단위가 아닌 main() 안에서
@@ -274,6 +285,7 @@ def _build_real_runner_and_composer(*, llm_model: str) -> tuple[PlazaRunner, Pla
         llm_client=llm_client,
         embedder=STEmbedder(),
         llm_model=llm_model,
+        token_budget=token_budget,
     )
     composer = RealPlazaComposer(llm_client=llm_client)
     return runner, composer
@@ -402,7 +414,9 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 1
-        runner, composer = _build_real_runner_and_composer(llm_model=args.llm_model)
+        runner, composer = _build_real_runner_and_composer(
+            llm_model=args.llm_model, token_budget=args.token_budget
+        )
         ontology_runner = _build_real_ontology_runner(
             llm_model=args.llm_model,
             fallback_models=_parse_fallback_models(args.llm_fallback_models),
