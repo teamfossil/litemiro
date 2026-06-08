@@ -8,48 +8,77 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { lm } from '@/data/mock';
-import type { Action, ActionType, Agent, AgentRegistry, PlazaNode } from '@/data/types';
+import type { Action, ActionType, Agent, AgentRegistry } from '@/data/types';
 import { AvatarSVG, Button, Stat, ArrowGlyph } from '@/components/atoms';
 import { useScreenNav } from '@/lib/nav';
-import { api, type PlazaActionEvent, type PlazaAgentItem, type PlazaLayoutAgentItem, type PlazaStatus } from '@/api/client';
+import { api, type PlazaActionEvent, type PlazaAgentItem, type PlazaPositionsEvent, type PlazaStatus } from '@/api/client';
 import { avatarFromSeed, mapBackendRoleToRoleId } from '@/lib/roles';
 
 // --------------------------------------------------------------------
-// Plaza 노드 — /layout ready 일 때만 백엔드 좌표로 표시.
-// 백엔드가 좌표를 안 줄 땐 frontend 가 채우지 않고 empty state 로 처리.
+// Live 광장 노드 — positions SSE(라운드별) + /agents(정적 stance/이름) 합성.
+//   x      = ideology (진보↔보수), 라운드마다 이동
+//   세로    = 발화량(보낸 액션 수) 정규화 — 모든 노드가 위아래로 퍼진다
+//   반지름  = 받은 호응(영향력) sqrt 스케일 — 소수 인플루언서가 큰 점으로 튄다
+//   색      = stance 진영 (비판/중립/우호)
 // --------------------------------------------------------------------
+type PositionDatum = { x: number; y: number; size: number };
+
+interface LiveNode {
+  id: string;
+  name: string;
+  color: string;
+  x: number;
+  yNorm: number;
+  radius: number;
+}
+
+function positionsFromEvent(e: PlazaPositionsEvent): Record<string, PositionDatum> {
+  const out: Record<string, PositionDatum> = {};
+  for (const a of e.agents) out[a.id] = { x: a.x, y: a.y, size: a.size };
+  return out;
+}
+
+// stance(0~1) → 진영 색. 백엔드 STANCE_CRITICAL_MAX=0.4 / SUPPORTIVE_MIN=0.6 경계.
+function stanceColor(stance: number): string {
+  if (stance < 0.4) return '#c75c54'; // 비판
+  if (stance > 0.6) return '#5b87b3'; // 우호
+  return '#a99f88'; // 중립
+}
+
 function buildLiveNodes(
   agents: PlazaAgentItem[],
-  layoutAgents: PlazaLayoutAgentItem[],
-): PlazaNode[] {
-  if (layoutAgents.length === 0) return [];
+  positions: Record<string, PositionDatum>,
+): LiveNode[] {
+  const ids = Object.keys(positions);
+  if (ids.length === 0) return [];
+  const sizes = ids.map((id) => positions[id].size);
+  const minS = Math.min(...sizes);
+  const maxS = Math.max(...sizes);
+  // 받은 호응은 23/500만 >0 인 long-tail → sqrt 로 소수 인플루언서만 크게.
+  const maxRecv = Math.max(1, ...ids.map((id) => positions[id].y));
   const agentMap = new Map(agents.map((a) => [a.id, a]));
-  return layoutAgents
-    .map((la): PlazaNode | null => {
-      const a = agentMap.get(la.id);
-      if (!a) return null;
-      const roleId = mapBackendRoleToRoleId(a.role);
-      return {
-        id: a.id,
-        name: a.name,
-        role: roleId,
-        kind: 'anchor',
-        color: lm.ROLE_BY_ID[roleId].color,
-        x: la.x,
-        y: la.y,
-        influence: la.influence,
-      };
-    })
-    .filter((n): n is PlazaNode => n !== null);
+  return ids.map((id): LiveNode => {
+    const p = positions[id];
+    const a = agentMap.get(id);
+    return {
+      id,
+      name: a?.name ?? id,
+      color: a ? stanceColor(a.stance) : '#a99f88',
+      x: p.x,
+      yNorm: maxS > minS ? (p.size - minS) / (maxS - minS) : 0.5,
+      radius: 2 + Math.sqrt(p.y / maxRecv) * 26,
+    };
+  });
 }
 
 // --------------------------------------------------------------------
-// LivePlaza — 광장 캔버스 (백엔드 좌표 그대로 그림)
+// LivePlaza — 광장 캔버스. transform+transition 으로 라운드 간 점이 부드럽게 이동.
 // --------------------------------------------------------------------
-function LivePlaza({ nodes }: { nodes: PlazaNode[] }) {
+function LivePlaza({ nodes }: { nodes: LiveNode[] }) {
   const W = 1680;
   const H = 920;
-  const sorted = useMemo(() => [...nodes].sort((a, b) => a.influence - b.influence), [nodes]);
+  // 큰 점을 먼저(뒤에) 그려 작은 점이 위에 보이게.
+  const sorted = useMemo(() => [...nodes].sort((a, b) => b.radius - a.radius), [nodes]);
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="lm-live__svg" preserveAspectRatio="xMidYMid meet">
@@ -68,12 +97,17 @@ function LivePlaza({ nodes }: { nodes: PlazaNode[] }) {
       ))}
       {sorted.map((n) => {
         const cx = n.x * W;
-        const cy = n.y * (H - 100) + 40;
-        const r = lm.nodeRadius(n.influence, 1.6, 32);
+        const cy = (1 - n.yNorm) * (H - 100) + 40; // 발화 많을수록 위로
         return (
-          <g key={n.id}>
-            {n.influence > 0.3 && <circle className="lm-live__node-shadow" cx={cx} cy={cy + 1.6} r={r * 1.02} fill="#000" opacity="0.08" />}
-            <circle className="lm-live__node" cx={cx} cy={cy} r={r} fill={n.color} opacity="0.92" />
+          <g
+            key={n.id}
+            transform={`translate(${cx} ${cy})`}
+            style={{ transition: 'transform 0.7s ease' }}
+          >
+            {n.radius > 8 && (
+              <circle className="lm-live__node-shadow" cx={0} cy={1.6} r={n.radius * 1.02} fill="#000" opacity="0.08" />
+            )}
+            <circle className="lm-live__node" cx={0} cy={0} r={n.radius} fill={n.color} opacity="0.9" />
           </g>
         );
       })}
@@ -328,7 +362,8 @@ export default function Live() {
   const go = useScreenNav(plazaId);
 
   const [rawAgents, setRawAgents] = useState<PlazaAgentItem[]>([]);
-  const [layoutAgents, setLayoutAgents] = useState<PlazaLayoutAgentItem[]>([]);
+  // 라운드별 위치 — positions SSE 가 라운드마다 전체 교체. agent_id → {x,y,size}.
+  const [positions, setPositions] = useState<Record<string, PositionDatum>>({});
 
   // SSE 구동 상태.
   const [round, setRound] = useState(0);
@@ -349,18 +384,9 @@ export default function Live() {
     return () => ac.abort();
   }, [plazaId]);
 
-  // /layout 은 sim 진행 중엔 ready=false 라 좌표가 비어 있다 — 의미 있는 응답이
-  // 떨어지는 composing/completed 진입 시점에만 한 번 받는다. running 단계마다
-  // 재호출하면 ready=false 응답만 받느라 헛돈다.
-  useEffect(() => {
-    if (!plazaId) return;
-    if (phaseStatus !== 'composing' && phaseStatus !== 'completed') return;
-    const ac = new AbortController();
-    api.getLayout(plazaId, ac.signal)
-      .then((res) => { if (res.ready) setLayoutAgents(res.agents); })
-      .catch(() => {});
-    return () => ac.abort();
-  }, [plazaId, phaseStatus]);
+  // 좌측 광장 좌표는 positions SSE(라운드별 belief_trajectory)로 들어온다 —
+  // /layout(종료 후 단일 스냅샷) 대신 라이브로 라운드마다 갱신. 핸들러는 아래
+  // streamPlazaEvents 의 onPositions / onPositionsSnapshot.
 
   // 사이드바 피드에 필요한 agent_id → name/role 매핑.
   const agents = useMemo<AgentRegistry>(() => {
@@ -375,7 +401,7 @@ export default function Live() {
     return { list, byId: Object.fromEntries(list.map((a) => [a.id, a])) };
   }, [rawAgents]);
 
-  const nodes = useMemo<PlazaNode[]>(() => buildLiveNodes(rawAgents, layoutAgents), [rawAgents, layoutAgents]);
+  const nodes = useMemo<LiveNode[]>(() => buildLiveNodes(rawAgents, positions), [rawAgents, positions]);
 
   // 마지막으로 카운트에 반영한 액션의 timestamp (ISO 8601). EventSource 가 끊겼다
   // 재연결하면 백엔드가 actions_snapshot 을 다시 보내는데, 이 게이트가 없으면
@@ -428,6 +454,13 @@ export default function Live() {
         setLiveActions(all.slice(-40));
         if (isFirst) setCounters(countActions(all));
       },
+      // 라운드별 위치 — 전체 교체(라운드당 1건). buildLiveNodes 가 이걸로 노드 재배치.
+      onPositions: (e) => {
+        setPositions(positionsFromEvent(e));
+      },
+      onPositionsSnapshot: (e) => {
+        setPositions(positionsFromEvent(e));
+      },
     });
     return () => stream.close();
   }, [plazaId]);
@@ -468,14 +501,24 @@ export default function Live() {
           {rawAgents.length === 0 ? (
             <div className="lm-live__canvas-empty">에이전트 정보를 불러오는 중입니다.</div>
           ) : nodes.length === 0 ? (
-            <div className="lm-live__canvas-empty">광장 좌표를 계산 중입니다. 시뮬레이션이 끝나면 표시돼요.</div>
+            <div className="lm-live__canvas-empty">첫 라운드가 끝나면 광장에 인격들이 나타나요.</div>
           ) : (
             <>
               <LivePlaza nodes={nodes} />
+              <div className="lm-live__canvas-ylabel">
+                <span>발화 많음 ↑</span>
+                <span>↓ 발화 적음</span>
+              </div>
+              <div className="lm-live__legend">
+                <span className="lm-live__legend-item"><i style={{ background: '#c75c54' }} />비판</span>
+                <span className="lm-live__legend-item"><i style={{ background: '#a99f88' }} />중립</span>
+                <span className="lm-live__legend-item"><i style={{ background: '#5b87b3' }} />우호</span>
+                <span className="lm-live__legend-note">● 영향력</span>
+              </div>
               <div className="lm-live__canvas-axis">
-                <span>← 비판적</span>
+                <span>← 진보</span>
                 <span>중립</span>
-                <span>우호적 →</span>
+                <span>보수 →</span>
               </div>
             </>
           )}

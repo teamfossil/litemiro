@@ -121,6 +121,11 @@ export interface PlazaEventHandlers {
   // 연결 직후 한 번. 재연결/탭 복귀 후 빈 피드로 시작하지 않게 최근 40건을
   // 시간 오름차순으로 한 번에 흘려준다. 액션 0건이면 본 콜백 호출 안 됨.
   onActionsSnapshot?: (event: PlazaActionsSnapshotEvent) => void;
+  // 라운드 1건 종료마다 전체 에이전트의 위치(belief_trajectory) 스냅샷. Live
+  // 좌측 광장의 라운드별 의견 이동 애니메이션용.
+  onPositions?: (event: PlazaPositionsEvent) => void;
+  // 연결 직후 한 번. 최신 라운드 positions 1건 — 재연결/도중입장 시 빈 광장 회피.
+  onPositionsSnapshot?: (event: PlazaPositionsEvent) => void;
   // EventSource 의 raw error — 네트워크 끊김/타임아웃 등. 핸들러가 없으면 무시.
   onError?: (event: Event) => void;
 }
@@ -222,6 +227,26 @@ export interface PlazaActionEvent {
 // 생략된다.
 export interface PlazaActionsSnapshotEvent {
   actions: PlazaActionEvent[];
+}
+
+// --------------------------------------------------------------------
+// SSE — positions / positions_snapshot. 라운드마다 belief_trajectory.jsonl +
+// events.jsonl 집계로 만든 전체 에이전트 위치 1건. 색(stance)은 정적이라 미포함
+// → 프론트가 /agents 에서 따로 받아 합친다. 백엔드 _positions_payload 와 1:1.
+// --------------------------------------------------------------------
+export interface PlazaPositionAgent {
+  id: string;
+  // x = ideology [0,1] (진보↔보수). 라운드마다 belief drift 로 이동.
+  x: number;
+  // y = 받은 호응 (likes/reposts/quote/follow 가중합) raw. Live 는 점 크기로 매핑.
+  y: number;
+  // size = 발화량 (DO_NOTHING 제외 보낸 액션 수) raw. Live 는 세로 위치로 매핑.
+  size: number;
+}
+
+export interface PlazaPositionsEvent {
+  round_num: number;
+  agents: PlazaPositionAgent[];
 }
 
 // --------------------------------------------------------------------
@@ -400,6 +425,14 @@ export const api = {
     es.addEventListener('actions_snapshot', (ev) => {
       const data = parseEvent<PlazaActionsSnapshotEvent>(ev);
       if (data) handlers.onActionsSnapshot?.(data);
+    });
+    es.addEventListener('positions', (ev) => {
+      const data = parseEvent<PlazaPositionsEvent>(ev);
+      if (data) handlers.onPositions?.(data);
+    });
+    es.addEventListener('positions_snapshot', (ev) => {
+      const data = parseEvent<PlazaPositionsEvent>(ev);
+      if (data) handlers.onPositionsSnapshot?.(data);
     });
     if (handlers.onError) {
       es.onerror = handlers.onError;
