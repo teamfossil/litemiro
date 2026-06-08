@@ -9,3 +9,5 @@
 @import './screen-landing.css';
 @import './screen-live.css';
 @import './stubs.css';
+/* 다크모드 토큰 오버라이드 — 반드시 마지막(토큰 SSoT 이후) 으로 로드. */
+@import './dark-mode.css';
