@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 import shutil
 import sqlite3
@@ -27,6 +28,7 @@ from pydantic import ValidationError
 
 from litemiro.api import db as _db
 from litemiro.api.composer import ComposerOutcome
+from litemiro.api.engagement import _read_engagement
 from litemiro.api.models import PlazaStatus
 from litemiro.models import ActionType, RoundEvent
 from litemiro.phase1.models import Preset
@@ -48,7 +50,18 @@ def _utcnow() -> datetime:
 #                       신호로도 같이 쓰인다.
 #  * action:            events.jsonl 의 한 줄 (한 agent 의 한 액션) — 라이브 push.
 #  * actions_snapshot:  연결 직후 최근 N 건 액션을 한 번에 — 재연결 시 빈 피드 회피.
-EventType = Literal["progress", "status", "action", "actions_snapshot"]
+#  * positions:         belief_trajectory.jsonl 의 라운드 1건 — 라운드별 에이전트
+#                       좌표 (x=ideology, y=받은 호응, size=발화량) 라이브 push.
+#  * positions_snapshot: 연결 직후 최신 라운드 positions 1건 — 재연결/도중입장 시
+#                       빈 산점도 회피 (actions_snapshot 의 positions 판).
+EventType = Literal[
+    "progress",
+    "status",
+    "action",
+    "actions_snapshot",
+    "positions",
+    "positions_snapshot",
+]
 
 # 재연결 시 연결 직후 emit 할 최근 액션 수 상한. events.jsonl 마지막에서부터
 # 위로 훑으면서 DO_NOTHING 제외하고 이 수만큼만 모아 보낸다.
@@ -116,6 +129,88 @@ def _parse_event_log(path: Path) -> list[RoundEvent]:
         except ValidationError:
             continue
     return out
+
+
+def _positions_payload(
+    round_num: int,
+    ideology_map: dict[str, float],
+    events_path: Path,
+) -> dict[str, Any]:
+    """belief_trajectory 라운드 1줄 → positions SSE ``data`` 페이로드.
+
+    라이브 push (``event: positions``) 와 재연결 스냅샷
+    (``event: positions_snapshot``) 가 같은 element shape 를 갖도록 직렬화를
+    여기 한 곳에 고정한다. agent 1건:
+
+    - ``x``    — 그 라운드 belief_trajectory 의 ``ideology[agent_id]`` (x축, 라운드마다 변함).
+    - ``y``    — ``_read_engagement(events_path, max_round=round_num)`` 의 누적
+                 ``influence_scores`` (받은 호응 가중합). 없으면 0.
+    - ``size`` — 같은 호출의 누적 ``activity_counts`` (보낸 액션 수). 없으면 0.
+
+    색(stance) 은 라운드 무관 정적값이라 미포함 — 프론트가 ``/agents`` 에서 받는다.
+    y/size 는 events.jsonl 1-pass 라 동기 IO 비용이 있다 — 호출자가
+    ``asyncio.to_thread`` 로 감싸 SSE 라우트/tail 루프를 막지 않게 한다.
+    """
+    _follower_counts, influence_scores, activity_counts = _read_engagement(
+        events_path, max_round=round_num
+    )
+    agents = [
+        {
+            "id": agent_id,
+            "x": ideology,
+            "y": influence_scores.get(agent_id, 0),
+            "size": activity_counts.get(agent_id, 0),
+        }
+        for agent_id, ideology in ideology_map.items()
+    ]
+    return {"round_num": round_num, "agents": agents}
+
+
+def _parse_positions_line(line: str) -> tuple[int, dict[str, float]] | None:
+    """belief_trajectory.jsonl 한 줄 → ``(round_num, ideology_map)`` 또는 None.
+
+    헤더 줄(``{"schema": ...}`` — ``ideology`` 키 없음) / 깨진 JSON / ``ideology``
+    가 dict 가 아니거나 ``round_num`` 이 int 가 아닌 라인은 ``None`` 으로 skip.
+    """
+    line = line.strip()
+    if not line:
+        return None
+    try:
+        record = json.loads(line)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(record, dict):
+        return None
+    ideology = record.get("ideology")
+    round_num = record.get("round_num")
+    if not isinstance(ideology, dict) or not isinstance(round_num, int):
+        return None
+    ideology_map = {
+        str(agent_id): float(value)
+        for agent_id, value in ideology.items()
+        if isinstance(value, (int, float))
+    }
+    return round_num, ideology_map
+
+
+def _load_latest_positions(belief_path: Path, events_path: Path) -> dict[str, Any] | None:
+    """belief_trajectory.jsonl 의 마지막 ideology 줄 → positions 페이로드 1건.
+
+    파일 부재 / ideology 줄이 하나도 없으면 ``None``. 헤더 줄만 있는 초기
+    상태(라운드 0줄 기록 전) 도 ``None``. ``load_latest_positions`` 의 동기 코어 —
+    라우트가 ``asyncio.to_thread`` 로 감싼다.
+    """
+    if not belief_path.exists():
+        return None
+    latest: tuple[int, dict[str, float]] | None = None
+    for line in belief_path.read_text(encoding="utf-8").splitlines():
+        parsed = _parse_positions_line(line)
+        if parsed is not None:
+            latest = parsed
+    if latest is None:
+        return None
+    round_num, ideology_map = latest
+    return _positions_payload(round_num, ideology_map, events_path)
 
 
 @dataclass
@@ -337,6 +432,59 @@ class PlazaStore:
         # final drain — stop 직전 sleep window 안에 막판에 들어온 라인을 회수.
         await drain()
 
+    async def _tail_positions(self, record: PlazaRecord, stop_event: asyncio.Event) -> None:
+        """belief_trajectory.jsonl 을 폴링하며 라운드별 ``positions`` SSE broadcast.
+
+        ``_tail_event_log`` 와 같은 골격 — 같은 ``_read_since`` offset/pending 라인
+        파싱, 같은 ``_TAIL_POLL_INTERVAL_SECONDS``, 같은 stop_event + final-drain
+        라이프사이클. 다른 점:
+
+        - 폴링 대상이 ``event_log_path.parent / "belief_trajectory.jsonl"``.
+        - 헤더 줄(``ideology`` 키 없음) 은 skip, ideology 줄만 처리.
+        - 라운드 줄마다 ``_positions_payload`` 로 직렬화 — y/size 가 events.jsonl
+          1-pass 읽기라 ``asyncio.to_thread`` 로 감싼다 (이벤트 루프 블로킹 회피).
+
+        ``event_log_path`` 가 None (fake / 비영속 테스트) 이면 즉시 종료.
+        """
+        log_path = record.event_log_path
+        if log_path is None:
+            return
+        belief_path = log_path.parent / "belief_trajectory.jsonl"
+        offset = 0
+        pending = ""
+
+        async def drain() -> None:
+            nonlocal offset, pending
+            try:
+                new_text, offset = await asyncio.to_thread(_read_since, belief_path, offset)
+            except OSError:
+                # 일시적 IO 실패는 다음 tick 에 재시도 — tail 을 죽이면 라이브
+                # positions 스트림이 끊긴다 (_tail_event_log 와 동일 정책).
+                return
+            if not new_text:
+                return
+            pending += new_text
+            while "\n" in pending:
+                line, pending = pending.split("\n", 1)
+                parsed = _parse_positions_line(line)
+                if parsed is None:
+                    # 헤더 줄 / 깨진 라인 — 다음 라인은 다시 정상일 수 있다.
+                    continue
+                round_num, ideology_map = parsed
+                payload = await asyncio.to_thread(
+                    _positions_payload, round_num, ideology_map, log_path
+                )
+                self._broadcast(record, PlazaEvent(type="positions", data=payload))
+
+        while not stop_event.is_set():
+            await drain()
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=_TAIL_POLL_INTERVAL_SECONDS)
+            except TimeoutError:
+                continue
+        # final drain — stop 직전 sleep window 안에 막판에 들어온 라인을 회수.
+        await drain()
+
     def _persist(self, record: PlazaRecord) -> None:
         """현재 record 스냅샷을 SQLite 로 흘려보낸다 (db_path=None 이면 no-op).
 
@@ -417,12 +565,17 @@ class PlazaStore:
             record.status = "running"
             self._persist(record)
             _emit_status()
-            # action SSE tail — runner 와 같은 lifetime. finally 의 stop+await
-            # 가 terminal status emit 직전 마지막 라인까지 broadcast 를 보장.
+            # action / positions SSE tail — runner 와 같은 lifetime. 둘 다 같은
+            # stop_event 로 묶어 finally 의 stop+await 가 terminal status emit
+            # 직전 양쪽 마지막 라인까지 broadcast 됐음을 보장한다.
             stop_tail = asyncio.Event()
             tail_task = asyncio.create_task(
                 self._tail_event_log(record, stop_tail),
                 name=f"plaza-tail-{plaza_id}",
+            )
+            positions_tail_task = asyncio.create_task(
+                self._tail_positions(record, stop_tail),
+                name=f"plaza-positions-tail-{plaza_id}",
             )
             try:
                 try:
@@ -479,11 +632,13 @@ class PlazaStore:
                 record.status = "completed"
                 self._persist(record)
             finally:
-                # tail 이 마지막 drain 까지 완료된 뒤 terminal status emit —
-                # 클라이언트 입장에서 마지막 action 이 항상 terminal 보다 먼저.
+                # tail 들이 마지막 drain 까지 완료된 뒤 terminal status emit —
+                # 클라이언트 입장에서 마지막 action/positions 가 항상 terminal 보다 먼저.
                 stop_tail.set()
                 with contextlib.suppress(asyncio.CancelledError, Exception):
                     await tail_task
+                with contextlib.suppress(asyncio.CancelledError, Exception):
+                    await positions_tail_task
                 _emit_status()
 
         record.task = asyncio.create_task(_drive(), name=f"plaza-{plaza_id}")
@@ -531,6 +686,25 @@ class PlazaStore:
         filtered = [e for e in events if e.action.type is not ActionType.DO_NOTHING]
         tail = filtered[-limit:] if limit > 0 else []
         return [_action_payload(e) for e in tail]
+
+    async def load_latest_positions(self, plaza_id: str) -> dict[str, Any] | None:
+        """belief_trajectory.jsonl 의 최신 라운드 positions 페이로드 1건.
+
+        ``load_recent_actions`` 의 positions 짝 — SSE 라우트가 재연결/도중입장
+        직후 ``event: positions_snapshot`` 으로 한 번 흘리는 용도. 라이브
+        ``event: positions`` 와 같은 shape (``_positions_payload``) 를 쓴다.
+
+        plaza 가 없거나 ``event_log_path`` 가 None (fake) 이거나
+        belief_trajectory.jsonl 에 ideology 줄이 하나도 없으면 ``None``.
+        파일 IO + events.jsonl 1-pass 가 동기 비용이라 ``asyncio.to_thread`` 로
+        떼서 SSE 라우트 진입을 막지 않는다.
+        """
+        record = await self.get(plaza_id)
+        if record is None or record.event_log_path is None:
+            return None
+        log_path = record.event_log_path
+        belief_path = log_path.parent / "belief_trajectory.jsonl"
+        return await asyncio.to_thread(_load_latest_positions, belief_path, log_path)
 
     async def subscribe(self, plaza_id: str) -> asyncio.Queue[PlazaEvent] | None:
         """SSE 라우트용 — 신규 큐를 만들어 ``record.subscribers`` 에 붙인다.

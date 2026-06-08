@@ -910,6 +910,166 @@ def _events_writing_runner(events: list[tuple[int, str, dict[str, str]]]) -> _Ru
     return _run
 
 
+def _belief_trajectory_jsonl(*rounds: tuple[int, dict[str, float]]) -> str:
+    """(round_num, {agent_id: ideology}) 튜플들을 belief_trajectory.jsonl 본문으로.
+
+    positions 엔드포인트는 ``ideology`` 키가 있는 라운드 줄만 본다. 헤더 줄은
+    필요 없으므로 라운드 줄만 직렬화한다.
+    """
+    lines = [
+        json.dumps({"round_num": round_num, "ideology": ideology}) for round_num, ideology in rounds
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def _positions_writing_runner(
+    belief_rounds: list[tuple[int, dict[str, float]]],
+    events: list[tuple[int, str, dict[str, str]]],
+) -> _RunnerCoro:
+    """belief_trajectory.jsonl + events.jsonl 을 같이 흘려주는 runner.
+
+    positions(x=ideology, y=받은호응, size=발화량)는 두 파일의 교차 집계라
+    한 runner 에서 둘 다 써야 한다. belief 파일은 event_log_path 의 형제로 둔다
+    (store 의 ``event_log_path.parent / "belief_trajectory.jsonl"`` 규약).
+    """
+
+    async def _run(
+        *,
+        plaza_id: str,
+        ontology_a_path: Path,
+        ontology_b_path: Path,
+        rounds: int,
+        event_log_path: Path,
+        checkpoint_dir: Path,
+        on_progress: ProgressCallback,
+    ) -> RunnerOutcome:
+        del plaza_id, ontology_a_path, ontology_b_path, checkpoint_dir
+        belief_path = event_log_path.parent / "belief_trajectory.jsonl"
+        await asyncio.to_thread(
+            belief_path.write_text,
+            _belief_trajectory_jsonl(*belief_rounds),
+            encoding="utf-8",
+        )
+        await asyncio.to_thread(event_log_path.write_text, _events_jsonl(*events), encoding="utf-8")
+        for r in range(rounds):
+            await asyncio.sleep(0)
+            on_progress(rounds_done=r + 1)
+        return RunnerOutcome()
+
+    return _run
+
+
+class TestGetPositions:
+    """``GET /api/plazas/{id}/positions`` — Plaza 종료 부감 뷰 (최종 라운드 1프레임).
+
+    Live 의 SSE ``positions`` 와 같은 페이로드를 REST 로 한 번에 준다.
+    x=ideology(belief_trajectory 최신 라운드), y=받은호응(events 가중합),
+    size=발화량(events 발동 수, DO_NOTHING 제외).
+    """
+
+    def test_returns_final_round_positions(self, tmp_path: Path) -> None:
+        onto_a = _write_ontology_a(
+            tmp_path / "ontology_a.json",
+            [
+                ("a01", "A1", "Role", 0.5),
+                ("a02", "A2", "Role", 0.5),
+                ("a03", "A3", "Role", 0.5),
+            ],
+        )
+        # belief_trajectory: 2 라운드 — positions 는 마지막(round 1) ideology 를 쓴다.
+        belief_rounds = [
+            (0, {"a01": 0.2, "a02": 0.5, "a03": 0.8}),
+            (1, {"a01": 0.3, "a02": 0.5, "a03": 0.7}),
+        ]
+        # events: a01 작성 글에 a02 LIKE(1) + a03 REPOST(2) = 받은호응 3.
+        # 발화량(보낸 액션, DO_NOTHING 제외): a01=1(CREATE), a02=1(LIKE), a03=1(REPOST).
+        events: list[tuple[int, str, dict[str, str]]] = [
+            (0, "a01", {"type": "CREATE_POST", "content": "x"}),
+            (1, "a02", {"type": "LIKE_POST", "target_post_id": "a01_r0000"}),
+            (1, "a03", {"type": "REPOST", "target_post_id": "a01_r0000"}),
+        ]
+        app = create_app(runner=_positions_writing_runner(belief_rounds, events), base_dir=tmp_path)
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/plazas",
+                json={
+                    "ontology_a_path": str(onto_a),
+                    "ontology_b_path": "/tmp/b.json",
+                    "rounds": 2,
+                    "label": "positions",
+                },
+            ).json()
+            plaza_id = created["plaza_id"]
+            _wait_until(client, plaza_id, terminal={"completed", "failed"})
+            resp = client.get(f"/api/plazas/{plaza_id}/positions")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["plaza_id"] == plaza_id
+        assert body["ready"] is True
+        # 최신 라운드(round 1) 를 반환한다.
+        assert body["round_num"] == 1
+        by_id = {a["id"]: a for a in body["agents"]}
+        assert set(by_id) == {"a01", "a02", "a03"}
+        # x = 최신 라운드 ideology (raw, 정규화 안 함).
+        assert by_id["a01"]["x"] == 0.3
+        assert by_id["a02"]["x"] == 0.5
+        assert by_id["a03"]["x"] == 0.7
+        # y = 받은호응 가중합. a01 = LIKE 1 + REPOST 2 = 3. a02/a03 = 0.
+        assert by_id["a01"]["y"] == 3
+        assert by_id["a02"]["y"] == 0
+        assert by_id["a03"]["y"] == 0
+        # size = 발화량 (보낸 액션 수). 각 1건.
+        assert by_id["a01"]["size"] == 1
+        assert by_id["a02"]["size"] == 1
+        assert by_id["a03"]["size"] == 1
+
+    def test_404_for_unknown_plaza(self, tmp_path: Path) -> None:
+        app = create_app(runner=_success_runner(rounds_to_report=1), base_dir=tmp_path)
+        with TestClient(app) as client:
+            resp = client.get("/api/plazas/does-not-exist/positions")
+        assert resp.status_code == 404
+
+    def test_pending_returns_not_ready(self, tmp_path: Path) -> None:
+        """belief_trajectory 에 ideology 줄이 아직 없으면 ready=false + agents=[].
+
+        pending/running 초반 또는 --fake (belief 파일 미생성) 케이스. 409 가 아닌
+        200 게이트로 프론트가 빈 부감 뷰 / 채운 뷰를 분기한다.
+        """
+        onto_a = _write_ontology_a(tmp_path / "ontology_a.json", [("a", "n", "R", 0.5)])
+
+        async def _slow(
+            *,
+            plaza_id: str,
+            ontology_a_path: Path,
+            ontology_b_path: Path,
+            rounds: int,
+            event_log_path: Path,
+            checkpoint_dir: Path,
+            on_progress: ProgressCallback,
+        ) -> RunnerOutcome:
+            del plaza_id, ontology_a_path, ontology_b_path, rounds
+            del event_log_path, checkpoint_dir, on_progress
+            await asyncio.sleep(0.3)
+            return RunnerOutcome()
+
+        app = create_app(runner=_slow, base_dir=tmp_path)
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/plazas",
+                json={
+                    "ontology_a_path": str(onto_a),
+                    "ontology_b_path": "/tmp/b.json",
+                    "rounds": 1,
+                },
+            ).json()
+            resp = client.get(f"/api/plazas/{created['plaza_id']}/positions")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["ready"] is False
+        assert body["round_num"] is None
+        assert body["agents"] == []
+
+
 class TestGetLayout:
     """``GET /api/plazas/{id}/layout`` — Plaza 부감 뷰 좌표."""
 

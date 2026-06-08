@@ -21,6 +21,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from pydantic import ValidationError
 
 from litemiro.api import db as _db
+from litemiro.api.engagement import _read_engagement
 from litemiro.api.models import (
     CreatePlazaRequest,
     CreatePlazaResponse,
@@ -29,6 +30,8 @@ from litemiro.api.models import (
     PlazaLayoutAgentItem,
     PlazaLayoutResponse,
     PlazaListResponse,
+    PlazaPositionItem,
+    PlazaPositionsResponse,
     PlazaReportResponse,
     PlazaStatus,
     PlazaStatusResponse,
@@ -40,7 +43,6 @@ from litemiro.api.sample_fixtures import (
     DEFAULT_ONTOLOGY_B_PATH,
 )
 from litemiro.api.store import PlazaStore
-from litemiro.models import ActionType, RoundEvent
 from litemiro.phase1.models import BehaviorTendency, OntologyA
 
 
@@ -84,79 +86,6 @@ def _load_ontology_a(onto_path: Path) -> OntologyA | None:
         return None
     raw = json.loads(onto_path.read_text(encoding="utf-8"))
     return OntologyA.model_validate(raw)
-
-
-# engagement → influence 가중치 (#132 B). LIKE 가벼운 동의 = 1, REPOST 가
-# follower 망 전파 = 2, QUOTE 본인 의견 추가 = 3, FOLLOW 영구 구독 = 5. raw
-# in-degree (FOLLOW only) 정규화는 sim 의 follower=0 long-tail 에서 노드 크기
-# 차별이 0 으로 떨어졌다 (이슈 본문의 measurement).
-_INFLUENCE_WEIGHTS: dict[ActionType, int] = {
-    ActionType.LIKE_POST: 1,
-    ActionType.REPOST: 2,
-    ActionType.QUOTE_POST: 3,
-    ActionType.FOLLOW: 5,
-}
-
-
-def _author_from_post_id(post_id: str) -> str | None:
-    """``{agent_id}_r{round:04d}`` 에서 author 추출.
-
-    Phase 2 ``core.round_manager.derive_post_id`` 가 만드는 결정적 포맷에
-    의존. 외부 주입 / 구버전 events.jsonl 처럼 포맷이 깨진 라인은 ``None``
-    을 돌려 호출자가 그 한 줄을 카운팅에서 빼게 한다.
-    """
-    head, sep, _ = post_id.rpartition("_r")
-    return head if sep and head else None
-
-
-def _read_engagement(
-    path: Path,
-) -> tuple[dict[str, int], dict[str, int], dict[str, int]]:
-    """events.jsonl 1-pass — follower_counts + influence_scores + activity_counts.
-
-    반환 3-tuple:
-    - ``follower_counts`` — FOLLOW 받은 raw 카운트, 응답의 ``follower_count`` 표시용.
-    - ``influence_scores`` — ``_INFLUENCE_WEIGHTS`` 가중합. LIKE/REPOST/QUOTE 의 author
-      는 ``target_post_id`` 의 결정적 포맷에서 ``_author_from_post_id`` 로 도출.
-    - ``activity_counts`` — agent 가 라운드 동안 발동한 액션 수 (DO_NOTHING 제외).
-      ``/layout`` 의 ``y`` 축 (#133) — "광장에서 얼마나 적극적으로 발화 중인가".
-
-    파일 부재 / 빈 파일 → ``({}, {}, {})``. last-line truncate / 알려지지 않은
-    action_type 라인은 그 한 줄만 건너뛴다.
-    """
-    follower_counts: dict[str, int] = {}
-    influence_scores: dict[str, int] = {}
-    activity_counts: dict[str, int] = {}
-    if not path.exists():
-        return follower_counts, influence_scores, activity_counts
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        try:
-            event = RoundEvent.model_validate_json(line)
-        except ValidationError:
-            continue
-        action_type = event.action.type
-        if action_type is not ActionType.DO_NOTHING:
-            activity_counts[event.agent_id] = activity_counts.get(event.agent_id, 0) + 1
-        weight = _INFLUENCE_WEIGHTS.get(action_type)
-        if weight is None:
-            continue
-        if action_type is ActionType.FOLLOW:
-            target = event.action.target_agent_id
-            if target is None:
-                continue
-            follower_counts[target] = follower_counts.get(target, 0) + 1
-            influence_scores[target] = influence_scores.get(target, 0) + weight
-            continue
-        target_post = event.action.target_post_id
-        if target_post is None:
-            continue
-        author = _author_from_post_id(target_post)
-        if author is None:
-            continue
-        influence_scores[author] = influence_scores.get(author, 0) + weight
-    return follower_counts, influence_scores, activity_counts
 
 
 router = APIRouter(prefix="/api/plazas", tags=["plazas"])
@@ -460,6 +389,33 @@ async def get_layout(plaza_id: str, request: Request) -> PlazaLayoutResponse:
         for p in profiles
     ]
     return PlazaLayoutResponse(plaza_id=plaza_id, ready=True, agents=items)
+
+
+@router.get("/{plaza_id}/positions", response_model=PlazaPositionsResponse)
+async def get_positions(plaza_id: str, request: Request) -> PlazaPositionsResponse:
+    """종료 광장(Plaza) 산점도용 — 최종 라운드 위치 1프레임 (one-shot).
+
+    Live 의 SSE ``positions``/``positions_snapshot`` 과 같은 데이터(``_positions_
+    payload``)를 REST 로 한 번에 준다. Plaza 는 애니메이션 없이 마지막 프레임만
+    필요해 SSE 대신 이 엔드포인트를 쓴다. belief_trajectory 에 ideology 줄이
+    아직 없으면 (pending/running 초반·fake) ``ready=False`` + ``agents=[]``.
+    """
+    store = _store(request)
+    record = await store.get(plaza_id)
+    if record is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"plaza {plaza_id!r} not found",
+        )
+    payload = await store.load_latest_positions(plaza_id)
+    if payload is None:
+        return PlazaPositionsResponse(plaza_id=plaza_id, ready=False)
+    return PlazaPositionsResponse(
+        plaza_id=plaza_id,
+        ready=True,
+        round_num=payload["round_num"],
+        agents=[PlazaPositionItem(**a) for a in payload["agents"]],
+    )
 
 
 @router.post("/{plaza_id}/start", status_code=status.HTTP_204_NO_CONTENT)
