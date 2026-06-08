@@ -3,15 +3,17 @@
 // 백엔드 SSE 대신 generateLiveActions 로 미리 생성된 액션 시퀀스를 라운드별로 push.
 // =====================================================================
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { lm } from '@/data/mock';
 import type { Action, ActionType, Agent, AgentRegistry, PlazaNode, RoleId } from '@/data/types';
 import { AvatarSVG, Button, Stat, ArrowGlyph } from '@/components/atoms';
 
 const TOTAL_ROUNDS = 50;
-// 데모 전체 진행 시간 — 너무 짧으면 인지가 안 되고, 너무 길면 지루.
-const TOTAL_MS = 28_000;
+// 데모 전체 진행 시간. 라운드당 간격(= TOTAL_MS/TOTAL_ROUNDS)이 노드 transition
+// 보다 넉넉히 길어야 "라운드마다 한 번씩 또렷이 미끄러지는" production 느낌이
+// 난다. 42s/50 ≈ 840ms/라운드 > transition 0.7s → glide 후 살짝 쉬고 다음 라운드.
+const TOTAL_MS = 42_000;
 
 function buildAgentRegistry(): AgentRegistry {
   const ANCHORS = lm.ANCHORS;
@@ -128,7 +130,7 @@ interface LiveNode extends PlazaNode {
 }
 
 function generateLiveNodes(): LiveNode[] {
-  const final = lm.generatePlaza({ seed: 42, n: 312 });
+  const final = lm.generatePlaza({ seed: 42, n: 300 });
   const rng = lm.mulberry32(99);
   return final.map((n) => ({
     ...n,
@@ -140,43 +142,55 @@ function generateLiveNodes(): LiveNode[] {
     finalInfluence: n.influence,
   }));
 }
-function lerp(a: number, b: number, t: number) { return a + (b - a) * t; }
-function easeInOut(t: number) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
 
-function LivePlaza({ nodes, settle }: { nodes: LiveNode[]; settle: number }) {
+function lerp(a: number, b: number, t: number) {
+  return a + (b - a) * t;
+}
+
+function easeInOut(t: number) {
+  return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+}
+
+const LivePlaza = memo(function LivePlaza({ nodes, round, total }: { nodes: LiveNode[]; round: number; total: number }) {
   const W = 1680, H = 920;
-  const sNodes = useMemo(() => {
-    const e = easeInOut(settle);
-    return nodes.map((n) => {
-      const x = lerp(n.startX, n.finalX, e);
-      const y = lerp(n.startY, n.finalY, e);
-      const infRise = Math.max(0, (settle - 0.3) / 0.7);
-      const inf = lerp(n.startInfluence, n.finalInfluence, easeInOut(infRise));
-      return { ...n, _x: x, _y: y, _inf: inf };
-    });
-  }, [nodes, settle]);
-  const sorted = useMemo(() => [...sNodes].sort((a, b) => a._inf - b._inf), [sNodes]);
+  // production Live 와 같은 방식: 라운드 단위(discrete)로만 위치/크기를 갱신하고,
+  // 노드 <g> 의 CSS transform transition 이 라운드 사이를 부드럽게 보간한다.
+  // settle(매 프레임)이 아니라 round 에만 의존 → memo 로 라운드당 1번만 리렌더
+  // (300 노드를 매 프레임 다시 그리지 않아 안 끊긴다).
+  const t = Math.min(1, round / Math.max(1, total));
+  const placed = useMemo(
+    () =>
+      nodes
+        .map((n) => ({
+          id: n.id,
+          color: n.color,
+          cx: lerp(n.startX, n.finalX, t) * W,
+          cy: lerp(n.startY, n.finalY, t) * (H - 100) + 40,
+          r: lm.nodeRadius(lerp(n.startInfluence, n.finalInfluence, t), 1.6, 32),
+          shadow: n.finalInfluence > 0.3 && t > 0.4,
+        }))
+        .sort((a, b) => a.r - b.r), // 작은 점 먼저(뒤), 큰 점 나중(앞)에 그려 위로
+    [nodes, t],
+  );
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="lm-live__svg" preserveAspectRatio="xMidYMid meet">
       {[0.25, 0.5, 0.75].map((p, i) => (
         <line key={i} x1={W * p} x2={W * p} y1={40} y2={H - 60} stroke="#C9C1AD" strokeWidth="1" strokeDasharray="3 8"
-          opacity={Math.max(0, settle - 0.2) * (p === 0.5 ? 0.6 : 0.4)} />
+          opacity={p === 0.5 ? 0.6 : 0.4} />
       ))}
-      {sorted.map((n) => {
-        const cx = n._x * W;
-        const cy = n._y * (H - 100) + 40;
-        const r = lm.nodeRadius(n._inf, 1.6, 32);
-        return (
-          <g key={n.id}>
-            {n._inf > 0.3 && <circle className="lm-live__node-shadow" cx={cx} cy={cy + 1.6} r={r * 1.02} fill="#000" opacity="0.08" />}
-            <circle className="lm-live__node" cx={cx} cy={cy} r={r} fill={n.color} opacity="0.92" />
-          </g>
-        );
-      })}
+      {placed.map((n) => (
+        <g
+          key={n.id}
+          style={{ transform: `translate(${n.cx}px, ${n.cy}px)`, transition: 'transform 0.7s ease', willChange: 'transform' }}
+        >
+          {n.shadow && <circle className="lm-live__node-shadow" cx={0} cy={1.6} r={n.r * 1.02} fill="#000" opacity="0.08" />}
+          <circle className="lm-live__node" cx={0} cy={0} r={n.r} fill={n.color} opacity="0.92" />
+        </g>
+      ))}
     </svg>
   );
-}
+});
 
 const ACTION_LABELS: Record<ActionType, { label: string; tone: string }> = {
   CREATE_POST: { label: '발언', tone: 'create' },
@@ -324,13 +338,21 @@ export default function LiveDemoMock() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const startedAtRef = useRef<number>(0);
   const rafRef = useRef<number>(0);
+  const lastRoundRef = useRef<number>(-1);
 
   useEffect(() => {
     startedAtRef.current = performance.now();
     const tick = () => {
       const elapsed = performance.now() - startedAtRef.current;
       const p = Math.max(0, Math.min(1, elapsed / TOTAL_MS));
-      setProgress(p);
+      // 매 프레임 setProgress 하면 부모가 60fps 로 리렌더돼 300 노드 CSS
+      // transition 과 메인스레드에서 경쟁 → 끊긴다. 라운드가 바뀔 때(또는 완료)
+      // 만 state 를 갱신해 리렌더를 ~50 회로 줄인다. 노드 이동은 CSS 가 보간.
+      const r = Math.floor(p * TOTAL_ROUNDS);
+      if (r !== lastRoundRef.current || p >= 1) {
+        lastRoundRef.current = r;
+        setProgress(p);
+      }
       if (p < 1) rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
@@ -363,11 +385,24 @@ export default function LiveDemoMock() {
           </div>
         </header>
         <div className="lm-live__canvas">
-          <LivePlaza nodes={nodes} settle={settle} />
+          <LivePlaza nodes={nodes} round={round} total={total} />
+          <div className="lm-live__legend" style={{ opacity: 1 }}>
+            <span className="lm-live__legend-intro">점 1개 = 인격 1명</span>
+            <span className="lm-live__legend-head">색 — 주제 입장</span>
+            <span className="lm-live__legend-item"><i style={{ background: '#c75c54' }} />비판</span>
+            <span className="lm-live__legend-item"><i style={{ background: '#a99f88' }} />중립</span>
+            <span className="lm-live__legend-item"><i style={{ background: '#5b87b3' }} />우호</span>
+            <span className="lm-live__legend-head">크기 — 영향력(호응)</span>
+            <span className="lm-live__legend-size">
+              <i style={{ width: 6, height: 6, background: '#8a8275' }} />
+              <i style={{ width: 14, height: 14, background: '#8a8275' }} />
+              <span>적음 → 많음</span>
+            </span>
+          </div>
           <div className="lm-live__canvas-axis">
-            <span style={{ opacity: Math.max(0, settle - 0.2) }}>← 비판적</span>
-            <span style={{ opacity: Math.max(0, settle - 0.2) }}>중립</span>
-            <span style={{ opacity: Math.max(0, settle - 0.2) }}>우호적 →</span>
+            <span style={{ opacity: 1 }}>← 진보</span>
+            <span style={{ opacity: 1 }}>중립</span>
+            <span style={{ opacity: 1 }}>보수 →</span>
           </div>
         </div>
         <footer className="lm-live__foot">
