@@ -5,6 +5,7 @@
 // =====================================================================
 
 import type { ReactNode } from 'react';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 export type ScreenId = 'landing' | 'seed' | 'casting' | 'live' | 'plaza' | 'report';
 
@@ -88,6 +89,7 @@ export function AppHeader({ plaza, currentScreen, onNavigate, phaseNavLocked = f
       </nav>
 
       <div className="lm-header__right">
+        <ThemeToggle />
         <button type="button" className="lm-header__iconbtn" aria-label="알림">
           <BellIcon />
         </button>
@@ -117,6 +119,7 @@ export function SeedHeader({ onNavigate }: { onNavigate: (id: ScreenId) => void 
       </div>
 
       <div className="lm-header__right">
+        <ThemeToggle />
         <button type="button" className="lm-header__iconbtn" aria-label="알림">
           <BellIcon />
         </button>

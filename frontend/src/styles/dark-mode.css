@@ -1,0 +1,106 @@
+/* =====================================================================
+   라이트미로 — Dark Mode 토큰 오버라이드
+   ---------------------------------------------------------------------
+   tokens.css(SSoT)의 색 토큰만 재선언한다. 마크업/컴포넌트 CSS 변경 0 —
+   모두 var(--paper)·var(--ink)·var(--r-*) 를 읽으므로 값만 갈린다.
+
+   설계: 차가운 회색 금지. 따뜻한 잉크-페이퍼. 표면은 갈색빛 near-black,
+   떠오를수록 밝아진다(paper → card → sand). 역할색 12개는 hue/채도 유지,
+   명도만 올려 대비 확보(밤의 같은 팔레트).
+
+   활성화 2경로:
+   - 시스템 자동: @media (prefers-color-scheme: dark)
+     단 data-theme="light" 로 명시 강제한 경우는 제외(라이트 유지).
+   - 수동 토글: <html data-theme="dark"> (시스템보다 우선, 라이트 OS 에서도 다크).
+   ===================================================================== */
+
+:root {
+  /* 기본 폼 컨트롤/스크롤바는 라이트. 다크 블록에서 dark 로 전환. */
+  color-scheme: light;
+}
+
+/* 다크 토큰 값 — system / manual 두 셀렉터에 동일 적용(중복은 의도, 생성물). */
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+
+    /* Base — 갈색빛 near-black, 떠오를수록 밝게 */
+    --paper: #16140f;
+    --card: #201d16;
+    --sand: #2a261d;
+
+    /* Ink — 명도 4단 (반전) */
+    --ink: #f3efe3;
+    --ink-2: #d6cfbe;
+    --ink-3: #a69e89;
+    --ink-4: #786f5c;
+
+    /* Line */
+    --rule: #3a3529;
+    --rule-2: #2c281f;
+
+    /* Role 팔레트 12 — hue/채도 유지, 명도 +12~16% */
+    --r-broadcast: #cf6a50;
+    --r-investig: #d68f66;
+    --r-columnist: #d6a654;
+    --r-politician: #be9a55;
+    --r-pundit: #ab8654;
+    --r-citizen-m: #88a6bc;
+    --r-citizen-p: #6e97b3;
+    --r-citizen-x: #93aeb7;
+    --r-academic: #6e9c8d;
+    --r-lawyer: #8aa38c;
+    --r-ngo: #a89c87;
+    --r-corp: #908fa0;
+
+    /* Semantic */
+    --accent: #d9745a;
+    --highlight-bg: rgba(232, 215, 138, 0.26); /* 마커: 단색 → 반투명 앰버 글로우 */
+    --positive: #6e9c8d;
+    --negative: #cf6a50;
+
+    /* Shadow — 다크에서 알파 심화 (--shadow-paper/-soft 는 sand/card 따라 자동) */
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-2: 0 4px 12px rgba(0, 0, 0, 0.4);
+    --shadow-3: 0 12px 28px rgba(0, 0, 0, 0.52);
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --paper: #16140f;
+  --card: #201d16;
+  --sand: #2a261d;
+
+  --ink: #f3efe3;
+  --ink-2: #d6cfbe;
+  --ink-3: #a69e89;
+  --ink-4: #786f5c;
+
+  --rule: #3a3529;
+  --rule-2: #2c281f;
+
+  --r-broadcast: #cf6a50;
+  --r-investig: #d68f66;
+  --r-columnist: #d6a654;
+  --r-politician: #be9a55;
+  --r-pundit: #ab8654;
+  --r-citizen-m: #88a6bc;
+  --r-citizen-p: #6e97b3;
+  --r-citizen-x: #93aeb7;
+  --r-academic: #6e9c8d;
+  --r-lawyer: #8aa38c;
+  --r-ngo: #a89c87;
+  --r-corp: #908fa0;
+
+  --accent: #d9745a;
+  --highlight-bg: rgba(232, 215, 138, 0.26);
+  --positive: #6e9c8d;
+  --negative: #cf6a50;
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-2: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-3: 0 12px 28px rgba(0, 0, 0, 0.52);
+}
