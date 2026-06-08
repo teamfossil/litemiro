@@ -2,8 +2,18 @@
 <html lang="ko">
   <head>
     <meta charset="utf-8" />
-    <title>라이트미로 — LiteMiro v3.4</title>
+    <title>라이트미로 — LiteMiro v4.0</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- 다크모드 FOUC 가드 — 저장된 테마를 페인트 전에 적용 (system 은 CSS @media). -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('litemiro-theme');
+          if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
+        } catch (e) {}
+      })();
+    </script>
 
     <!-- 폰트 -->
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />

@@ -194,7 +194,7 @@
 /* ---------- RIGHT — HERO PLAZA ---------- */
 .lm-landing__right {
   position: relative;
-  background: linear-gradient(180deg, #F5EFE0 0%, var(--sand) 100%);
+  background: linear-gradient(180deg, var(--card) 0%, var(--sand) 100%);
   overflow: hidden;
 }
 .lm-landing__hero-svg {
