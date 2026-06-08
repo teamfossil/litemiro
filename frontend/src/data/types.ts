@@ -74,6 +74,9 @@ export interface PlazaNode {
   // generatePlaza가 앵커 노드에 추가로 채우는 필드
   firstName?: string;
   title?: string;
+  // 실 데이터(positions+agents) 합성 노드의 stance(0=비판~1=우호). 색·진영
+  // 필터·드릴인 라벨에 쓴다. mock generatePlaza 노드엔 없다.
+  stance?: number;
 }
 
 export interface Quote {

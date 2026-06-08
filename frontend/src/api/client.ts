@@ -249,6 +249,16 @@ export interface PlazaPositionsEvent {
   agents: PlazaPositionAgent[];
 }
 
+// /positions REST — Plaza 종료 부감 뷰용 최종 라운드 1프레임. 백엔드
+// PlazaPositionsResponse 와 1:1. ready=false 면 (pending/running 초반·fake)
+// agents=[]. SSE positions 와 element shape 동일(PlazaPositionAgent).
+export interface PlazaPositionsResponse {
+  plaza_id: string;
+  ready: boolean;
+  round_num: number | null;
+  agents: PlazaPositionAgent[];
+}
+
 // --------------------------------------------------------------------
 // /documents — 사용자 PDF/TXT 업로드. multipart/form-data 1회로 끝낸다.
 // 백엔드 DocumentResponse / DocumentListResponse 와 1:1 미러.
@@ -378,6 +388,10 @@ export const api = {
     request<PlazaAgentsResponse>(`/api/plazas/${encodeURIComponent(plazaId)}/agents`, undefined, signal),
   getLayout: (plazaId: string, signal?: AbortSignal) =>
     request<PlazaLayoutResponse>(`/api/plazas/${encodeURIComponent(plazaId)}/layout`, undefined, signal),
+  // /positions — Plaza 종료 부감 뷰용 최종 라운드 위치 1프레임 (one-shot).
+  // Live 의 positions SSE 와 같은 의미 차원(x=ideology/y=받은호응/size=발화량).
+  getPositions: (plazaId: string, signal?: AbortSignal) =>
+    request<PlazaPositionsResponse>(`/api/plazas/${encodeURIComponent(plazaId)}/positions`, undefined, signal),
 
   /**
    * `/status` 폴링 대신 SSE 로 progress / status 이벤트를 push 받는다.

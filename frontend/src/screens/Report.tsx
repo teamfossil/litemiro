@@ -17,8 +17,8 @@ import { lm } from '@/data/mock';
 import type { PlazaNode } from '@/data/types';
 import { Button, Stat, ArrowGlyph } from '@/components/atoms';
 import { useScreenNav } from '@/lib/nav';
-import { api, type PlazaLayoutResponse, type PlazaReportResponse } from '@/api/client';
-import { mapBackendRoleToRoleId } from '@/lib/roles';
+import { api, type PlazaReportResponse } from '@/api/client';
+import { buildPlazaNodes } from '@/lib/plazaNodes';
 
 // --------------------------------------------------------------------
 // SectionShell — 모든 섹션이 같은 헤딩 패턴
@@ -243,14 +243,23 @@ export default function Report() {
   const { plazaId } = useParams<{ plazaId: string }>();
   const go = useScreenNav(plazaId);
   const [backendReport, setBackendReport] = useState<PlazaReportResponse | null>(null);
-  const [layout, setLayout] = useState<PlazaLayoutResponse | null>(null);
+  const [nodes, setNodes] = useState<PlazaNode[]>([]);
   const reportStatus = backendReport?.status ?? null;
 
   useEffect(() => {
     if (!plazaId) return;
     const ac = new AbortController();
     api.getReport(plazaId, ac.signal).then((res) => { setBackendReport(res); }).catch(() => {});
-    api.getLayout(plazaId, ac.signal).then((res) => { setLayout(res); }).catch(() => {});
+    // positions(최종 라운드) + agents(정적 stance/이름) → Live 와 같은 인코딩.
+    Promise.all([
+      api.getPositions(plazaId, ac.signal),
+      api.getAgents(plazaId, ac.signal),
+    ])
+      .then(([positions, agentsRes]) => {
+        if (!positions.ready || positions.agents.length === 0) return;
+        setNodes(buildPlazaNodes(agentsRes.agents, positions.agents));
+      })
+      .catch(() => {});
     return () => ac.abort();
   }, [plazaId]);
 
@@ -263,24 +272,6 @@ export default function Report() {
     return () => clearInterval(id);
   }, [plazaId, reportStatus]);
 
-  // /layout 의 agents 를 MiniPlaza 가 먹는 PlazaNode 형태로 변환. ready=false 면 빈 배열.
-  const nodes = useMemo<PlazaNode[]>(() => {
-    if (!layout || !layout.ready) return [];
-    return layout.agents.map((a) => {
-      const roleId = mapBackendRoleToRoleId(a.role);
-      return {
-        id: a.id,
-        name: a.name,
-        role: roleId,
-        kind: 'anchor',
-        x: a.x,
-        y: a.y,
-        influence: a.influence,
-        color: lm.ROLE_BY_ID[roleId].color,
-        anchor: a.influence > 0.6,
-      };
-    });
-  }, [layout]);
 
   const reportMarkdown = backendReport?.report_markdown ?? null;
   const reportFallbackUsed = backendReport?.report_fallback_used ?? false;
@@ -377,9 +368,9 @@ export default function Report() {
                   <>
                     <MiniPlaza nodes={nodes} />
                     <div className="lm-rep__sum-plaza-axis">
-                      <span>← 비판적</span>
+                      <span>← 진보</span>
                       <span>중립</span>
-                      <span>우호적 →</span>
+                      <span>보수 →</span>
                     </div>
                   </>
                 ) : (

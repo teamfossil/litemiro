@@ -6,15 +6,23 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { lm } from '@/data/mock';
-import type { GroupId, PlazaNode } from '@/data/types';
-import { AvatarSVG, RoleSwatch, Button, Stat, Pill, ArrowGlyph } from '@/components/atoms';
+import type { PlazaNode } from '@/data/types';
+import { AvatarSVG, Button, Stat, Pill, ArrowGlyph } from '@/components/atoms';
 import { ScreenHeader } from '@/components/chrome';
 import { useScreenNav } from '@/lib/nav';
 import { api, type PlazaReportResponse } from '@/api/client';
-import { mapBackendRoleToRoleId } from '@/lib/roles';
+import {
+  buildPlazaNodes,
+  ideologyLabel,
+  STANCE_BUCKETS,
+  stanceBucket,
+  stanceColor,
+  stanceLabel,
+  type StanceBucket,
+} from '@/lib/plazaNodes';
 
 interface PlazaFiltersState {
-  groups: GroupId[];
+  stances: StanceBucket[];
   influenceOnly: boolean;
 }
 
@@ -110,7 +118,8 @@ function PlazaCanvas({
   const handleReset = () => setView({ x: 0, y: 0, zoom: 1 });
   const canReset = view.x !== 0 || view.y !== 0 || view.zoom !== 1;
 
-  const isDimmed = (n: PlazaNode) => filters.groups.length > 0 && !filters.groups.includes(lm.ROLE_BY_ID[n.role].group);
+  const isDimmed = (n: PlazaNode) =>
+    filters.stances.length > 0 && !filters.stances.includes(stanceBucket(n.stance ?? 0.5));
 
   const sorted = useMemo(() => [...nodes].sort((a, b) => a.influence - b.influence), [nodes]);
 
@@ -159,8 +168,11 @@ function PlazaCanvas({
         {/* nodes */}
         {sorted.map((n) => {
           const cx = n.x * VB_W;
-          const cy = n.y * (VB_H - 130) + 40;
-          const r = lm.nodeRadius(n.influence, 2, 36);
+          // 발화 많을수록 위로 (Live 와 동일 방향). n.y 는 발화량 정규화.
+          const cy = (1 - n.y) * (VB_H - 130) + 40;
+          // 반지름 = 받은호응 sqrt 스케일 (Live: 2 + sqrt(recv/max)*26). n.influence
+          // 가 이미 sqrt 정규화값 [0,1] 이라 선형으로 스케일만 곱한다.
+          const r = 2 + n.influence * 26;
           const isSelected = selectedId === n.id;
           const isHover = hoverId === n.id;
           const dim = isDimmed(n);
@@ -183,10 +195,10 @@ function PlazaCanvas({
           );
         })}
 
-        {/* 축 라벨 — SVG 내부에 두어 pan/zoom 과 함께 이동·확대된다. */}
-        <text x={20} y={VB_H - 20} className="lm-plaza__svg-axis" textAnchor="start">← 비판적</text>
+        {/* 축 라벨 — SVG 내부에 두어 pan/zoom 과 함께 이동·확대된다. x=ideology. */}
+        <text x={20} y={VB_H - 20} className="lm-plaza__svg-axis" textAnchor="start">← 진보</text>
         <text x={VB_W / 2} y={VB_H - 20} className="lm-plaza__svg-axis" textAnchor="middle">중립</text>
-        <text x={VB_W - 20} y={VB_H - 20} className="lm-plaza__svg-axis" textAnchor="end">우호적 →</text>
+        <text x={VB_W - 20} y={VB_H - 20} className="lm-plaza__svg-axis" textAnchor="end">보수 →</text>
       </svg>
 
       {/* 우상단 컨트롤: 줌 인디케이터 + 초기화 */}
@@ -223,16 +235,19 @@ function PersonaList({
   onSelect: (id: string) => void;
   onHover: (id: string | null) => void;
 }) {
-  const named = nodes.filter((n) => n.name && (n.anchor || n.kind === 'derived-viral'));
+  // 영향력 큰 순으로 상위 인격만 — 직무(citizen) 대신 stance 진영 라벨을 단다.
+  const named = useMemo(
+    () => [...nodes].filter((n) => n.name).sort((a, b) => b.influence - a.influence).slice(0, 60),
+    [nodes],
+  );
   return (
-    <aside className="lm-plaza__personas" aria-label="캐스팅 + 바이럴 인격 목록">
+    <aside className="lm-plaza__personas" aria-label="영향력 상위 인격 목록">
       <header className="lm-plaza__personas-head">
-        <span className="lm-plaza__personas-tag">CAST · 캐스팅 + 바이럴</span>
+        <span className="lm-plaza__personas-tag">CAST · 영향력 상위</span>
         <span className="lm-plaza__personas-count">{named.length}</span>
       </header>
       <div className="lm-plaza__personas-list">
         {named.map((n) => {
-          const role = lm.ROLE_BY_ID[n.role];
           const isActive = selectedId === n.id;
           const isHover = hoverId === n.id;
           return (
@@ -245,11 +260,8 @@ function PersonaList({
               className={`lm-plaza__personas-item${isActive ? ' is-active' : ''}${isHover ? ' is-hover' : ''}`}
             >
               <span className="lm-plaza__personas-dot" style={{ background: n.color }} />
-              <span className="lm-plaza__personas-name">
-                {n.kind === 'derived-viral' && <em className="lm-plaza__personas-viral">viral</em>}
-                {n.kind === 'derived-viral' ? n.firstName || n.name : n.name}
-              </span>
-              <span className="lm-plaza__personas-role">{role.name}</span>
+              <span className="lm-plaza__personas-name">{n.name}</span>
+              <span className="lm-plaza__personas-role">{stanceLabel(n.stance ?? 0.5)}</span>
             </button>
           );
         })}
@@ -262,31 +274,24 @@ function PersonaList({
 // PlazaTooltip
 // --------------------------------------------------------------------
 function PlazaTooltip({ node, x, y }: { node: PlazaNode; x: number; y: number }) {
-  const role = lm.ROLE_BY_ID[node.role];
+  const stance = node.stance ?? 0.5;
   return (
     <div className="lm-plaza__tooltip" style={{ left: x, top: y }}>
       <div className="lm-plaza__tooltip-who">
-        <RoleSwatch roleId={node.role} size={10} />
-        <span>{role.name}</span>
+        <span className="lm-plaza__tooltip-swatch" style={{ background: node.color }} />
+        <span>{stanceLabel(stance)}</span>
       </div>
       {node.name && <div className="lm-plaza__tooltip-name">{node.name}</div>}
       <div className="lm-plaza__tooltip-stats">
         <span>
-          입장 <b>{ideologyLabel(node.x)}</b>
+          입장 <b>{stanceLabel(stance)}</b>
         </span>
         <span>
-          영향력 <b>{Math.round(node.influence * 1000).toLocaleString()}</b>
+          성향 <b>{ideologyLabel(node.x)}</b>
         </span>
       </div>
     </div>
   );
-}
-function ideologyLabel(x: number): string {
-  if (x < 0.32) return '비판적';
-  if (x < 0.42) return '비판적-중립';
-  if (x < 0.58) return '중립';
-  if (x < 0.68) return '중립-우호적';
-  return '우호적';
 }
 
 // --------------------------------------------------------------------
@@ -294,14 +299,14 @@ function ideologyLabel(x: number): string {
 // --------------------------------------------------------------------
 function DrillInPanel({ node, onClose }: { node: PlazaNode | null; onClose: () => void }) {
   if (!node) return null;
-  const role = lm.ROLE_BY_ID[node.role];
+  const stance = node.stance ?? 0.5;
 
   return (
-    <aside className="lm-drill" role="dialog" aria-label={`${node.name} 상세`}>
+    <aside className="lm-drill" role="dialog" aria-label={`${node.name ?? '익명'} 상세`}>
       <header className="lm-drill__head">
         <div className="lm-drill__head-meta">
           <span className="lm-drill__head-role">
-            <RoleSwatch roleId={node.role} size={10} /> {role.name}
+            <span className="lm-plaza__tooltip-swatch" style={{ background: node.color }} /> {stanceLabel(stance)}
           </span>
         </div>
         <button type="button" className="lm-drill__close" onClick={onClose} aria-label="닫기">
@@ -316,7 +321,7 @@ function DrillInPanel({ node, onClose }: { node: PlazaNode | null; onClose: () =
           <div className="lm-drill__hero-dot" style={{ background: node.color }} />
         )}
         <div className="lm-drill__hero-text">
-          <div className="lm-drill__hero-name">{node.name || `${role.name} (익명)`}</div>
+          <div className="lm-drill__hero-name">{node.name || `${stanceLabel(stance)} (익명)`}</div>
         </div>
       </div>
 
@@ -324,12 +329,12 @@ function DrillInPanel({ node, onClose }: { node: PlazaNode | null; onClose: () =
         <Stat
           label="영향력"
           value={Math.round(node.influence * 10000).toLocaleString()}
-          delta="follow 가중 정규화 [0,1]"
+          delta="받은 호응 sqrt 정규화 [0,1]"
         />
       </div>
 
       <div className="lm-drill__ideology">
-        <span className="lm-drill__ideology-label">위치</span>
+        <span className="lm-drill__ideology-label">성향</span>
         <div className="lm-drill__ideology-track">
           <span className="lm-drill__ideology-thumb" style={{ left: `${node.x * 100}%`, background: node.color }} />
         </div>
@@ -351,21 +356,21 @@ function CloseGlyph() {
 // PlazaFilters
 // --------------------------------------------------------------------
 function PlazaFilters({ filters, onChange, totalNodes, nRounds }: { filters: PlazaFiltersState; onChange: (f: PlazaFiltersState) => void; totalNodes: number; nRounds: number | null }) {
-  const toggleGroup = (g: GroupId) => {
-    const next = filters.groups.includes(g) ? filters.groups.filter((x) => x !== g) : [...filters.groups, g];
-    onChange({ ...filters, groups: next });
+  const toggleStance = (s: StanceBucket) => {
+    const next = filters.stances.includes(s) ? filters.stances.filter((x) => x !== s) : [...filters.stances, s];
+    onChange({ ...filters, stances: next });
   };
   return (
     <div className="lm-plaza__filters">
       <div className="lm-plaza__filters-left">
         <span className="lm-plaza__filters-label">진영</span>
         <div className="lm-plaza__filters-pills">
-          <Pill active={filters.groups.length === 0} onClick={() => onChange({ ...filters, groups: [] })}>
+          <Pill active={filters.stances.length === 0} onClick={() => onChange({ ...filters, stances: [] })}>
             전체 {totalNodes}
           </Pill>
-          {lm.GROUPS.map((g) => (
-            <Pill key={g.id} color={g.color} active={filters.groups.includes(g.id)} onClick={() => toggleGroup(g.id)}>
-              {g.name}
+          {STANCE_BUCKETS.map((s) => (
+            <Pill key={s.id} color={s.color} active={filters.stances.includes(s.id)} onClick={() => toggleStance(s.id)}>
+              {s.name}
             </Pill>
           ))}
         </div>
@@ -393,54 +398,45 @@ export default function Plaza() {
   const { plazaId } = useParams<{ plazaId: string }>();
   const location = useLocation();
   const navigate = useNavigate();
-  // /demo/plaza 진입 시 mock-only — /layout fetch 안 함, nav 도 /demo/* 로.
+  // /demo/plaza 진입 시 mock-only — positions fetch 안 함, nav 도 /demo/* 로.
   const isDemo = location.pathname.startsWith('/demo/');
   const baseGo = useScreenNav(plazaId);
   const go = isDemo
     ? (target: 'live' | 'report' | 'plaza' | 'casting' | 'landing' | 'seed') =>
         navigate(target === 'landing' ? '/' : `/demo/${target}`)
     : baseGo;
-  // 데모: mock 312 노드를 초기값으로 — /layout 응답으로 교체. ready=false 면 mock 유지. 비데모: [].
-  const mockNodes = useMemo(() => lm.generatePlaza({ seed: 42, n: 312 }), []);
+  // 데모: mock 312 노드를 초기값으로 — positions 응답으로 교체. ready=false 면 mock
+  // 유지. 비데모: []. mock 노드엔 stance 가 없으니 x(데모 기준 입장축)로 합성해
+  // 진영 색/필터/라벨이 데모에서도 동작하게 한다 (mock 데이터는 안 건드림).
+  const mockNodes = useMemo(
+    () =>
+      lm.generatePlaza({ seed: 42, n: 312 }).map((n) => ({ ...n, stance: n.x, color: stanceColor(n.x) })),
+    [],
+  );
   const [allNodes, setAllNodes] = useState<PlazaNode[]>(isDemo ? mockNodes : []);
   const [selectedId, setSelected] = useState<string | null>(null);
   const [hoverId, setHover] = useState<string | null>(null);
   const [mouse, setMouse] = useState({ x: 0, y: 0 });
-  const [filters, setFilters] = useState<PlazaFiltersState>({ groups: [], influenceOnly: false });
+  const [filters, setFilters] = useState<PlazaFiltersState>({ stances: [], influenceOnly: false });
   const [report, setReport] = useState<PlazaReportResponse | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
-  // /layout fetch — composing/completed 부터 의미 있는 응답. pending/running 은
-  // ready=false → 데모: mock 유지, 비데모: [] 유지.
+  // positions(최종 라운드) + agents(정적 stance/이름) fetch — Live 와 같은 인코딩.
+  // composing/completed 부터 ready=true. ready=false 면 데모: mock 유지, 비데모: []
+  // 유지. agent_id 로 머지 (buildPlazaNodes). 데모는 positions 가 없으니 skip.
   useEffect(() => {
-    if (!plazaId) return;
+    if (!plazaId || isDemo) return;
     const ac = new AbortController();
-    api
-      .getLayout(plazaId, ac.signal)
-      .then((res) => {
-        if (!res.ready || res.agents.length === 0) return;
-        const nodes: PlazaNode[] = res.agents.map((a) => {
-          const roleId = mapBackendRoleToRoleId(a.role);
-          const role = lm.ROLE_BY_ID[roleId];
-          return {
-            id: a.id,
-            name: a.name,
-            role: roleId,
-            kind: 'anchor',
-            x: a.x,
-            y: a.y,
-            influence: a.influence,
-            color: role.color,
-            anchor: true,
-          };
-        });
-        setAllNodes(nodes);
+    Promise.all([api.getPositions(plazaId, ac.signal), api.getAgents(plazaId, ac.signal)])
+      .then(([positions, agentsRes]) => {
+        if (!positions.ready || positions.agents.length === 0) return;
+        setAllNodes(buildPlazaNodes(agentsRes.agents, positions.agents));
       })
       .catch(() => {
-        // mock 유지. abort 도 여기로 떨어져 무시된다.
+        // mock/빈 상태 유지. abort 도 여기로 떨어져 무시된다.
       });
     return () => ac.abort();
-  }, [plazaId]);
+  }, [plazaId, isDemo]);
 
   // /report fetch — eyebrow / subtitle 의 n_rounds, total actions 용. 빈 응답
   // 이거나 미수신이면 mock fallback 안 쓰고 empty subtitle.
@@ -483,11 +479,18 @@ export default function Plaza() {
     setMouse({ x: e.clientX - rect.left + 12, y: e.clientY - rect.top + 14 });
   };
 
+  // 헤더 분포 — stance 진영(비판/중립/우호) 버킷. Live 경계(0.4/0.6) 일치.
   const distrib = useMemo(() => {
-    const pro = allNodes.filter((n) => n.x < 0.42).length;
-    const mid = allNodes.filter((n) => n.x >= 0.42 && n.x < 0.58).length;
-    const con = allNodes.filter((n) => n.x >= 0.58).length;
-    return { pro, mid, con };
+    let critical = 0;
+    let neutral = 0;
+    let supportive = 0;
+    for (const n of allNodes) {
+      const bucket = stanceBucket(n.stance ?? 0.5);
+      if (bucket === 'critical') critical += 1;
+      else if (bucket === 'supportive') supportive += 1;
+      else neutral += 1;
+    }
+    return { critical, neutral, supportive };
   }, [allNodes]);
 
   return (
@@ -508,9 +511,9 @@ export default function Plaza() {
           }
           meta={
             <>
-              <Stat label="비판적" value={distrib.pro} align="right" />
-              <Stat label="중립" value={distrib.mid} align="right" />
-              <Stat label="우호적" value={distrib.con} align="right" />
+              <Stat label="비판" value={distrib.critical} align="right" />
+              <Stat label="중립" value={distrib.neutral} align="right" />
+              <Stat label="우호" value={distrib.supportive} align="right" />
             </>
           }
           actions={
@@ -527,13 +530,15 @@ export default function Plaza() {
 
         <PlazaFilters filters={filters} onChange={setFilters} totalNodes={allNodes.length} nRounds={report?.n_rounds ?? null} />
 
-        {/* 지도 표기 가이드 — 광장 외부, 박스 없이 인라인 */}
+        {/* 지도 표기 가이드 — 광장 외부, 박스 없이 인라인. Live 와 같은 인코딩. */}
         <div className="lm-plaza__guide">
-          <span><b>위치</b> = 입장</span>
+          <span><b>가로</b> = 성향(진보↔보수)</span>
           <span className="lm-plaza__guide-sep">·</span>
-          <span><b>색</b> = 역할</span>
+          <span><b>세로</b> = 발화량</span>
           <span className="lm-plaza__guide-sep">·</span>
-          <span><b>크기</b> = 영향력</span>
+          <span><b>색</b> = 입장(비판/중립/우호)</span>
+          <span className="lm-plaza__guide-sep">·</span>
+          <span><b>크기</b> = 영향력(호응)</span>
         </div>
 
         <div className="lm-plaza__canvas" ref={canvasRef} onMouseMove={handleMouseMove}>
