@@ -73,19 +73,10 @@ async def stream_events(plaza_id: str, request: Request) -> StreamingResponse:
 
     async def event_stream() -> AsyncIterator[str]:
         try:
-            # 초기 status 한 번 yield — 폴링 없이도 현재 상태가 즉시 알려진다.
-            # 이 직후 _drive 의 running→terminal 전환 이벤트는 큐로 들어온다.
-            yield _format_sse(
-                PlazaEvent(
-                    type="status",
-                    data={
-                        "status": record.status,
-                        "rounds_done": record.rounds_done,
-                        "rounds_total": record.rounds_total,
-                        "error": record.error,
-                    },
-                )
-            )
+            # 스냅샷(actions / positions)을 status 보다 먼저 흘린다. terminal plaza
+            # 는 클라가 status=completed 를 받는 즉시 EventSource 를 close 하므로,
+            # status 를 먼저 보내면 그 뒤 스냅샷이 처리 전에 끊겨 빈 화면이 된다.
+            # 스냅샷 먼저 → 클라가 피드/산점도를 채운 뒤 status 로 close.
 
             # 재연결 시 부감 뷰가 빈 피드로 시작하지 않도록 최근 액션을 한 번에
             # 흘린다. terminal 이어도 보낸다 — 이미 끝난 plaza 를 새로 열어
@@ -104,6 +95,20 @@ async def stream_events(plaza_id: str, request: Request) -> StreamingResponse:
                 yield _format_sse(
                     PlazaEvent(type="positions_snapshot", data=positions),
                 )
+
+            # 초기 status 한 번 yield — 폴링 없이도 현재 상태가 즉시 알려진다.
+            # 이 직후 _drive 의 running→terminal 전환 이벤트는 큐로 들어온다.
+            yield _format_sse(
+                PlazaEvent(
+                    type="status",
+                    data={
+                        "status": record.status,
+                        "rounds_done": record.rounds_done,
+                        "rounds_total": record.rounds_total,
+                        "error": record.error,
+                    },
+                )
+            )
 
             if record.status in _TERMINAL_STATUSES:
                 return
