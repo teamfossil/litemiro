@@ -30,6 +30,8 @@ from litemiro.api.models import (
     PlazaLayoutAgentItem,
     PlazaLayoutResponse,
     PlazaListResponse,
+    PlazaPositionItem,
+    PlazaPositionsResponse,
     PlazaReportResponse,
     PlazaStatus,
     PlazaStatusResponse,
@@ -387,6 +389,33 @@ async def get_layout(plaza_id: str, request: Request) -> PlazaLayoutResponse:
         for p in profiles
     ]
     return PlazaLayoutResponse(plaza_id=plaza_id, ready=True, agents=items)
+
+
+@router.get("/{plaza_id}/positions", response_model=PlazaPositionsResponse)
+async def get_positions(plaza_id: str, request: Request) -> PlazaPositionsResponse:
+    """종료 광장(Plaza) 산점도용 — 최종 라운드 위치 1프레임 (one-shot).
+
+    Live 의 SSE ``positions``/``positions_snapshot`` 과 같은 데이터(``_positions_
+    payload``)를 REST 로 한 번에 준다. Plaza 는 애니메이션 없이 마지막 프레임만
+    필요해 SSE 대신 이 엔드포인트를 쓴다. belief_trajectory 에 ideology 줄이
+    아직 없으면 (pending/running 초반·fake) ``ready=False`` + ``agents=[]``.
+    """
+    store = _store(request)
+    record = await store.get(plaza_id)
+    if record is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"plaza {plaza_id!r} not found",
+        )
+    payload = await store.load_latest_positions(plaza_id)
+    if payload is None:
+        return PlazaPositionsResponse(plaza_id=plaza_id, ready=False)
+    return PlazaPositionsResponse(
+        plaza_id=plaza_id,
+        ready=True,
+        round_num=payload["round_num"],
+        agents=[PlazaPositionItem(**a) for a in payload["agents"]],
+    )
 
 
 @router.post("/{plaza_id}/start", status_code=status.HTTP_204_NO_CONTENT)

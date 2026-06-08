@@ -152,6 +152,39 @@ class PlazaLayoutResponse(BaseModel):
     agents: list[PlazaLayoutAgentItem]
 
 
+class PlazaPositionItem(BaseModel):
+    """종료 광장(Plaza)·Live 산점도 한 노드 — positions SSE 와 같은 의미 차원.
+
+    SSE ``_positions_payload`` 와 같은 shape. Plaza 화면이 최종 라운드 1프레임을
+    one-shot 으로 받을 때 쓰는 REST 응답 element.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    # x = ideology [0,1] (진보↔보수) — 최종 라운드 belief_trajectory 값.
+    x: float
+    # y = 받은 호응 (가중 received engagement) raw.
+    y: float
+    # size = 발화량 (DO_NOTHING 제외 보낸 액션 수) raw.
+    size: float
+
+
+class PlazaPositionsResponse(BaseModel):
+    """``GET /api/plazas/{id}/positions`` — 최종 라운드 위치 1프레임.
+
+    belief_trajectory 에 ideology 줄이 아직 없으면 (pending/running 초반 또는
+    fake) ``ready=False`` + ``agents=[]``. ``/layout`` 의 ready 게이트와 같은 정책.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    plaza_id: str
+    ready: bool
+    round_num: int | None = None
+    agents: list[PlazaPositionItem] = Field(default_factory=list)
+
+
 class PlazaSummaryItem(BaseModel):
     """``GET /api/plazas`` 목록 한 줄. ``PlazaStatusResponse`` 와 같은 진행
     상태 필드 + ``preset`` / ``tokens_used`` / 두 timestamp 까지. ``report_markdown``
@@ -300,6 +333,8 @@ __all__ = [
     "PlazaLayoutAgentItem",
     "PlazaLayoutResponse",
     "PlazaListResponse",
+    "PlazaPositionItem",
+    "PlazaPositionsResponse",
     "PlazaReportResponse",
     "PlazaStatus",
     "PlazaStatusResponse",
