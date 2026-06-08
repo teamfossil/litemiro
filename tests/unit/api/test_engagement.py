@@ -46,8 +46,7 @@ def _write_belief(path: Path, rounds: list[tuple[int, dict[str, float]]]) -> Non
     """헤더 줄 + (round_num, ideology_map) 줄들로 belief_trajectory.jsonl 작성."""
     lines = [json.dumps({"schema": "belief_trajectory/v1"})]
     lines += [
-        json.dumps({"ideology": ideology, "round_num": round_num})
-        for round_num, ideology in rounds
+        json.dumps({"ideology": ideology, "round_num": round_num}) for round_num, ideology in rounds
     ]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -188,7 +187,9 @@ class TestLoadLatestPositions:
     def test_header_only_returns_none(self, tmp_path: Path) -> None:
         """ideology 줄이 하나도 없으면 (헤더만) None."""
         belief_path = tmp_path / "belief_trajectory.jsonl"
-        belief_path.write_text(json.dumps({"schema": "belief_trajectory/v1"}) + "\n", encoding="utf-8")
+        belief_path.write_text(
+            json.dumps({"schema": "belief_trajectory/v1"}) + "\n", encoding="utf-8"
+        )
         assert _load_latest_positions(belief_path, tmp_path / "events.jsonl") is None
 
     def test_store_method(self, tmp_path: Path) -> None:

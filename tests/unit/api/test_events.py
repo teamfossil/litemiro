@@ -531,14 +531,17 @@ def test_stream_emits_actions_snapshot_on_reconnect(
         with client.stream("GET", f"/api/plazas/{plaza_id}/events") as resp:
             resp.read()
 
-        # 두 번째 연결 — 이미 terminal 이므로 첫 status + snapshot 만 떨어지고 닫힘.
+        # 두 번째 연결 — 이미 terminal 이므로 snapshot + status 만 떨어지고 닫힘.
         with client.stream("GET", f"/api/plazas/{plaza_id}/events") as resp:
             body = resp.read().decode("utf-8")
 
     sse = _parse_sse(body)
     types = [t for t, _ in sse]
-    assert types[0] == "status"
+    # 스냅샷은 status 보다 먼저 emit — terminal plaza 가 status=completed 로
+    # 클라 EventSource 를 close 하기 전에 피드/산점도가 채워지도록.
+    assert "status" in types
     assert "actions_snapshot" in types
+    assert types.index("actions_snapshot") < types.index("status")
     snapshot_payload = next(data for name, data in sse if name == "actions_snapshot")
     actions = snapshot_payload["actions"]
     # DO_NOTHING 제외 — 2 건만, 시간 오름차순.
