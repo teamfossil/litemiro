@@ -18,6 +18,7 @@ import type {
   RoundMeta,
   Seed,
 } from './types';
+import { stanceColor } from '@/lib/plazaNodes';
 
 // ---------- ROLE REGISTRY ----------
 export const ROLES: Role[] = [
@@ -208,7 +209,7 @@ export const SEED: Seed = {
     scale: 'mid',
     rounds: 40,
     package: 'kr-news',
-    participants: 312,
+    participants: 300,
   },
   cost: 1240,
 };
@@ -222,8 +223,8 @@ export const ROUND_META: RoundMeta = {
 };
 
 // ---------- 노드 생성 ----------
-// 시드 RNG로 생성한 312명. 같은 시드 → 같은 광장.
-export function generatePlaza({ seed = 42, n = 312 }: { seed?: number; n?: number } = {}): PlazaNode[] {
+// 시드 RNG로 생성한 300명. 같은 시드 → 같은 광장.
+export function generatePlaza({ seed = 42, n = 300 }: { seed?: number; n?: number } = {}): PlazaNode[] {
   const rng = mulberry32(seed);
   const totalW = Object.values(ROLE_COUNT_WEIGHT).reduce((a, b) => a + b, 0);
   const nodes: PlazaNode[] = [];
@@ -240,23 +241,31 @@ export function generatePlaza({ seed = 42, n = 312 }: { seed?: number; n?: numbe
       }
     }
     const ideo = ROLE_IDEOLOGY[roleId] ?? 0;
-    // 가로축 = 입장. 가우시안 분포로 역할 평균 주변 흩뿌림.
-    let x = 0.5 + ideo * 0.36 + gauss(rng) * 0.09;
+    // 가로축 = ideology(진보↔보수). 가우시안으로 역할 평균 주변에 넓게 흩뿌려
+    // 전 구간(0.03~0.97)이 고르게 차도록.
+    let x = 0.5 + ideo * 0.34 + gauss(rng) * 0.12;
     x = clamp(x, 0.03, 0.97);
-    const y = 0.18 + rng() * 0.72;
+    // 세로 = 발화량. 위아래로 충분히 퍼지게.
+    const y = clamp(0.1 + rng() * 0.82, 0.06, 0.94);
 
-    // 영향력 — 긴 꼬리 분포. 군중 노드는 대부분 낮음.
+    // 영향력 — 긴 꼬리 분포. 군중 노드는 대부분 낮지만, 눈에 띄는 큰 노드
+    // (인플루언서)가 여럿 생기도록 상위 버킷 확률을 키웠다 (마케팅 데모 생동감).
     const roll = rng();
     let inf: number;
-    if (roll < 0.005) inf = 0.85 + rng() * 0.15;
-    else if (roll < 0.02) inf = 0.45 + rng() * 0.25;
-    else if (roll < 0.08) inf = 0.2 + rng() * 0.18;
-    else if (roll < 0.25) inf = 0.08 + rng() * 0.12;
+    if (roll < 0.012) inf = 0.78 + rng() * 0.22;
+    else if (roll < 0.05) inf = 0.46 + rng() * 0.3;
+    else if (roll < 0.14) inf = 0.24 + rng() * 0.2;
+    else if (roll < 0.34) inf = 0.1 + rng() * 0.14;
     else inf = 0.02 + rng() * 0.08;
 
-    // 같은 역할 안에서 개체별 명도 변주.
-    const shade = (rng() - 0.5) * 0.3;
-    const color = shadeHex(ROLE_BY_ID[roleId].color, shade);
+    // 색 = stance 진영. ideology 와 느슨히만 상관시키고(가중치 작게) 큰 노이즈를
+    // 더해 비판/중립/우호가 전 구간에 골고루 섞이게 — 색이 한쪽으로 쏠리지 않음.
+    // 영향력 큰 노드는 양 끝(비판/우호)으로 살짝 밀어 색 대비를 또렷하게.
+    const ideoPull = (x - 0.5) * 0.34;
+    const polarize = inf > 0.4 ? Math.sign(x - 0.5) * 0.14 : 0;
+    let stance = 0.5 + ideoPull + polarize + gauss(rng) * 0.26;
+    stance = clamp(stance, 0.02, 0.98);
+    const color = stanceColor(stance);
 
     nodes.push({
       id: `n${i}`,
@@ -267,12 +276,14 @@ export function generatePlaza({ seed = 42, n = 312 }: { seed?: number; n?: numbe
       y,
       influence: inf,
       color,
+      stance,
     });
   }
 
   // 2) 바이럴 derived — 영향력이 군중 평균보다 크게 튀어오른 익명 시민.
   const viralIdx = nodes.findIndex((nd) => nd.role === 'citizen_p' && nd.influence > 0.1);
   if (viralIdx > -1) {
+    const viralStance = 0.28; // 돌봄·시급제 관점의 비판 진영
     nodes[viralIdx] = {
       ...nodes[viralIdx],
       name: '시민·익명 #47',
@@ -280,14 +291,26 @@ export function generatePlaza({ seed = 42, n = 312 }: { seed?: number; n?: numbe
       influence: 0.66,
       x: 0.34,
       y: 0.62,
+      stance: viralStance,
+      color: stanceColor(viralStance),
     };
   }
 
   // 3) 앵커 — 시드에서 추출된 5명. 큰 노드 + 이름 + 표정/소품.
+  // stance 를 세 진영에 골고루 배치(서사 일치): 비판 보도 최영민, 우호 칼럼 한지영,
+  // 비판 진영 주도 정세훈, 중립 학자 박서경, 우호 노동연대 — 색이 다양하게 보이게.
+  const ANCHOR_STANCE: Record<string, number> = {
+    cm: 0.22, // 최영민 — 비판
+    hj: 0.74, // 한지영 — 우호
+    js: 0.3, // 정세훈 — 비판
+    pk: 0.52, // 박서경 — 중립
+    no: 0.78, // 전국노동연대 — 우호
+  };
   ANCHORS.forEach((a, i) => {
     const ideo = a.ideology;
     const x = 0.5 + (ideo - 0.5) * 0.72; // 좀 더 양극단으로
     const yArr = [0.5, 0.34, 0.26, 0.2, 0.78];
+    const stance = ANCHOR_STANCE[a.id] ?? 0.5;
     nodes.push({
       id: a.id,
       name: `${a.name}${a.isOrg ? '' : ' ' + a.title}`,
@@ -298,10 +321,11 @@ export function generatePlaza({ seed = 42, n = 312 }: { seed?: number; n?: numbe
       x,
       y: yArr[i % yArr.length],
       influence: a.baseInfluence,
-      color: shadeHex(ROLE_BY_ID[a.role].color, -0.05),
+      color: stanceColor(stance),
       anchor: true,
       avatar: a.avatar,
       bio: a.bio,
+      stance,
     });
   });
 

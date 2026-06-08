@@ -405,12 +405,19 @@ export default function Plaza() {
     ? (target: 'live' | 'report' | 'plaza' | 'casting' | 'landing' | 'seed') =>
         navigate(target === 'landing' ? '/' : `/demo/${target}`)
     : baseGo;
-  // 데모: mock 312 노드를 초기값으로 — positions 응답으로 교체. ready=false 면 mock
-  // 유지. 비데모: []. mock 노드엔 stance 가 없으니 x(데모 기준 입장축)로 합성해
-  // 진영 색/필터/라벨이 데모에서도 동작하게 한다 (mock 데이터는 안 건드림).
+  // 데모: Live 최종 mock 화면과 같은 300명 광장. Plaza renderer 는 production
+  // 좌표계에 맞춰 y 를 뒤집고 반지름도 positions 기준으로 계산하므로, 데모 노드만
+  // 미리 보정해 /demo/live 의 마지막 프레임과 같은 사진이 나오게 한다.
   const mockNodes = useMemo(
     () =>
-      lm.generatePlaza({ seed: 42, n: 312 }).map((n) => ({ ...n, stance: n.x, color: stanceColor(n.x) })),
+      lm.generatePlaza({ seed: 42, n: 300 }).map((n) => {
+        const liveRadius = lm.nodeRadius(n.influence, 1.6, 32);
+        return {
+          ...n,
+          y: 1 - n.y,
+          influence: Math.max(0, Math.min(1, (liveRadius - 2) / 26)),
+        };
+      }),
     [],
   );
   const [allNodes, setAllNodes] = useState<PlazaNode[]>(isDemo ? mockNodes : []);
