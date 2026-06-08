@@ -5,7 +5,7 @@
 // =====================================================================
 
 import type { ReactNode } from 'react';
-import { ThemeToggle } from '@/components/ThemeToggle';
+import { ThemeRadio } from '@/components/ThemeRadio';
 
 export type ScreenId = 'landing' | 'seed' | 'casting' | 'live' | 'plaza' | 'report';
 
@@ -89,13 +89,7 @@ export function AppHeader({ plaza, currentScreen, onNavigate, phaseNavLocked = f
       </nav>
 
       <div className="lm-header__right">
-        <ThemeToggle />
-        <button type="button" className="lm-header__iconbtn" aria-label="알림">
-          <BellIcon />
-        </button>
-        <button type="button" className="lm-header__avatar" aria-label="내 계정">
-          <div className="lm-header__avatar-dot" style={{ background: 'var(--r-citizen-p)' }} />
-        </button>
+        <ThemeRadio />
       </div>
     </header>
   );
@@ -119,24 +113,9 @@ export function SeedHeader({ onNavigate }: { onNavigate: (id: ScreenId) => void 
       </div>
 
       <div className="lm-header__right">
-        <ThemeToggle />
-        <button type="button" className="lm-header__iconbtn" aria-label="알림">
-          <BellIcon />
-        </button>
-        <button type="button" className="lm-header__avatar" aria-label="내 계정">
-          <div className="lm-header__avatar-dot" style={{ background: 'var(--r-citizen-p)' }} />
-        </button>
+        <ThemeRadio />
       </div>
     </header>
-  );
-}
-
-function BellIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-      <path d="M4 13h10l-1.2-2V8.5A3.8 3.8 0 0 0 9 4.7 3.8 3.8 0 0 0 5.2 8.5V11L4 13Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
-      <path d="M7.5 15a1.5 1.5 0 0 0 3 0" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-    </svg>
   );
 }
 
@@ -170,6 +149,12 @@ export function AppShell({
   return (
     <div className="lm-shell">
       {header}
+      {/* 랜딩 등 헤더 없는 화면에도 테마 전환 — 우상단 플로팅. */}
+      {hideHeader && (
+        <div className="lm-theme-radio--floating">
+          <ThemeRadio />
+        </div>
+      )}
       <main className="lm-shell__main">{children}</main>
     </div>
   );

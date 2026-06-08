@@ -153,6 +153,36 @@
 }
 .lm-header__avatar-dot { width: calc(12px * var(--scale)); height: calc(12px * var(--scale)); border-radius: 50%; }
 
+/* ---------- THEME RADIO (시스템/라이트/다크) ---------- */
+.lm-theme-radio {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-pill);
+  background: var(--paper);
+  overflow: hidden;
+}
+.lm-theme-radio__opt {
+  font-family: var(--mono);
+  font-size: var(--t-mono);
+  letter-spacing: var(--ls-mono);
+  text-transform: uppercase;
+  color: var(--ink-4);
+  padding: calc(4px * var(--scale)) var(--s-3);
+  white-space: nowrap;
+  transition: background var(--dur-1), color var(--dur-1);
+}
+.lm-theme-radio__opt + .lm-theme-radio__opt { border-left: 1px solid var(--rule-2); }
+.lm-theme-radio__opt:hover { color: var(--ink-2); }
+.lm-theme-radio__opt.is-active { background: var(--ink); color: var(--paper); }
+/* 헤더 없는 화면(랜딩 등) 우상단 플로팅 */
+.lm-theme-radio--floating {
+  position: fixed;
+  top: var(--s-5);
+  right: var(--s-7);
+  z-index: 50;
+}
+
 /* ---------- SCREEN HEADER ---------- */
 .lm-screen-header {
   display: flex; justify-content: space-between; align-items: flex-end;

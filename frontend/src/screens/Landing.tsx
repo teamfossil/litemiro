@@ -42,7 +42,6 @@ export function HeroPlaza() {
   return (
     <svg viewBox={`0 0 ${vbW} ${vbH}`} preserveAspectRatio="xMidYMid slice" className="lm-landing__hero-svg">
       <g transform={rotated ? `translate(${H} 0) rotate(90)` : undefined}>
-        <line x1={W * 0.5} x2={W * 0.5} y1={40} y2={H - 40} stroke="#C9C1AD" strokeWidth="1" strokeDasharray="3 8" opacity="0.5" />
         {sorted.map((n) => {
           const cx = n.x * W;
           const cy = n.y * H;
