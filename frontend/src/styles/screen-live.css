@@ -113,6 +113,11 @@
 .lm-live__legend-item { display: flex; align-items: center; gap: var(--s-2); }
 .lm-live__legend-item i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 .lm-live__legend-note { margin-top: var(--s-1); opacity: 0.75; }
+.lm-live__legend-intro { margin-bottom: var(--s-2); opacity: 0.9; }
+.lm-live__legend-head { margin-top: var(--s-2); opacity: 0.6; }
+.lm-live__legend-head:first-of-type { margin-top: 0; }
+.lm-live__legend-size { display: flex; align-items: center; gap: var(--s-2); }
+.lm-live__legend-size i { border-radius: 50%; display: inline-block; flex: none; }
 .lm-live__canvas-empty {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;

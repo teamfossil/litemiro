@@ -101,8 +101,9 @@ function LivePlaza({ nodes }: { nodes: LiveNode[] }) {
         return (
           <g
             key={n.id}
-            transform={`translate(${cx} ${cy})`}
-            style={{ transition: 'transform 0.7s ease' }}
+            // transform 은 SVG 어트리뷰트가 아니라 CSS 속성으로 줘야 transition 이
+            // 먹는다 (어트리뷰트 변경은 CSS transition 대상이 아님 → 순간이동).
+            style={{ transform: `translate(${cx}px, ${cy}px)`, transition: 'transform 1.2s ease' }}
           >
             {n.radius > 8 && (
               <circle className="lm-live__node-shadow" cx={0} cy={1.6} r={n.radius * 1.02} fill="#000" opacity="0.08" />
@@ -510,10 +511,17 @@ export default function Live() {
                 <span>↓ 발화 적음</span>
               </div>
               <div className="lm-live__legend">
+                <span className="lm-live__legend-intro">점 1개 = 인격 1명</span>
+                <span className="lm-live__legend-head">색 — 주제 입장</span>
                 <span className="lm-live__legend-item"><i style={{ background: '#c75c54' }} />비판</span>
                 <span className="lm-live__legend-item"><i style={{ background: '#a99f88' }} />중립</span>
                 <span className="lm-live__legend-item"><i style={{ background: '#5b87b3' }} />우호</span>
-                <span className="lm-live__legend-note">● 영향력</span>
+                <span className="lm-live__legend-head">크기 — 영향력(호응)</span>
+                <span className="lm-live__legend-size">
+                  <i style={{ width: 6, height: 6, background: '#8a8275' }} />
+                  <i style={{ width: 14, height: 14, background: '#8a8275' }} />
+                  <span>적음 → 많음</span>
+                </span>
               </div>
               <div className="lm-live__canvas-axis">
                 <span>← 진보</span>
