@@ -80,6 +80,20 @@
     cy 760ms cubic-bezier(0.22, 1, 0.36, 1),
     r  760ms cubic-bezier(0.22, 1, 0.36, 1);
 }
+
+/* 데모 광장(LiveDemoMock) 노드 진입 — 제자리에서 작게 생성 → 커진다.
+   마운트 시 자동 재생(@keyframes)이라 JS state/타이밍·HMR 에 안 휘둘린다.
+   transform-origin 0,0 = circle 중심(cx=cy=0) 기준 scale. 데모 전용 클래스. */
+@keyframes lm-node-in {
+  from { transform: scale(0.08); opacity: 0; }
+  55%  { opacity: 1; }
+  to   { transform: scale(1); opacity: 1; }
+}
+.lm-live__node-in {
+  transform-origin: 0 0;
+  transform: scale(0.08);
+  animation: lm-node-in 2.8s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
 .lm-live__canvas-axis {
   position: absolute; left: var(--s-9); right: var(--s-9); bottom: var(--s-3);
   display: flex; justify-content: space-between;
