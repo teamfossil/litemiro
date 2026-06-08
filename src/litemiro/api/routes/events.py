@@ -96,6 +96,15 @@ async def stream_events(plaza_id: str, request: Request) -> StreamingResponse:
                     PlazaEvent(type="actions_snapshot", data={"actions": snapshot}),
                 )
 
+            # 재연결/도중입장 시 산점도(라운드별 에이전트 위치) 도 빈 화면으로
+            # 시작하지 않도록 최신 라운드 positions 를 한 번에 흘린다. actions
+            # 스냅샷과 같은 정책 — terminal 이어도 보낸다 (과거 결과 부감용).
+            positions = await store.load_latest_positions(plaza_id)
+            if positions is not None:
+                yield _format_sse(
+                    PlazaEvent(type="positions_snapshot", data=positions),
+                )
+
             if record.status in _TERMINAL_STATUSES:
                 return
 
