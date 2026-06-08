@@ -131,7 +131,7 @@ export default function Landing() {
       <div className="lm-landing__left">
         <div className="lm-landing__top">
           <BrandMark size="lg" />
-          <span className="lm-landing__version">v3.4 · beta</span>
+          <span className="lm-landing__version">v4.0 · beta</span>
         </div>
 
         <div className="lm-landing__hero">
