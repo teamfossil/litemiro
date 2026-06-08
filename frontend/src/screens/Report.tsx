@@ -79,7 +79,8 @@ function MiniPlaza({ nodes }: { nodes: PlazaNode[] }) {
       ))}
       {sorted.map((n) => {
         const cx = n.x * W;
-        const cy = n.y * (H - 100) + 30;
+        // 발화량(n.y) 높을수록 위로 — Live/Plaza 와 동일하게 y축 반전.
+        const cy = (1 - n.y) * (H - 100) + 30;
         const r = lm.nodeRadius(n.influence, 1.8, 28);
         return (
           <g key={n.id}>
