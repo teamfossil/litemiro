@@ -1,7 +1,7 @@
 // =====================================================================
 // 데모 결과 리포트 (Phase 6) — production Report.tsx 와 동일한 섹션 구조.
 // 백엔드 대신 mock 데이터로 채우되, 컴포넌트 셰이프·className·순서는 일치.
-// 섹션: 전체 요약(MiniPlaza) → 행동 → 토픽 → 라운드별 변화 → 영향력 → 소셜 → 비용 → 보고서 본문
+// 구조: PREDICTION hero(보고서 본문 전체) → 전체 요약(MiniPlaza) → 행동 → 토픽 → 라운드별 변화 → 영향력 → 소셜 → 비용
 // =====================================================================
 
 import { useMemo, type ReactNode } from 'react';
@@ -297,16 +297,29 @@ export default function ReportDemoMock() {
           </div>
         </header>
 
-        {/* PREDICTION HERO — production: ReactMarkdown. 데모: pre-rendered markdown prose. */}
+        {/* PREDICTION HERO — production 은 백엔드 report_markdown 전체를 hero 에 렌더한다.
+            데모도 동일하게: 보고서 본문 전체를 hero markdown prose 로 넣는다(별도 본문 섹션 X). */}
         <section className="lm-rep__hero">
           <div className="lm-rep__hero-tag">PREDICTION · 핵심 예측</div>
           <div className="lm-rep__hero-markdown">
-            <p className="lm-rep__hero-text">
-              주 4일제는 단기 도입은 어렵지만, <strong>시범사업 결과를 거쳐 2~3년 내 점진 도입</strong>될 가능성이 높습니다.
-            </p>
-            <div className="lm-rep__hero-meta">
-              <span>신뢰도 · <b>medium-high</b></span>
-            </div>
+            <h2>핵심 예측</h2>
+            <p>주 4일제는 단기 도입은 어렵지만, <strong>시범사업 결과를 거쳐 2~3년 내 점진 도입</strong>될 가능성이 높습니다.</p>
+            <p>신뢰도 · <strong>medium-high</strong></p>
+            <h3>추진 신호</h3>
+            <ul>
+              <li>시범사업 데이터가 공개되면 중립 클러스터가 비판적으로 기울 신호가 보입니다.</li>
+              <li>돌봄·시급제 영역의 사례 노출이 여론에 가장 큰 영향을 줄 것으로 예상됩니다.</li>
+            </ul>
+            <h3>저항 신호</h3>
+            <ul>
+              <li>산업계 부담 분담 구조 합의 없이는 단기 입법은 어렵습니다.</li>
+            </ul>
+            <h3>후속 권장 액션</h3>
+            <ol>
+              <li>시범사업 결과 보고서 1차 공개 시점에 추가 시뮬레이션 권장</li>
+              <li>5인 미만 사업장 보호 조항을 변수에 포함한 후속 시드 실행</li>
+              <li>미디어 진영 앵커 3명의 영향력 패턴을 별도 분석</li>
+            </ol>
           </div>
         </section>
 
@@ -417,31 +430,6 @@ export default function ReportDemoMock() {
         <ReportSection id="cost" num="07" title="비용 · 품질 지표"
           sub="토큰 사용량과 시뮬레이션 품질 메트릭.">
           <CostPanel tokens={MOCK_TOKENS} qa={MOCK_QA} nAgents={MOCK_N_AGENTS} nRounds={MOCK_N_ROUNDS} />
-        </ReportSection>
-
-        {/* 보고서 본문 — production 은 ReactMarkdown, 데모는 hero-markdown prose 스타일 재사용 */}
-        <ReportSection id="report" num="08" title="보고서 본문"
-          sub="시뮬레이션 결과 전체 서술. 실제 제품에서는 LLM 이 합성한 markdown 이 여기 들어갑니다.">
-          <div className="lm-rep__hero-markdown">
-            <h2>핵심 예측</h2>
-            <p>주 4일제는 단기 도입은 어렵지만, <strong>시범사업 결과를 거쳐 2~3년 내 점진 도입</strong>될 가능성이 높습니다.</p>
-            <p>신뢰도 · <strong>medium-high</strong></p>
-            <h3>추진 신호</h3>
-            <ul>
-              <li>시범사업 데이터가 공개되면 중립 클러스터가 비판적으로 기울 신호가 보입니다.</li>
-              <li>돌봄·시급제 영역의 사례 노출이 여론에 가장 큰 영향을 줄 것으로 예상됩니다.</li>
-            </ul>
-            <h3>저항 신호</h3>
-            <ul>
-              <li>산업계 부담 분담 구조 합의 없이는 단기 입법은 어렵습니다.</li>
-            </ul>
-            <h3>후속 권장 액션</h3>
-            <ol>
-              <li>시범사업 결과 보고서 1차 공개 시점에 추가 시뮬레이션 권장</li>
-              <li>5인 미만 사업장 보호 조항을 변수에 포함한 후속 시드 실행</li>
-              <li>미디어 진영 앵커 3명의 영향력 패턴을 별도 분석</li>
-            </ol>
-          </div>
         </ReportSection>
 
         {/* FOOTER */}

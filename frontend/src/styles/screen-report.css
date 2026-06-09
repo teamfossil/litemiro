@@ -71,7 +71,7 @@
   font-size: var(--t-mono);
   letter-spacing: var(--ls-eyebrow);
   text-transform: uppercase;
-  color: var(--highlight-bg);
+  color: var(--rep-hero-em);
 }
 .lm-rep__hero-text {
   margin: 0;
@@ -97,7 +97,7 @@
 .lm-rep__hero-markdown p { margin: 0 0 var(--s-3); }
 .lm-rep__hero-markdown ul, .lm-rep__hero-markdown ol { padding-left: var(--s-5); margin: 0 0 var(--s-3); }
 .lm-rep__hero-markdown li { margin-bottom: var(--s-2); }
-.lm-rep__hero-markdown strong { font-weight: 600; color: var(--highlight-bg); }
+.lm-rep__hero-markdown strong { font-weight: 600; color: var(--rep-hero-em); }
 .lm-rep__hero-markdown em { font-style: italic; opacity: 0.85; }
 .lm-rep__hero-markdown code {
   font-family: var(--mono);
@@ -113,7 +113,7 @@
   color: rgba(250, 247, 238, 0.55);
   display: flex; gap: var(--s-2);
 }
-.lm-rep__hero-meta b { color: var(--highlight-bg); font-weight: 600; }
+.lm-rep__hero-meta b { color: var(--rep-hero-em); font-weight: 600; }
 
 /* =====================================================================
    SECTION SHELL — 모든 섹션 동일 헤딩 패턴
