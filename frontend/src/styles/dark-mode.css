@@ -57,6 +57,8 @@
     /* Semantic */
     --accent: #d9745a;
     --highlight-bg: rgba(232, 215, 138, 0.26); /* 마커: 단색 → 반투명 앰버 글로우 */
+    /* hero(반전 카드)는 다크에서 near-white 배경 — 밝은 앰버는 묻힌다. 어두운 골드로. */
+    --rep-hero-em: #8a5e12;
     --positive: #6e9c8d;
     --negative: #cf6a50;
 
@@ -97,6 +99,7 @@
 
   --accent: #d9745a;
   --highlight-bg: rgba(232, 215, 138, 0.26);
+  --rep-hero-em: #8a5e12;
   --positive: #6e9c8d;
   --negative: #cf6a50;
 

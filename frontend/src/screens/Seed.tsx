@@ -13,22 +13,24 @@ import { api, ApiError, type DocumentResponse, type Preset } from '@/api/client'
 
 // --------------------------------------------------------------------
 // 인격 규모 옵션. id 는 백엔드 Preset literal 과 1:1.
-// 비용/시간/참가자 수는 데모용 표기 — 실제 비용은 백엔드 LLM 콜 수에 의존.
+// 비용/시간은 실측 Full 런(500명×50R = 75.0M tok · 약 1h50m · ~$22.5≈₩31,000)을
+// 앵커로 잡고, 작은 프리셋은 참가자×라운드 비례로 다운스케일한 추정.
+// LLM 호출 수 기반이라 통신 상태·단가에 따라 변동 — '약' 근사 표기.
 // --------------------------------------------------------------------
 interface SeedPlan {
   id: Preset;
   name: string;
   participants: number;
   rounds: number;
-  minutes: number;
+  time: string;
   cost: number;
   desc: string;
 }
 
 const SEED_PLANS: SeedPlan[] = [
-  { id: 'quick', name: 'Quick', participants: 100, rounds: 15, minutes: 2.5, cost: 380, desc: '빠르게 윤곽 잡기' },
-  { id: 'standard', name: 'Standard', participants: 300, rounds: 40, minutes: 18.3, cost: 1240, desc: '권장 · 진영 형성과 변곡' },
-  { id: 'full', name: 'Full', participants: 500, rounds: 50, minutes: 37.5, cost: 2980, desc: '정밀 · 군중 두께 + 영향력 분포' },
+  { id: 'quick', name: 'Quick', participants: 100, rounds: 15, time: '10분', cost: 1900, desc: '빠르게 윤곽 잡기' },
+  { id: 'standard', name: 'Standard', participants: 300, rounds: 40, time: '1시간', cost: 15000, desc: '권장 · 진영 형성과 변곡' },
+  { id: 'full', name: 'Full', participants: 500, rounds: 50, time: '2시간', cost: 31000, desc: '정밀 · 군중 두께 + 영향력 분포' },
 ];
 
 // 광장 열기 버튼이 거치는 단계. idle 외에는 사용자 입력을 모두 잠근다.
@@ -178,11 +180,11 @@ function PlanCard({
         </span>
         <span className="lm-seed__plan-divider">·</span>
         <span className="lm-seed__plan-stat">
-          약 <b>{plan.minutes}</b>분
+          약 <b>{plan.time}</b>
         </span>
       </span>
       <span className="lm-seed__plan-desc">{plan.desc}</span>
-      <span className="lm-seed__plan-cost">₩ {plan.cost.toLocaleString()}</span>
+      <span className="lm-seed__plan-cost">약 ₩{plan.cost.toLocaleString()}</span>
     </button>
   );
 }
@@ -355,8 +357,8 @@ export default function Seed() {
               <div className="lm-seed__footer-left">
                 <div className="lm-seed__footer-label">총 비용 · 소요 시간</div>
                 <div className="lm-seed__footer-amount">
-                  ₩ {plan.cost.toLocaleString()}
-                  <span className="lm-seed__footer-min">· 약 {plan.minutes}분</span>
+                  약 ₩{plan.cost.toLocaleString()}
+                  <span className="lm-seed__footer-min">· 약 {plan.time}</span>
                 </div>
                 {error && <div className="lm-seed__footer-error">{error}</div>}
               </div>

@@ -38,7 +38,8 @@
 
   /* ---- 5. SEMANTIC ---- */
   --accent:        #B85138;   /* 강조 (선택, 활성, 1차 액션) */
-  --highlight-bg:  #E8D78A;   /* 텍스트 하이라이트 (마커펜) */
+  --highlight-bg:  #E8D78A;   /* 텍스트 하이라이트 (마커펜 — 배경 전용) */
+  --rep-hero-em:   #E8D78A;   /* 리포트 hero(반전 카드) 위 강조 글자색. 다크에선 어두운 앰버로 */
   --positive:      #4F7B6E;
   --negative:      #B85138;
 
